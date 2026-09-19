@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
+    <title>مؤشر الدينار | Dinar Index</title>
+    <meta name="description" content="متابعة أسعار العملات والذهب في ليبيا لحظة بلحظة من السوق الموازي والمصرف المركزي" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://dollar-price-qp14.onrender.com/" />
+    <meta property="og:title" content="مؤشر الدينار | Dinar Index" />
+    <meta property="og:description" content="متابعة أسعار العملات والذهب في ليبيا لحظة بلحظة من السوق الموازي والمصرف المركزي" />
+    <meta property="og:image" content="/icon-512.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary" />
+    <meta property="twitter:url" content="https://dollar-price-qp14.onrender.com/" />
+    <meta property="twitter:title" content="مؤشر الدينار | Dinar Index" />
+    <meta property="twitter:description" content="متابعة أسعار العملات والذهب في ليبيا لحظة بلحظة من السوق الموازي والمصرف المركزي" />
+    <meta property="twitter:image" content="/icon-512.png" />
+
+    <meta name="theme-color" content="#091121" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="مؤشر الدينار" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="مؤشر الدينار" />
+    <meta name="msapplication-TileColor" content="#091121" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- Favicon & Touch Icons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="mask-icon" href="/logo.png" color="#10b981" />
+    <link rel="apple-touch-startup-image" href="/icon-512.png" />
+    
+    <style>
+      /* Prevent pull-to-refresh on mobile if desired, but keep it for now as it's useful */
+      /* body { overscroll-behavior-y: contain; } */
+      
+      /* Safe area padding for notched phones */
+      :root {
+        --safe-area-inset-top: env(safe-area-inset-top);
+        --safe-area-inset-bottom: env(safe-area-inset-bottom);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <style>
+        body {
+          margin: 0;
+          background-color: #091121;
+        }
+        .splash-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          width: 100vw;
+          background-color: #091121;
+          color: white;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .splash-logo-container {
+          position: relative;
+          width: 96px;
+          height: 96px;
+          margin-bottom: 32px;
+        }
+        .splash-logo-glow {
+          position: absolute;
+          inset: 0;
+          background-color: #10b981;
+          border-radius: 50%;
+          filter: blur(24px);
+          opacity: 0.4;
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+        .splash-logo {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+          z-index: 10;
+        }
+        .splash-title {
+          font-size: 30px;
+          line-height: 36px;
+          font-weight: 800;
+          letter-spacing: 0.025em;
+          background: linear-gradient(to right, #34d399, #10b981);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin: 0;
+        }
+        .splash-subtitle {
+          font-size: 14px;
+          color: #a1a1aa;
+          margin-top: 12px;
+          font-weight: 500;
+        }
+        .splash-loader {
+          margin-top: 48px;
+          width: 64px;
+          height: 4px;
+          background-color: rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+          overflow: hidden;
+          position: relative;
+        }
+        .splash-loader::after {
+          content: '';
+          position: absolute;
+          left: -50%;
+          height: 100%;
+          width: 50%;
+          background-color: #10b981;
+          border-radius: 4px;
+          animation: loading 1.5s infinite ease-in-out;
+        }
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.1); }
+        }
+        @keyframes loading {
+          0% { left: -50%; }
+          100% { left: 100%; }
+        }
+      </style>
+      <div class="splash-container">
+        <div class="splash-logo-container">
+          <div class="splash-logo-glow"></div>
+          <img src="/logo.png" alt="Logo" class="splash-logo" />
+        </div>
+        <h1 class="splash-title">مؤشر الدينار</h1>
+        <p class="splash-subtitle">جاري التحديث...</p>
+        <div class="splash-loader"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "مؤشر الدينار",
+  "description": "تطبيق لمتابعة أسعار صرف الدينار الليبي في السوق الرسمي والموازي لحظة بلحظة مع رسوم بيانية تاريخية.",
+ "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

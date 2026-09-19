@@ -1,0 +1,133 @@
+import { Rates, HistoryPoint } from './types';
+
+export let rates: Rates = {
+  official: {
+    USD: 4.85,
+    EUR: 5.25,
+    GBP: 6.15,
+    TND: 1.55,
+    TRY: 0.15,
+    EGP: 0.10,
+    JOD: 6.85,
+    AED: 1.32,
+    SAR: 1.29,
+    BHD: 12.85,
+    KWD: 15.80,
+    QAR: 1.33,
+    CNY: 0.68,
+  },
+  parallel: {
+    USD: 10.80,
+    OFFICIAL_USD: 4.85,
+    USD_CHECKS: 11.60,
+    EUR: 12.17,
+    GBP: 13.80,
+    GOLD: 485,
+    USD_TR: 10.85,
+    USD_AE: 10.82,
+    USD_CN: 10.90,
+    GOLD_EXT_18: 495,
+    GOLD_EXT_21: 580,
+    GOLD_SCRAP_18: 485,
+    GOLD_SCRAP_21: 565,
+    GOLD_CAST_18: 490,
+    GOLD_CAST_21: 530,
+    GOLD_CAST_24: 575,
+    GOLD_LIRA_8G: 4150,
+    GOLD_LIRA_14G: 7200,
+    GOLD_MUJARA_14G: 8250,
+    SILVER_CAST_1000: 23.50,
+    SILVER_SCRAP: 18.50,
+    TND: 3.33,
+    TRY: 0.24,
+    EGP: 0.20,
+    JOD: 15.15,
+    BHD: 28.60,
+    KWD: 35.10,
+    AED: 2.95,
+    SAR: 2.88,
+    QAR: 2.96,
+    USD_JBANK: 11.60,
+    USD_BCD: 11.62,
+    USD_NCB: 11.60,
+    USD_AB: 11.60,
+    USD_WB: 11.62,
+  },
+  previousOfficial: {
+    USD: 4.85,
+    EUR: 5.25,
+    GBP: 6.15,
+    TND: 1.55,
+    TRY: 0.15,
+    EGP: 0.10,
+    JOD: 6.85,
+    AED: 1.32,
+    SAR: 1.29,
+    BHD: 12.85,
+    KWD: 15.80,
+    QAR: 1.33,
+    CNY: 0.68,
+  },
+  previousParallel: {
+    USD: 10.75,
+    OFFICIAL_USD: 4.85,
+    USD_CHECKS: 11.55,
+    EUR: 12.10,
+    GBP: 13.75,
+    GOLD: 480,
+    USD_TR: 10.80,
+    USD_AE: 10.80,
+    USD_CN: 10.85,
+    GOLD_EXT_18: 490,
+    GOLD_EXT_21: 575,
+    GOLD_SCRAP_18: 480,
+    GOLD_SCRAP_21: 560,
+    GOLD_CAST_18: 485,
+    GOLD_CAST_21: 525,
+    GOLD_CAST_24: 570,
+    GOLD_LIRA_8G: 4100,
+    GOLD_LIRA_14G: 7150,
+    GOLD_MUJARA_14G: 8200,
+    SILVER_CAST_1000: 23.40,
+    SILVER_SCRAP: 18.40,
+    TND: 3.30,
+    TRY: 0.23,
+    EGP: 0.19,
+    JOD: 15.10,
+    BHD: 28.50,
+    KWD: 35.00,
+    AED: 2.90,
+    SAR: 2.85,
+    QAR: 2.90,
+    CNY: 0.90,
+    USD_JBANK: 11.55,
+    USD_BCD: 11.58,
+    USD_NCB: 11.55,
+    USD_AB: 11.55,
+    USD_WB: 11.58,
+  },
+  lastUpdated: new Date().toISOString(),
+  lastChanged: {
+    official: {},
+    parallel: {},
+  },
+};
+
+// Initialize lastChanged with current time
+Object.keys(rates.official).forEach(key => rates.lastChanged.official[key] = rates.lastUpdated);
+Object.keys(rates.parallel).forEach(key => rates.lastChanged.parallel[key] = rates.lastUpdated);
+
+export let history: HistoryPoint[] = [];
+const now = new Date();
+for (let i = 24; i >= 0; i--) {
+  const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+  history.push({
+    time: time.toISOString(),
+    usdParallel: 7.30,
+    usdOfficial: 4.85,
+  });
+}
+
+export const serverStartTime = new Date();
+
+

@@ -1542,9 +1542,21 @@ async function startServer() {
       ? path.join(process.cwd(), "dist", "telegram.html")
       : path.join(process.cwd(), "public", "telegram.html");
     if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", "text/html; charset=UTF-8");
       return res.sendFile(filePath);
     }
     res.redirect("https://t.me/libya_index_dollar");
+  });
+
+  app.get("/telegram-banner.png", (req, res) => {
+    const bannerPath = process.env.NODE_ENV === "production"
+      ? path.join(process.cwd(), "dist", "telegram-banner.png")
+      : path.join(process.cwd(), "public", "telegram-banner.png");
+    if (fs.existsSync(bannerPath)) {
+      res.setHeader("Content-Type", "image/png");
+      return res.sendFile(bannerPath);
+    }
+    res.status(404).send("Banner not found");
   });
 
   app.get("/push-sw.js", (req, res) => {

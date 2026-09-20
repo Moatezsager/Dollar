@@ -516,8 +516,8 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
     } else {
       let fbMessage = message.replace(/[*_`]/g, '');
       
-      // استبدال الرابط الأساسي برابط مختصر خاص بفيسبوك لتفادي مشكلة الكاش (الأسعار القديمة)
-      fbMessage = fbMessage.replace(/https:\/\/dollar-price-qp14\.onrender\.com[^\s]*/g, 'https://tinyurl.com/2j7667u2');
+      // استخدام الرابط المباشر للمنصة مع معرف فيسبوك لتفادي وسيط إعادة التوجيه
+      fbMessage = fbMessage.replace(/https:\/\/tinyurl\.com\/2j7667u2/g, 'https://dollar-price-qp14.onrender.com/?utm_source=fb');
       
       const maxRetries = isTest ? 1 : 2;
       let postedSuccessfully = false;

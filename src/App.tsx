@@ -72,6 +72,7 @@ import { usePriceFlash } from "./hooks/usePriceFlash";
 import InstallPrompt from "./components/InstallPrompt";
 import AppInstallUninstall from "./components/AppInstallUninstall";
 import PushNotificationPrompt from "./components/PushNotificationPrompt";
+import { safeStorage, safeSessionStorage } from "./utils/storage";
 
 
 interface Rates {
@@ -300,15 +301,15 @@ export default function App() {
   const [chartAnalysisCurrency, setChartAnalysisCurrency] = useState('USD_CASH');
   const [chartAnalysisRange, setChartAnalysisRange] = useState<'1w' | '1m' | '6m' | '1y' | 'all'>('1m');
   const [hapticEnabled, setHapticEnabled] = useState(() => {
-    const saved = localStorage.getItem('hapticEnabled');
+    const saved = safeStorage.getItem('hapticEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
-    const saved = localStorage.getItem('autoRefreshEnabled');
+    const saved = safeStorage.getItem('autoRefreshEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [showChart, setShowChart] = useState(() => {
-    const saved = localStorage.getItem('showChart');
+    const saved = safeStorage.getItem('showChart');
     return saved !== null ? saved === 'true' : true;
   });
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -327,13 +328,13 @@ export default function App() {
   // Network Status Listener
   // Analytics Tracker
   useEffect(() => {
-    const sessionId = sessionStorage.getItem('__sessionId') || (Math.random().toString(36).substring(2) + Date.now().toString(36));
-    sessionStorage.setItem('__sessionId', sessionId);
+    const sessionId = safeSessionStorage.getItem('__sessionId') || (Math.random().toString(36).substring(2) + Date.now().toString(36));
+    safeSessionStorage.setItem('__sessionId', sessionId);
     
-    let deviceId = localStorage.getItem('__deviceId');
+    let deviceId = safeStorage.getItem('__deviceId');
     if (!deviceId) {
       deviceId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('__deviceId', deviceId);
+      safeStorage.setItem('__deviceId', deviceId);
     }
 
     fetch('/api/analytics/track', {
@@ -393,7 +394,7 @@ export default function App() {
     setIsIOS(/iphone|ipad|ipod/.test(userAgent));
 
     // Check iOS prompt
-    const iosPromptDismissed = localStorage.getItem('iosPromptDismissed');
+    const iosPromptDismissed = safeStorage.getItem('iosPromptDismissed');
     const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIOSDevice);
 
@@ -467,11 +468,11 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'notifications' | 'appearance' | 'advanced'>('general');
   const [compactMode, setCompactMode] = useState(() => {
-    const saved = localStorage.getItem('compactMode');
+    const saved = safeStorage.getItem('compactMode');
     return saved !== null ? saved === 'true' : false;
   });
   const [dataSaver, setDataSaver] = useState(() => {
-    const saved = localStorage.getItem('dataSaver');
+    const saved = safeStorage.getItem('dataSaver');
     return saved !== null ? saved === 'true' : false;
   });
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -491,15 +492,15 @@ export default function App() {
   };
   const [chartRange, setChartRange] = useState<'24h' | '7d' | 'all'>('7d');
   const [defaultMarket, setDefaultMarket] = useState<'parallel' | 'official'>(() => {
-    const saved = localStorage.getItem('defaultMarket');
+    const saved = safeStorage.getItem('defaultMarket');
     return (saved as 'parallel' | 'official') || 'parallel';
   });
   const [soundEnabled, setSoundEnabled] = useState(() => {
-    const saved = localStorage.getItem('soundEnabled');
+    const saved = safeStorage.getItem('soundEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [animationsEnabled, setAnimationsEnabled] = useState(() => {
-    const saved = localStorage.getItem('animationsEnabled');
+    const saved = safeStorage.getItem('animationsEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [showPostInstall, setShowPostInstall] = useState(false);
@@ -507,29 +508,29 @@ export default function App() {
   
   // New premium settings states to activate and enhance everything
   const [majorChangesOnly, setMajorChangesOnly] = useState(() => {
-    const saved = localStorage.getItem('majorChangesOnly');
+    const saved = safeStorage.getItem('majorChangesOnly');
     return saved !== null ? saved === 'true' : false;
   });
   const [dailySummaryEnabled, setDailySummaryEnabled] = useState(() => {
-    const saved = localStorage.getItem('dailySummaryEnabled');
+    const saved = safeStorage.getItem('dailySummaryEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [goldNotificationsEnabled, setGoldNotificationsEnabled] = useState(() => {
-    const saved = localStorage.getItem('goldNotificationsEnabled');
+    const saved = safeStorage.getItem('goldNotificationsEnabled');
     return saved !== null ? saved === 'true' : true;
   });
   const [fontSizePreference, setFontSizePreference] = useState<'small' | 'medium' | 'large'>(() => {
-    return (localStorage.getItem('fontSizePreference') as 'small' | 'medium' | 'large') || 'medium';
+    return (safeStorage.getItem('fontSizePreference') as 'small' | 'medium' | 'large') || 'medium';
   });
   const [chartResolution, setChartResolution] = useState<'low' | 'medium' | 'high'>(() => {
-    return (localStorage.getItem('chartResolution') as 'low' | 'medium' | 'high') || 'medium';
+    return (safeStorage.getItem('chartResolution') as 'low' | 'medium' | 'high') || 'medium';
   });
   const [spreadAlertEnabled, setSpreadAlertEnabled] = useState(() => {
-    const saved = localStorage.getItem('spreadAlertEnabled');
+    const saved = safeStorage.getItem('spreadAlertEnabled');
     return saved !== null ? saved === 'true' : false;
   });
   const [spreadAlertValue, setSpreadAlertValue] = useState(() => {
-    const saved = localStorage.getItem('spreadAlertValue');
+    const saved = safeStorage.getItem('spreadAlertValue');
     return saved !== null ? parseFloat(saved) : 1.5;
   });
 
@@ -690,7 +691,7 @@ export default function App() {
             onClick={(e) => {
               if (closeProps.onClick) closeProps.onClick(e);
               setRunTour(false);
-              localStorage.setItem('tourCompleted', 'true');
+              safeStorage.setItem('tourCompleted', 'true');
             }}
           >
             <X className="w-4 h-4 sm:w-5 sm:h-5 group-hover:rotate-90 transition-transform duration-300" />
@@ -748,12 +749,12 @@ export default function App() {
     
     if (finishedStatuses.includes(status) || action === 'close') {
       setRunTour(false);
-      localStorage.setItem('tourCompleted', 'true');
+      safeStorage.setItem('tourCompleted', 'true');
     }
   };
 
   useEffect(() => {
-    const tourCompleted = localStorage.getItem('tourCompleted');
+    const tourCompleted = safeStorage.getItem('tourCompleted');
     if (!tourCompleted) {
       // Small delay to ensure DOM is ready
       setTimeout(() => setRunTour(true), 1500);
@@ -871,7 +872,7 @@ export default function App() {
 
     // 2. منع التكرار الذكي: تحقق من آخر سعر تم التنبيه به وآخر وقت
     try {
-      const lastNotifyData = localStorage.getItem(`last_notify_${code}`);
+      const lastNotifyData = safeStorage.getItem(`last_notify_${code}`);
       if (lastNotifyData) {
         const { price, time } = JSON.parse(lastNotifyData);
         const timeDiff = Date.now() - time;
@@ -893,12 +894,12 @@ export default function App() {
 
     // تسجيل التنبيه الحالي لمنع التكرار
     try {
-      localStorage.setItem(`last_notify_${code}`, JSON.stringify({
+      safeStorage.setItem(`last_notify_${code}`, JSON.stringify({
         price: newPrice,
         time: Date.now()
       }));
     } catch (e) {
-      console.warn("Failed to save notification state to localStorage", e);
+      console.warn("Failed to save notification state to storage", e);
     }
 
     // In-app toast (دائماً يظهر للمستخدم النشط)
@@ -1029,10 +1030,10 @@ export default function App() {
 
     const connect = () => {
       try {
-        let deviceId = localStorage.getItem('__deviceId');
+        let deviceId = safeStorage.getItem('__deviceId');
         if (!deviceId) {
           deviceId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-          localStorage.setItem('__deviceId', deviceId);
+          safeStorage.setItem('__deviceId', deviceId);
         }
         socket = io('/', {
           query: { deviceId },
@@ -1093,12 +1094,12 @@ export default function App() {
     
     // Load from local storage on mount
     try {
-      const savedRates = localStorage.getItem('lyd_rates');
-      const savedHistory = localStorage.getItem('lyd_history');
+      const savedRates = safeStorage.getItem('lyd_rates');
+      const savedHistory = safeStorage.getItem('lyd_history');
       if (savedRates) setRates(JSON.parse(savedRates));
       if (savedHistory) setHistory(JSON.parse(savedHistory));
     } catch (err) {
-      console.warn("LocalStorage not available:", err);
+      console.warn("Storage not available:", err);
     }
 
     return () => {
@@ -1259,10 +1260,10 @@ export default function App() {
 
       // Persist to local storage
       try {
-        localStorage.setItem('lyd_rates', JSON.stringify(newRates));
-        localStorage.setItem('lyd_history', JSON.stringify(newHistory));
+        safeStorage.setItem('lyd_rates', JSON.stringify(newRates));
+        safeStorage.setItem('lyd_history', JSON.stringify(newHistory));
       } catch (err) {
-        console.warn("Failed to save to localStorage:", err);
+        console.warn("Failed to save to storage:", err);
       }
 
       if (hasChanges) {
@@ -1672,7 +1673,7 @@ export default function App() {
       const values = history
         .filter(h => new Date(h.time) >= cutoff)
         .map(h => {
-          if (isGold) return h.ratesParallel?.[code] || h.rates?.gold?.karat18 || 0;
+          if (isGold) return h.ratesParallel?.[code] || (h as any).rates?.gold?.karat18 || 0;
           if (code === 'USD_CASH') return h.usdParallel || h.ratesParallel?.USD || 0;
           if (code === 'USD_CHECKS') return h.ratesParallel?.USD_CHECKS || h.ratesParallel?.USD_JBANK || h.ratesParallel?.USD_NCB || 0;
           return h.ratesParallel?.[code] || 0;
@@ -1895,7 +1896,7 @@ export default function App() {
                 onClick={() => {
                   triggerHaptic(5);
                   setShowIOSPrompt(false);
-                  localStorage.setItem('iosPromptDismissed', 'true');
+                  safeStorage.setItem('iosPromptDismissed', 'true');
                 }}
                 className="p-2 -mr-2 text-slate-500 hover:text-white transition-colors"
               >
@@ -2012,7 +2013,7 @@ export default function App() {
               onClick={() => {
                 triggerHaptic(10);
                 setRunTour(true);
-                localStorage.removeItem('tourCompleted');
+                safeStorage.removeItem('tourCompleted');
               }}
               className="flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-white/5 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-white/10 transition-all gap-1"
               title="الدليل الشامل"
@@ -2366,9 +2367,9 @@ export default function App() {
                       labelStyle={{ color: "#71717a", fontSize: "12px", marginBottom: "4px" }}
                       labelFormatter={(label) => {
                         try {
-                          return format(new Date(label), "dd MMM - HH:mm", { locale: ar });
+                          return format(new Date(label as any), "dd MMM - HH:mm", { locale: ar });
                         } catch (e) {
-                          return label;
+                          return String(label);
                         }
                       }}
                       formatter={(value: number) => [value.toFixed(2) + ' د.ل', 'السعر']}
@@ -3439,7 +3440,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !hapticEnabled;
                           setHapticEnabled(newVal);
-                          localStorage.setItem('hapticEnabled', String(newVal));
+                          safeStorage.setItem('hapticEnabled', String(newVal));
                           if (newVal && window.navigator.vibrate) window.navigator.vibrate(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${hapticEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3458,7 +3459,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !soundEnabled;
                           setSoundEnabled(newVal);
-                          localStorage.setItem('soundEnabled', String(newVal));
+                          safeStorage.setItem('soundEnabled', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${soundEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3477,7 +3478,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !autoRefreshEnabled;
                           setAutoRefreshEnabled(newVal);
-                          localStorage.setItem('autoRefreshEnabled', String(newVal));
+                          safeStorage.setItem('autoRefreshEnabled', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${autoRefreshEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3496,7 +3497,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !showChart;
                           setShowChart(newVal);
-                          localStorage.setItem('showChart', String(newVal));
+                          safeStorage.setItem('showChart', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${showChart ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3510,8 +3511,8 @@ export default function App() {
                       <button
                         onClick={() => {
                           triggerHaptic(10);
-                          localStorage.removeItem('lyd_rates');
-                          localStorage.removeItem('lyd_history');
+                          safeStorage.removeItem('lyd_rates');
+                          safeStorage.removeItem('lyd_history');
                           fetchData(true);
                           addToast('تم بنجاح', 'تم مسح الذاكرة المؤقتة وتحديث البيانات', 'info');
                         }}
@@ -3580,7 +3581,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !majorChangesOnly;
                           setMajorChangesOnly(newVal);
-                          localStorage.setItem('majorChangesOnly', String(newVal));
+                          safeStorage.setItem('majorChangesOnly', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${majorChangesOnly ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3599,7 +3600,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !dailySummaryEnabled;
                           setDailySummaryEnabled(newVal);
-                          localStorage.setItem('dailySummaryEnabled', String(newVal));
+                          safeStorage.setItem('dailySummaryEnabled', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dailySummaryEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3618,7 +3619,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !goldNotificationsEnabled;
                           setGoldNotificationsEnabled(newVal);
-                          localStorage.setItem('goldNotificationsEnabled', String(newVal));
+                          safeStorage.setItem('goldNotificationsEnabled', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${goldNotificationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3641,7 +3642,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !compactMode;
                           setCompactMode(newVal);
-                          localStorage.setItem('compactMode', String(newVal));
+                          safeStorage.setItem('compactMode', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${compactMode ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3660,7 +3661,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !animationsEnabled;
                           setAnimationsEnabled(newVal);
-                          localStorage.setItem('animationsEnabled', String(newVal));
+                          safeStorage.setItem('animationsEnabled', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${animationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3680,7 +3681,7 @@ export default function App() {
                         onChange={(e) => {
                           const val = e.target.value as 'small' | 'medium' | 'large';
                           setFontSizePreference(val);
-                          localStorage.setItem('fontSizePreference', val);
+                          safeStorage.setItem('fontSizePreference', val);
                           triggerHaptic(10);
                         }}
                         className="bg-white/5 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500/50"
@@ -3705,7 +3706,7 @@ export default function App() {
                         onClick={() => {
                           const newVal = !dataSaver;
                           setDataSaver(newVal);
-                          localStorage.setItem('dataSaver', String(newVal));
+                          safeStorage.setItem('dataSaver', String(newVal));
                           triggerHaptic(10);
                         }}
                         className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dataSaver ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3725,7 +3726,7 @@ export default function App() {
                         onChange={(e) => {
                           const val = e.target.value as 'parallel' | 'official';
                           setDefaultMarket(val);
-                          localStorage.setItem('defaultMarket', val);
+                          safeStorage.setItem('defaultMarket', val);
                           triggerHaptic(10);
                         }}
                         className="bg-white/5 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500/50"
@@ -3746,7 +3747,7 @@ export default function App() {
                         onChange={(e) => {
                           const val = e.target.value as 'low' | 'medium' | 'high';
                           setChartResolution(val);
-                          localStorage.setItem('chartResolution', val);
+                          safeStorage.setItem('chartResolution', val);
                           triggerHaptic(10);
                         }}
                         className="bg-white/5 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500/50"
@@ -3768,7 +3769,7 @@ export default function App() {
                           onClick={() => {
                             const newVal = !spreadAlertEnabled;
                             setSpreadAlertEnabled(newVal);
-                            localStorage.setItem('spreadAlertEnabled', String(newVal));
+                            safeStorage.setItem('spreadAlertEnabled', String(newVal));
                             triggerHaptic(10);
                           }}
                           className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${spreadAlertEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
@@ -3790,7 +3791,7 @@ export default function App() {
                               onChange={(e) => {
                                 const val = parseFloat(e.target.value) || 1.5;
                                 setSpreadAlertValue(val);
-                                localStorage.setItem('spreadAlertValue', String(val));
+                                safeStorage.setItem('spreadAlertValue', String(val));
                               }}
                               className="w-16 bg-white/10 border border-slate-700/50 rounded-lg px-2 py-1 text-xs text-center text-white focus:outline-none focus:border-indigo-500"
                             />
@@ -3938,9 +3939,9 @@ export default function App() {
                           labelStyle={{ color: "#71717a", fontSize: "11px", marginBottom: "6px", fontWeight: "medium" }}
                           labelFormatter={(label) => {
                             try {
-                              return format(new Date(label), "eeee, dd MMMM - HH:mm", { locale: ar });
+                              return format(new Date(label as any), "eeee, dd MMMM - HH:mm", { locale: ar });
                             } catch (e) {
-                              return label;
+                              return String(label);
                             }
                           }}
                           formatter={(value: number) => [value.toFixed(3) + ' د.ل', 'السعر']}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, X, ChevronRight, Share, PlusSquare, CheckCircle2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeStorage } from '../utils/storage';
 
 // ----------------------------------------------------------------
 // Helper: تحويل VAPID public key إلى Uint8Array
@@ -34,7 +35,7 @@ export default function PushNotificationPrompt() {
       // تأخير 4 ثوانٍ حتى لا يُزعج المستخدم فور الدخول
       await new Promise(r => setTimeout(r, 4000));
 
-      const dismissedAt = localStorage.getItem('pushPromptDismissed_v4');
+      const dismissedAt = safeStorage.getItem('pushPromptDismissed_v4');
       if (dismissedAt && Date.now() - parseInt(dismissedAt, 10) < 30 * 24 * 60 * 60 * 1000) return;
 
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
@@ -144,13 +145,13 @@ export default function PushNotificationPrompt() {
       setStep('denied');
       timerRef.current = setTimeout(() => setStep('idle'), 4000);
     }
-    localStorage.setItem('pushPromptDismissed_v4', Date.now().toString());
+    safeStorage.setItem('pushPromptDismissed_v4', Date.now().toString());
   };
 
   // ---- إغلاق / تجاهل ----
   const handleDismiss = () => {
     setStep('idle');
-    localStorage.setItem('pushPromptDismissed_v4', Date.now().toString());
+    safeStorage.setItem('pushPromptDismissed_v4', Date.now().toString());
   };
 
   if (step === 'idle') return null;

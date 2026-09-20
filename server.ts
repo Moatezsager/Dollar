@@ -559,20 +559,21 @@ async function startServer() {
   app.use(userAgentMiddleware);
   app.use(timeoutMiddleware);
 
-  // Security Headers
+  // Security Headers - Configured to support normal browsers and embedded mobile in-app browsers (Facebook, Instagram, etc.)
   app.use(helmet({
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: false,
-    // frameguard is enabled by default (SAMEORIGIN), which prevents other sites from embedding this site in an iframe
+    crossOriginOpenerPolicy: false,
+    frameguard: false,
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        "img-src": ["'self'", "data:", "https://flagcdn.com", "https://hatscripts.github.io", "https://picsum.photos", "https://*.supabase.co", "https://*.google.com", "https://*.gstatic.com"],
-        "connect-src": ["'self'", "https://open.er-api.com", "https://t.me", "https://*.supabase.co", "wss:", "ws:", "https://*.google.com", "https://*.gstatic.com", "https://*.googleapis.com"],
-        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://*.google.com", "https://*.gstatic.com"],
+        "img-src": ["'self'", "data:", "https://flagcdn.com", "https://hatscripts.github.io", "https://picsum.photos", "https://*.supabase.co", "https://*.google.com", "https://*.gstatic.com", "https://*.facebook.com", "https://*.fbcdn.net"],
+        "connect-src": ["'self'", "https://open.er-api.com", "https://t.me", "https://*.supabase.co", "wss:", "ws:", "https://*.google.com", "https://*.gstatic.com", "https://*.googleapis.com", "https://*.facebook.com", "https://*.fbcdn.net", "https://*.messenger.com"],
+        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://*.google.com", "https://*.gstatic.com", "https://*.facebook.com", "https://*.facebook.net", "https://*.fbcdn.net"],
         "font-src": ["'self'", "https://fonts.gstatic.com", "data:", "https://*.googleapis.com"],
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.gstatic.com"],
-        "frame-ancestors": ["'self'", "https://*.google.com", "https://*.corp.google.com"],
+        "frame-ancestors": ["'self'", "https://*.facebook.com", "https://*.fbcdn.net", "https://*.messenger.com", "https://*.google.com", "https://*.corp.google.com"],
         "worker-src": ["'self'", "blob:"],
         "upgrade-insecure-requests": null,
       },

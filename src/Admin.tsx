@@ -18,6 +18,7 @@ import { logErrorToServer } from "./utils/logger";
 import { FlagIcon } from "./components/FlagIcon";
 import { TelegramStatus } from "./components/TelegramStatus";
 import { TelegramPoster } from "./components/TelegramPoster";
+import { safeStorage } from "./utils/storage";
 import { decodeData } from "./utils/security";
 import { io } from "socket.io-client";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
@@ -188,9 +189,7 @@ export default function Admin() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
   const [token, setToken] = useState(() => {
-    try {
-      return localStorage.getItem("adminToken") || "";
-    } catch (e) { return ""; }
+    return safeStorage.getItem("adminToken") || "";
   });
   const [config, setConfig] = useState<any>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -211,8 +210,6 @@ export default function Admin() {
       
   
   
-
-
 
   // Admin socket events
 
@@ -241,13 +238,10 @@ export default function Admin() {
 
             
   useEffect(() => {
-    let deviceToken = null;
-    try {
-      deviceToken = localStorage.getItem("admin_device_token");
-    } catch (e) { console.warn("LocalStorage not available", e); }
+    let deviceToken = safeStorage.getItem("admin_device_token");
     
     // In actual production, this would be a more complex check
-    if (localStorage.getItem("is_dev") !== "true" && deviceToken !== "authorized_device_token_xyz") {
+    if (safeStorage.getItem("is_dev") !== "true" && deviceToken !== "authorized_device_token_xyz") {
       // Temporarily allowing if is_dev is set to true for easy initial setup
       if (!deviceToken) {
          console.warn("Device not authorized for admin panel");
@@ -358,7 +352,7 @@ export default function Admin() {
         setIsLoggedIn(true);
       } else {
         setIsLoggedIn(false);
-        try { localStorage.removeItem("adminToken"); } catch (e) {}
+        safeStorage.removeItem("adminToken");
         setToken("");
       }
     } catch (err) {
@@ -378,7 +372,7 @@ export default function Admin() {
       } else {
         if (res.status === 401 || res.status === 403) {
           setToken("");
-          try { localStorage.removeItem("adminToken"); } catch (e) {}
+          safeStorage.removeItem("adminToken");
         }
         setConnectionStatus('offline');
       }
@@ -443,11 +437,9 @@ export default function Admin() {
       const data = await res.json();
       if (data.success) {
         setToken(data.token);
-        try {
-          localStorage.setItem("adminToken", data.token);
-          // Auto-authorize device on successful password login
-          localStorage.setItem("admin_device_token", "authorized_device_token_xyz");
-        } catch (e) {}
+        safeStorage.setItem("adminToken", data.token);
+        // Auto-authorize device on successful password login
+        safeStorage.setItem("admin_device_token", "authorized_device_token_xyz");
         setIsLoggedIn(true);
       } else {
         setError(data.message);
@@ -560,7 +552,7 @@ export default function Admin() {
   };
 
   const handleLogout = () => {
-    try { localStorage.removeItem("adminToken"); } catch (e) {}
+    safeStorage.removeItem("adminToken");
     setToken("");
     setIsLoggedIn(false);
   };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download, X, Share, PlusSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeStorage } from '../utils/storage';
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -13,7 +14,7 @@ export default function InstallPrompt() {
   }, [showPrompt]);
 
   useEffect(() => {
-    const dismissed = localStorage.getItem('installPromptDismissed');
+    const dismissed = safeStorage.getItem('installPromptDismissed');
     if (dismissed && Date.now() - parseInt(dismissed, 10) < 7 * 24 * 60 * 60 * 1000) {
       return;
     }
@@ -87,7 +88,7 @@ export default function InstallPrompt() {
   const handleDismiss = () => {
     setShowPrompt(false);
     setShowIOSInstructions(false);
-    localStorage.setItem('installPromptDismissed', Date.now().toString());
+    safeStorage.setItem('installPromptDismissed', Date.now().toString());
   };
 
   if (!showPrompt) return null;

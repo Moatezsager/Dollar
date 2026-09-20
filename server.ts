@@ -946,7 +946,34 @@ async function startServer() {
 
   app.post("/api/telegram-click", express.json(), (req: express.Request, res: express.Response) => {
     try {
-      db.prepare(`UPDATE telegram_counter SET count = count + 1 WHERE id = 1`).run();
+      const ua = (req.headers['user-agent'] || '') as string;
+      const isBot = /bot|crawler|spider|facebookexternalhit|facebookcatalog|meta|twitter|whatsapp|telegram|preview/i.test(ua) ? 1 : 0;
+      const ref = (req.body?.referrer || req.headers['referer'] || req.headers['referrer'] || '') as string;
+      const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '') as string;
+      const ipHash = crypto.createHash('sha256').update(ip + '_salt_tg').digest('hex').slice(0, 16);
+
+      try {
+        db.prepare(`UPDATE telegram_counter SET count = count + 1 WHERE id = 1`).run();
+      } catch (e) {}
+
+      try {
+        db.prepare(`
+          INSERT INTO telegram_visits (ip_hash, user_agent, referrer, is_bot)
+          VALUES (?, ?, ?, ?)
+        `).run(ipHash, ua.slice(0, 500), ref.slice(0, 500), isBot);
+      } catch (e) {}
+
+      if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+        supabase.from('telegram_visits').insert([{
+          ip_hash: ipHash,
+          user_agent: ua.slice(0, 500),
+          referrer: ref.slice(0, 500),
+          is_bot: isBot
+        }]).then(({ error }) => {
+          if (error) console.error("[Supabase] Telegram visit sync error:", error.message);
+        });
+      }
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -1548,7 +1575,33 @@ async function startServer() {
 
   app.get(["/telegram", "/telegram.html"], (req, res) => {
     try {
-      db.prepare(`UPDATE telegram_counter SET count = count + 1 WHERE id = 1`).run();
+      const ua = (req.headers["user-agent"] || "") as string;
+      const isBot = /bot|crawler|spider|facebookexternalhit|facebookcatalog|meta|twitter|whatsapp|telegram|preview/i.test(ua) ? 1 : 0;
+      const ref = (req.headers["referer"] || req.headers["referrer"] || "") as string;
+      const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "") as string;
+      const ipHash = crypto.createHash("sha256").update(ip + "_salt_tg").digest("hex").slice(0, 16);
+
+      try {
+        db.prepare(`UPDATE telegram_counter SET count = count + 1 WHERE id = 1`).run();
+      } catch (e) {}
+
+      try {
+        db.prepare(`
+          INSERT INTO telegram_visits (ip_hash, user_agent, referrer, is_bot)
+          VALUES (?, ?, ?, ?)
+        `).run(ipHash, ua.slice(0, 500), ref.slice(0, 500), isBot);
+      } catch (e) {}
+
+      if (supabase && supabaseAnonKey && !supabaseAnonKey.includes("dummy")) {
+        supabase.from("telegram_visits").insert([{
+          ip_hash: ipHash,
+          user_agent: ua.slice(0, 500),
+          referrer: ref.slice(0, 500),
+          is_bot: isBot
+        }]).then(({ error }) => {
+          if (error) console.error("[Supabase] Telegram visit GET sync error:", error.message);
+        });
+      }
     } catch (dbErr) {
       console.error("[Telegram Visit Track Error]:", dbErr);
     }

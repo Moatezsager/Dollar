@@ -77,6 +77,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_broadcast_log_created_at ON broadcast_log(created_at);
 
+  CREATE TABLE IF NOT EXISTS telegram_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip_hash TEXT,
+    user_agent TEXT,
+    referrer TEXT,
+    is_bot INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_telegram_visits_created_at ON telegram_visits(created_at);
+
   CREATE TABLE IF NOT EXISTS telegram_counter (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     count INTEGER DEFAULT 0

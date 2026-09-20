@@ -283,9 +283,13 @@ export default function App() {
   const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
   const [selectedRate, setSelectedRate] = useState<{ code: string, name: string, market: 'official' | 'parallel' } | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(
-    typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
-  );
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    } catch {
+      return false;
+    }
+  });
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isInstallPromptVisible, setIsInstallPromptVisible] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -755,11 +759,15 @@ export default function App() {
 
   useEffect(() => {
     const tourCompleted = safeStorage.getItem('tourCompleted');
-    if (!tourCompleted) {
+    const isFbOrInApp = typeof navigator !== 'undefined' && /FBAN|FBAV|Instagram|TikTok|Line|Snapchat|Twitter|wv/i.test(navigator.userAgent);
+    if (!tourCompleted && !isFbOrInApp) {
       // Small delay to ensure DOM is ready
-      setTimeout(() => setRunTour(true), 1500);
+      const timer = setTimeout(() => setRunTour(true), 2500);
+      return () => clearTimeout(timer);
     }
+  }, []);
 
+  useEffect(() => {
     // Listen for PWA installation
     const handleAppInstalled = () => {
       console.log('App was installed');
@@ -908,7 +916,7 @@ export default function App() {
 
     // Native notification
     try {
-      if (Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
         const registration = await navigator.serviceWorker.ready;
         if (registration) {
           await registration.showNotification(title, {
@@ -1007,7 +1015,7 @@ export default function App() {
 
   const requestNotificationPermission = async () => {
     try {
-      if (!("Notification" in window)) {
+      if (typeof window === 'undefined' || !("Notification" in window) || typeof Notification === 'undefined') {
         addToast("غير مدعوم", "متصفحك لا يدعم الإشعارات", "info");
         return;
       }
@@ -1218,7 +1226,7 @@ export default function App() {
               
               // Also show native notification for summary if possible
               try {
-                if (Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+                if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
                   const registration = await navigator.serviceWorker.ready;
                   if (registration) {
                     await registration.showNotification(summaryTitle, {
@@ -3044,7 +3052,7 @@ export default function App() {
                   onClick={() => { triggerHaptic(10); setShowSettingsModal(true); setSettingsTab('notifications'); }}
                   className="flex flex-col items-center gap-3 p-5 rounded-3xl bg-[#111111] border border-slate-800/60 active:scale-95 transition-transform relative overflow-hidden"
                 >
-                  {Notification.permission !== 'granted' && (
+                  {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
                     <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
                   )}
                   <div className="w-12 h-12 rounded-[1rem] bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">

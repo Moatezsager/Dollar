@@ -49,14 +49,20 @@ export default function PushNotificationPrompt() {
       setIsIos(_isIos);
       setIsStandalone(_isStandalone);
 
-      // لو الإذن ممنوح مسبقاً → جدّد الاشتراك فقط بصمت
-      if (Notification.permission === 'granted') {
-        silentResubscribe();
+      if (typeof Notification === 'undefined') return;
+
+      try {
+        // لو الإذن ممنوح مسبقاً → جدّد الاشتراك فقط بصمت
+        if (Notification.permission === 'granted') {
+          silentResubscribe();
+          return;
+        }
+
+        // لو الإذن مرفوض → لا نسأل مرة أخرى
+        if (Notification.permission === 'denied') return;
+      } catch {
         return;
       }
-
-      // لو الإذن مرفوض → لا نسأل مرة أخرى
-      if (Notification.permission === 'denied') return;
 
       setStep('prompt');
     };
@@ -114,6 +120,10 @@ export default function PushNotificationPrompt() {
 
     setStep('loading');
     try {
+      if (typeof Notification === 'undefined') {
+        setStep('prompt');
+        return;
+      }
       const permission = await Notification.requestPermission();
 
       if (permission === 'granted') {

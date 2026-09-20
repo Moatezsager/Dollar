@@ -143,10 +143,31 @@
           <img src="/logo.png" alt="Logo" class="splash-logo" />
         </div>
         <h1 class="splash-title">مؤشر الدينار</h1>
-        <p class="splash-subtitle">جاري التحديث...</p>
-        <div class="splash-loader"></div>
+        <p class="splash-subtitle" id="splash-sub">جاري التحديث...</p>
+        <div class="splash-loader" id="splash-load"></div>
+        <div id="splash-fb-helper" style="display:none;margin-top:20px;text-align:center;">
+          <p style="font-size:13px;color:#94a3b8;margin-bottom:12px;">إذا كنت تستخدم متصفح فيسبوك وتعذر التحميل:</p>
+          <button onclick="window.location.reload(true)" style="background:#10b981;color:#000;border:none;padding:8px 18px;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer;margin-left:8px;">إعادة التحميل</button>
+        </div>
       </div>
     </div>
+    <script>
+      // Early error and timeout fail-safe
+      window.addEventListener('error', function(e) {
+        var sub = document.getElementById('splash-sub');
+        var helper = document.getElementById('splash-fb-helper');
+        if (sub && helper) {
+          sub.innerText = 'يرجى فتح الرابط في متصفح خارجي (Chrome أو Safari)';
+          helper.style.display = 'block';
+        }
+      });
+      setTimeout(function() {
+        var helper = document.getElementById('splash-fb-helper');
+        if (helper && document.getElementById('splash-sub')) {
+          helper.style.display = 'block';
+        }
+      }, 4500);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

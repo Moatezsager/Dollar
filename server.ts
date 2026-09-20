@@ -1537,6 +1537,16 @@ async function startServer() {
     res.status(404).json({ error: "Endpoint not found" });
   });
 
+  app.get(["/telegram", "/telegram.html"], (req, res) => {
+    const filePath = process.env.NODE_ENV === "production"
+      ? path.join(process.cwd(), "dist", "telegram.html")
+      : path.join(process.cwd(), "public", "telegram.html");
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+    res.redirect("https://t.me/libya_index_dollar");
+  });
+
   app.get("/push-sw.js", (req, res) => {
     const swPath = process.env.NODE_ENV === "production"
       ? path.join(process.cwd(), "dist", "push-sw.js")

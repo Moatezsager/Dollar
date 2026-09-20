@@ -587,6 +587,14 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
       } catch (err) {
         console.error("Error fetching install stats:", err);
       }
+
+      let totalTelegramVisits = 0;
+      try {
+        const tgRes = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number};
+        if (tgRes) totalTelegramVisits = tgRes.count;
+      } catch (err) {
+        console.error("Error fetching telegram counter:", err);
+      }
       
       let dbStats = {
         parallelRatesCount: 0,
@@ -597,11 +605,12 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
       if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
         try {
-          const [parallel, official, logs, changes] = await Promise.all([
+          const [parallel, official, logs, changes, tgVisits] = await Promise.all([
             supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
             supabase.from('official_rates').select('*', { count: 'exact', head: true }),
             supabase.from('error_logs').select('*', { count: 'exact', head: true }),
-            supabase.from('price_changes_log').select('*', { count: 'exact', head: true })
+            supabase.from('price_changes_log').select('*', { count: 'exact', head: true }),
+            supabase.from('telegram_visits').select('*', { count: 'exact', head: true }).eq('is_bot', 0)
           ]);
           dbStats = {
             parallelRatesCount: parallel.count || 0,
@@ -609,6 +618,9 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
             errorLogsCount: logs.count || 0,
             priceChangesCount: changes.count || 0
           };
+          if (typeof tgVisits.count === 'number') {
+            totalTelegramVisits = tgVisits.count;
+          }
         } catch (e) {
           console.error("Failed to fetch DB stats:", e);
         }
@@ -632,6 +644,10 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
           total: totalInstalls,
           today: installsToday
         },
+        telegramVisits: {
+          total: totalTelegramVisits,
+          today: telegramVisitsToday
+        },
         dbStats: {
           parallelRatesCount: dbStats.parallelRatesCount,
           officialRatesCount: dbStats.officialRatesCount,
@@ -646,6 +662,16 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
       if (!res.headersSent) {
         res.status(500).json({ success: false, message: "فشل توليد الإحصائيات" });
       }
+    }
+  });
+
+  router.get('/telegram-visits', (req: express.Request, res: express.Response) => {
+    try {
+      const row = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number} | undefined;
+      const count = row ? row.count : 0;
+      res.json({ success: true, count });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
     }
   });
 
@@ -1290,7 +1316,7 @@ ${updates.join('\n')}
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
       finalMessage += `${text?.trim()}\n`;
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
-      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://dollar-price-qp14.onrender.com/?v=${Math.floor(Date.now() / 60000)}\n\n`;
+      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://tinyurl.com/2j7667u2\n\n`;
       finalMessage += `📱 المصدر: شبكة مراسلي مؤشر الدينار | الدقة والسرعة`;
 
       res.json({ success: true, message: finalMessage });
@@ -1349,7 +1375,7 @@ ${updates.join('\n')}
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
       finalMessage += `${text?.trim()}\n`;
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
-      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://dollar-price-qp14.onrender.com/?v=${Math.floor(Date.now() / 60000)}\n\n`;
+      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://tinyurl.com/2j7667u2\n\n`;
       finalMessage += `📱 المصدر: شبكة مراسلي مؤشر الدينار | الدقة والسرعة`;
 
       await broadcastToSocialMedia(finalMessage, true, 'telegram');

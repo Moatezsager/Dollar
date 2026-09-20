@@ -76,6 +76,12 @@ db.exec(`
     is_test INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_broadcast_log_created_at ON broadcast_log(created_at);
+
+  CREATE TABLE IF NOT EXISTS telegram_counter (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    count INTEGER DEFAULT 0
+  );
+  INSERT OR IGNORE INTO telegram_counter (id, count) VALUES (1, 0);
 `);
 
 // Ensure name column exists in messages

@@ -944,6 +944,15 @@ async function startServer() {
     }
   });
 
+  app.post("/api/telegram-click", express.json(), (req: express.Request, res: express.Response) => {
+    try {
+      db.prepare(`UPDATE telegram_counter SET count = count + 1 WHERE id = 1`).run();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.post("/api/logs/error", async (req: express.Request, res: express.Response) => {
     const { message, stack, context, url, userAgent } = req.body;
     
@@ -1538,6 +1547,12 @@ async function startServer() {
   });
 
   app.get(["/telegram", "/telegram.html"], (req, res) => {
+    try {
+      db.prepare(`UPDATE telegram_counter SET count = count + 1 WHERE id = 1`).run();
+    } catch (dbErr) {
+      console.error("[Telegram Visit Track Error]:", dbErr);
+    }
+
     const filePath = process.env.NODE_ENV === "production"
       ? path.join(process.cwd(), "dist", "telegram.html")
       : path.join(process.cwd(), "public", "telegram.html");

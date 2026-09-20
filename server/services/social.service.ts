@@ -516,8 +516,9 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
     } else {
       let fbMessage = message.replace(/[*_`]/g, '');
       
-      // استخدام الرابط المباشر للمنصة مع معرف فيسبوك لتفادي وسيط إعادة التوجيه
-      fbMessage = fbMessage.replace(/https:\/\/tinyurl\.com\/2j7667u2/g, 'https://dollar-price-qp14.onrender.com/?utm_source=fb');
+      // استخدام الروابط المختصرة دائماً في منشورات فيسبوك
+      fbMessage = fbMessage.replace(/https:\/\/dollar-price-qp14\.onrender\.com[^\s]*/g, 'https://tinyurl.com/2j7667u2');
+      fbMessage = fbMessage.replace(/https:\/\/t\.me\/[^\s]*/g, 'https://tinyurl.com/m3m4jrd2');
       
       const maxRetries = isTest ? 1 : 2;
       let postedSuccessfully = false;
@@ -599,7 +600,7 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
             
             // Add comment safely without breaking the main post status
             try {
-              const commentMessage = `📢 لمتابعة التحديثات لحظة بلحظة على تيليجرام:\n👉 https://t.me/libya_index_dollar\n\n🌐 والرسوم البيانية والتفاصيل الكاملة من هنا:\n👉 https://tinyurl.com/2j7667u2`;
+              const commentMessage = `📢 لمتابعة التحديثات لحظة بلحظة على تيليجرام:\n👉 https://tinyurl.com/m3m4jrd2\n\n🌐 والرسوم البيانية والتفاصيل الكاملة من هنا:\n👉 https://tinyurl.com/2j7667u2`;
               const commentUrl = `https://graph.facebook.com/v20.0/${fbData.id}/comments`;
               const commentRes = await fetch(commentUrl, {
                 method: 'POST',
@@ -984,7 +985,7 @@ export async function executeBroadcast(
 
   message += `━━━━━━━━━━━━━━━━━━━\n`;
   message += `🔗 *المتابعة الحية والرسوم البيانية:*\n`;
-  message += `🌐 https://dollar-price-qp14.onrender.com/?v=${Math.floor(Date.now() / 60000)}\n`;
+  message += `🌐 https://tinyurl.com/2j7667u2\n`;
   message += `📱 *المصدر:* شبكة مؤشر الدينار`;
 
   const startTime = Date.now();

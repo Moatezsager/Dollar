@@ -34,6 +34,7 @@ interface Stats {
   dbConnected?: boolean;
   memoryUsage: { rss: number; heapUsed: number; heapTotal: number };
   installs?: { total: number; today: number };
+  telegramVisits?: { total: number; today: number };
   dbStats?: {
     parallelRatesCount: number;
     officialRatesCount: number;
@@ -916,11 +917,12 @@ export default function Admin() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
                 {[
                   { label: "زوار الآن", value: stats?.onlineUsers || 0, icon: Users, bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-400", indicator: "bg-emerald-500" },
                   { label: "المصادر", value: stats?.channelsCount || 0, icon: Globe, bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-400", indicator: "bg-blue-500" },
                   { label: "الأصول", value: stats?.termsCount || 0, icon: Layers, bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-400", indicator: "bg-purple-500" },
+                  { label: "تحويلات تليجرام", value: stats?.telegramVisits?.total || 0, icon: Send, bg: "bg-sky-500/10", border: "border-sky-500/20", text: "text-sky-400", indicator: "bg-sky-500" },
                   { label: "الذاكرة", value: stats?.memoryUsage ? (stats.memoryUsage.heapUsed / 1024 / 1024).toFixed(0) + "MB" : "---", icon: Zap, bg: "bg-amber-500/10", border: "border-amber-500/20", text: "text-amber-400", indicator: "bg-amber-500" }
                 ].map((stat, i) => (
                   <div key={i} className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] p-6 relative overflow-hidden group hover:bg-white/[0.04] transition-all">

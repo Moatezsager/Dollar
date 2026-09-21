@@ -1,10 +1,18 @@
+/**
+ * ⚠️ SERVER-ONLY utilities.
+ * HMAC functions MUST NEVER be used in src/ or exposed to the client.
+ * Intended for: cron webhook verification, server-to-server calls.
+ */
 import crypto from 'crypto';
 
 /**
  * Generates an HMAC-SHA256 signature for payload verification
  */
 export function generateHmacSignature(payload: string | object, secret?: string): { signature: string; timestamp: number } {
-  const hmacSecret = secret || process.env.API_HMAC_SECRET || 'default_hmac_secret_key_change_in_production';
+  const hmacSecret = secret || process.env.API_HMAC_SECRET;
+  if (!hmacSecret) {
+    throw new Error('FATAL: API_HMAC_SECRET is not set. Refusing HMAC operation.');
+  }
   const timestamp = Date.now();
   const dataToSign = typeof payload === 'string' ? `${timestamp}:${payload}` : `${timestamp}:${JSON.stringify(payload)}`;
   const signature = crypto.createHmac('sha256', hmacSecret).update(dataToSign).digest('hex');
@@ -28,7 +36,10 @@ export function verifyHmacSignature(
     return false;
   }
 
-  const hmacSecret = secret || process.env.API_HMAC_SECRET || 'default_hmac_secret_key_change_in_production';
+  const hmacSecret = secret || process.env.API_HMAC_SECRET;
+  if (!hmacSecret) {
+    throw new Error('FATAL: API_HMAC_SECRET is not set. Refusing HMAC operation.');
+  }
   const dataToSign = typeof payload === 'string' ? `${timestamp}:${payload}` : `${timestamp}:${JSON.stringify(payload)}`;
   const expectedSignature = crypto.createHmac('sha256', hmacSecret).update(dataToSign).digest('hex');
   

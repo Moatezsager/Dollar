@@ -102,10 +102,25 @@ import {
 } from './server/services/push.service';
 import { 
   obfuscateData, 
-  generateHmacSignature,
   isSignificantChange, 
   isProbablyDateOrTime 
 } from './server/utils/helpers';
+
+// ─── Environment Validation on Bootstrap ───
+if (process.env.NODE_ENV === 'production') {
+  const REQUIRED_ENV: Array<{ name: string; minLen: number }> = [
+    { name: 'API_HMAC_SECRET', minLen: 32 },
+    { name: 'ADMIN_PASSWORD', minLen: 16 },
+    { name: 'CRON_SECRET', minLen: 16 },
+  ];
+  const missing = REQUIRED_ENV.filter(
+    (v) => !process.env[v.name] || (process.env[v.name] as string).length < v.minLen
+  );
+  if (missing.length > 0) {
+    console.error('FATAL: Missing or too-short env vars in production:', missing.map(v => v.name));
+    process.exit(1);
+  }
+}
 
 const serverStartTime = new Date();
 

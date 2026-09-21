@@ -11,17 +11,30 @@ export function setAdminToken(token: string): void {
   adminToken = token;
 }
 
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ */
+export function safeCompare(a?: string | null, b?: string | null): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') {
+    return false;
+  }
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    if (
-      token.length === adminToken.length &&
-      crypto.timingSafeEqual(Buffer.from(token), Buffer.from(adminToken))
-    ) {
+    if (safeCompare(token, adminToken)) {
       return next();
     }
   }
   res.status(401).json({ success: false, message: "غير مصرح" });
 }
+
 

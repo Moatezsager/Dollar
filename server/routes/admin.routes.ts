@@ -6,7 +6,7 @@ import { db, supabase, supabaseAnonKey } from '../db';
 import { appConfig, updateAppConfig, saveConfigToSupabase } from '../config';
 import { rates, serverStartTime } from '../state';
 import { isSignificantChange, obfuscateData } from '../utils/helpers';
-import { requireAdmin, adminToken } from '../middleware/auth';
+import { requireAdmin, adminToken, safeCompare } from '../middleware/auth';
 import { AppConfig, DeviceLogEntry, Rates } from '../types';
 import {
   fetchOfficialRates,
@@ -60,12 +60,15 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
   const tempClients: Record<string, { client: TelegramClient, apiId: number, apiHash: string }> = {};
 
   // Login endpoint - public (within admin context)
-  router.post('/login', (req: express.Request, res: express.Response) => {
+  router.post('/login', async (req: express.Request, res: express.Response) => {
     const { password } = req.body;
     const effectiveAdminPassword = process.env.ADMIN_PASSWORD;
-    if (password === effectiveAdminPassword) {
+    if (effectiveAdminPassword && safeCompare(password, effectiveAdminPassword)) {
       res.json({ success: true, token: adminToken });
     } else {
+      // Add random delay (50-200ms) on auth failure to prevent timing and enumeration attacks
+      const delay = Math.floor(Math.random() * (200 - 50 + 1)) + 50;
+      await new Promise(resolve => setTimeout(resolve, delay));
       res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
     }
   });

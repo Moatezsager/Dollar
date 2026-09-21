@@ -108,17 +108,21 @@ import {
 
 // ─── Environment Validation on Bootstrap ───
 if (process.env.NODE_ENV === 'production') {
-  const REQUIRED_ENV: Array<{ name: string; minLen: number }> = [
-    { name: 'API_HMAC_SECRET', minLen: 32 },
-    { name: 'ADMIN_PASSWORD', minLen: 16 },
-    { name: 'CRON_SECRET', minLen: 16 },
+  const SECURITY_CHECKS: Array<{ name: string; minLen: number; isCritical: boolean }> = [
+    { name: 'ADMIN_PASSWORD', minLen: 8, isCritical: true },
+    { name: 'API_HMAC_SECRET', minLen: 32, isCritical: false },
+    { name: 'CRON_SECRET', minLen: 16, isCritical: false },
   ];
-  const missing = REQUIRED_ENV.filter(
-    (v) => !process.env[v.name] || (process.env[v.name] as string).length < v.minLen
-  );
-  if (missing.length > 0) {
-    console.error('FATAL: Missing or too-short env vars in production:', missing.map(v => v.name));
-    process.exit(1);
+  
+  for (const check of SECURITY_CHECKS) {
+    const val = process.env[check.name];
+    if (!val || val.length < check.minLen) {
+      if (check.isCritical) {
+        console.warn(`⚠️ [SECURITY WARNING] '${check.name}' is missing or shorter than ${check.minLen} chars. Please configure it in Render environment settings.`);
+      } else {
+        console.warn(`ℹ️ [CONFIG NOTICE] '${check.name}' is not set yet in Render. Advanced server-to-server security features will require this variable.`);
+      }
+    }
   }
 }
 

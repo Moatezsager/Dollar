@@ -147,7 +147,18 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
   // Diagnostics
   router.get('/diagnostics', async (req: express.Request, res: express.Response) => {
     try {
-      const dbStatus = await supabase?.from('logs').select('id').limit(1).then(() => true) || false;
+      let dbStatus = false;
+      try {
+        if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+          const { error } = await supabase.from('parallel_rates').select('id').limit(1);
+          dbStatus = !error;
+        } else {
+          dbStatus = !!db.prepare('SELECT 1').get();
+        }
+      } catch (dbErr) {
+        dbStatus = false;
+      }
+
       const tgMgr = getOrInitTelegramManager();
       const telegramStatus = tgMgr ? true : false;
       
@@ -589,11 +600,17 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
       }
 
       let totalTelegramVisits = 0;
+      let telegramVisitsToday = 0;
       try {
-        const tgRes = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number};
-        if (tgRes) totalTelegramVisits = tgRes.count;
+        const tgRes = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number} | undefined;
+        if (tgRes && typeof tgRes.count === 'number') totalTelegramVisits = tgRes.count;
+
+        const tgTodayRes = db.prepare('SELECT COUNT(*) as count FROM telegram_visits WHERE is_bot = 0 AND created_at LIKE ?').get(`${todayStr}%`) as {count: number} | undefined;
+        if (tgTodayRes && typeof tgTodayRes.count === 'number') {
+          telegramVisitsToday = tgTodayRes.count;
+        }
       } catch (err) {
-        console.error("Error fetching telegram counter:", err);
+        console.error("Error fetching local telegram stats:", err);
       }
       
       let dbStats = {
@@ -605,12 +622,13 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
       if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
         try {
-          const [parallel, official, logs, changes, tgVisits] = await Promise.all([
+          const [parallel, official, logs, changes, tgVisits, tgVisitsTodayRes] = await Promise.all([
             supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
             supabase.from('official_rates').select('*', { count: 'exact', head: true }),
             supabase.from('error_logs').select('*', { count: 'exact', head: true }),
             supabase.from('price_changes_log').select('*', { count: 'exact', head: true }),
-            supabase.from('telegram_visits').select('*', { count: 'exact', head: true }).eq('is_bot', 0)
+            supabase.from('telegram_visits').select('*', { count: 'exact', head: true }).eq('is_bot', 0),
+            supabase.from('telegram_visits').select('*', { count: 'exact', head: true }).eq('is_bot', 0).gte('created_at', `${todayStr}T00:00:00Z`)
           ]);
           dbStats = {
             parallelRatesCount: parallel.count || 0,
@@ -618,8 +636,11 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
             errorLogsCount: logs.count || 0,
             priceChangesCount: changes.count || 0
           };
-          if (typeof tgVisits.count === 'number') {
+          if (typeof tgVisits?.count === 'number') {
             totalTelegramVisits = tgVisits.count;
+          }
+          if (typeof tgVisitsTodayRes?.count === 'number') {
+            telegramVisitsToday = tgVisitsTodayRes.count;
           }
         } catch (e) {
           console.error("Failed to fetch DB stats:", e);
@@ -665,11 +686,35 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
     }
   });
 
-  router.get('/telegram-visits', (req: express.Request, res: express.Response) => {
+  router.get('/telegram-visits', async (req: express.Request, res: express.Response) => {
     try {
       const row = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number} | undefined;
       const count = row ? row.count : 0;
-      res.json({ success: true, count });
+
+      let summary = { total_all: count, total_human: count, total_bots: 0 };
+      let recent: any[] = [];
+
+      try {
+        const localSummary = db.prepare(`
+          SELECT 
+            COUNT(*) as total_all,
+            SUM(CASE WHEN is_bot = 0 THEN 1 ELSE 0 END) as total_human,
+            SUM(CASE WHEN is_bot = 1 THEN 1 ELSE 0 END) as total_bots
+          FROM telegram_visits
+        `).get() as any;
+
+        if (localSummary && localSummary.total_all > 0) {
+          summary = localSummary;
+        }
+
+        recent = db.prepare(`
+          SELECT * FROM telegram_visits 
+          ORDER BY created_at DESC 
+          LIMIT 50
+        `).all();
+      } catch (visitErr) {}
+
+      res.json({ success: true, count, summary, recent });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

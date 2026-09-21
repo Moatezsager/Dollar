@@ -864,7 +864,10 @@ export default function Admin() {
                              method: "POST",
                              headers: { Authorization: `Bearer ${token}` }
                            });
-                           if(res.ok) setSuccess("تم تحديث السعر الرسمي");
+                           if(res.ok) {
+                             setSuccess("تم تحديث السعر الرسمي");
+                             setTimeout(() => setSuccess(""), 3000);
+                           }
                         } catch(e) {}
                         setLoading(false);
                      }}
@@ -881,7 +884,7 @@ export default function Admin() {
                      <span className="text-[11px] font-black text-white group-hover:text-black">تنظيف الداتا</span>
                    </button>
                    <button 
-                     onClick={() => window.open('https://dollar-price-qp14.onrender.com', '_blank')}
+                     onClick={() => window.open(window.location.origin || '/', '_blank')}
                      className="flex flex-col items-center justify-center p-4 rounded-3xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500 transition-all group active:scale-95"
                    >
                      <Globe className="w-6 h-6 text-amber-400 group-hover:text-black mb-2" />
@@ -1107,11 +1110,25 @@ export default function Admin() {
                             </div>
                             <div className="flex flex-col md:items-end gap-1">
                               <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono" dir="ltr">
-                                {format(new Date(change.timestamp), "yyyy-MM-dd HH:mm:ss")}
+                                {(() => {
+                                  try {
+                                    const d = change.timestamp ? new Date(change.timestamp) : new Date();
+                                    return isNaN(d.getTime()) ? '-' : format(d, "yyyy-MM-dd HH:mm:ss");
+                                  } catch (e) {
+                                    return '-';
+                                  }
+                                })()}
                               </div>
                               <div className="flex items-center gap-1 text-[11px] font-medium text-emerald-500/70">
                                 <Clock className="w-3 h-3" />
-                                {formatDistanceToNow(new Date(change.timestamp), { addSuffix: true, locale: ar })}
+                                {(() => {
+                                  try {
+                                    const d = change.timestamp ? new Date(change.timestamp) : new Date();
+                                    return isNaN(d.getTime()) ? '-' : formatDistanceToNow(d, { addSuffix: true, locale: ar });
+                                  } catch (e) {
+                                    return '-';
+                                  }
+                                })()}
                               </div>
                             </div>
                           </div>

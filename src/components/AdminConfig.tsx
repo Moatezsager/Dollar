@@ -23,6 +23,18 @@ export function AdminConfig({ config, setConfig, handleSave, loading }: AdminCon
     );
   }, [config, searchPath]);
 
+  const channels = config?.channels || [];
+  const terms = config?.terms || [];
+
+  if (!config) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-sm font-medium">جاري تحميل الإعدادات...</p>
+      </div>
+    );
+  }
+
   return (
     <motion.div 
       key="config"
@@ -39,7 +51,7 @@ export function AdminConfig({ config, setConfig, handleSave, loading }: AdminCon
             مصادر البيانات (Data Sources)
           </h2>
           <button 
-            onClick={() => setConfig({...config, channels: [...config.channels, '']})}
+            onClick={() => setConfig({...config, channels: [...channels, '']})}
             className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-all flex items-center justify-center"
           >
             <Plus className="w-5 h-5" />
@@ -47,7 +59,7 @@ export function AdminConfig({ config, setConfig, handleSave, loading }: AdminCon
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {config.channels.map((ch: string, i: number) => (
+          {channels.map((ch: string, i: number) => (
             <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-slate-800/60 group hover:bg-white/[0.05] transition-all">
               <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
                 <Send className="w-5 h-5" />
@@ -55,7 +67,7 @@ export function AdminConfig({ config, setConfig, handleSave, loading }: AdminCon
               <input 
                 value={ch}
                 onChange={(e) => {
-                  const newChannels = [...config.channels];
+                  const newChannels = [...channels];
                   newChannels[i] = e.target.value;
                   setConfig({...config, channels: newChannels});
                 }}
@@ -65,7 +77,7 @@ export function AdminConfig({ config, setConfig, handleSave, loading }: AdminCon
               />
               <button 
                 onClick={() => {
-                  const newChannels = config.channels.filter((_: any, idx: number) => idx !== i);
+                  const newChannels = channels.filter((_: any, idx: number) => idx !== i);
                   setConfig({...config, channels: newChannels});
                 }}
                 className="p-2 text-zinc-600 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"

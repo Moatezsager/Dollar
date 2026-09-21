@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { Terminal, RefreshCw, Copy } from 'lucide-react';
 
@@ -41,6 +41,12 @@ export function AdminReport({ token }: AdminReportProps) {
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (token) {
+      fetchReport();
+    }
+  }, [token]);
 
   return (
     <motion.div 

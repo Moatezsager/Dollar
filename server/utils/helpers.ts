@@ -1,62 +1,48 @@
-// Security and Encryption helpers
-export const getSecurityKey = () => {
-  const d = new Date();
-  return `DI_SECURE_${d.getUTCFullYear()}${d.getUTCMonth() + 1}${d.getUTCDate()}`;
-};
+import crypto from 'crypto';
 
-export const xorData = (str: string, key: string) => {
-  let result = '';
-  for (let i = 0; i < str.length; i++) {
-    result += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+/**
+ * Generates an HMAC-SHA256 signature for payload verification
+ */
+export function generateHmacSignature(payload: string | object, secret?: string): { signature: string; timestamp: number } {
+  const hmacSecret = secret || process.env.API_HMAC_SECRET || 'default_hmac_secret_key_change_in_production';
+  const timestamp = Date.now();
+  const dataToSign = typeof payload === 'string' ? `${timestamp}:${payload}` : `${timestamp}:${JSON.stringify(payload)}`;
+  const signature = crypto.createHmac('sha256', hmacSecret).update(dataToSign).digest('hex');
+  return { signature, timestamp };
+}
+
+/**
+ * Verifies an HMAC-SHA256 signature and checks for replay attacks (60s window)
+ */
+export function verifyHmacSignature(
+  payload: string | object,
+  signature: string,
+  timestamp: number,
+  secret?: string,
+  maxAgeMs = 60000
+): boolean {
+  if (!signature || !timestamp) return false;
+  // Reject requests older than maxAgeMs (default 60s) or from the future (> 5s drift)
+  const now = Date.now();
+  if (now - timestamp > maxAgeMs || timestamp - now > 5000) {
+    return false;
   }
-  return result;
-};
 
-export const obfuscateData = (data: any) => {
-  try {
-    // 1. Key Mapping (Obfuscate main keys)
-    const mapping: any = {
-      'official': '_o',
-      'parallel': '_p',
-      'previousOfficial': '_po',
-      'previousParallel': '_pp',
-      'lastUpdated': '_t',
-      'lastChanged': '_lc',
-      'USD': 'u1',
-      'EUR': 'e2',
-      'GBP': 'g3',
-      'TRY': 't4',
-      'GOLD': 'g5',
-      'USD_CHECKS': 'uc6',
-      'USD_JBANK': 'uj7'
-    };
+  const hmacSecret = secret || process.env.API_HMAC_SECRET || 'default_hmac_secret_key_change_in_production';
+  const dataToSign = typeof payload === 'string' ? `${timestamp}:${payload}` : `${timestamp}:${JSON.stringify(payload)}`;
+  const expectedSignature = crypto.createHmac('sha256', hmacSecret).update(dataToSign).digest('hex');
+  
+  const bufExpected = Buffer.from(expectedSignature);
+  const bufActual = Buffer.from(signature);
+  if (bufExpected.length !== bufActual.length) return false;
+  return crypto.timingSafeEqual(bufExpected, bufActual);
+}
 
-    const processObject = (obj: any): any => {
-      if (Array.isArray(obj)) return obj.map(processObject);
-      if (obj !== null && typeof obj === 'object') {
-        const newObj: any = {};
-        for (const key in obj) {
-          const mappedKey = mapping[key] || key;
-          newObj[mappedKey] = processObject(obj[key]);
-        }
-        return newObj;
-      }
-      return obj;
-    };
-
-    const obfuscated = {
-      _m: mapping,
-      _d: processObject(data)
-    };
-
-    // 2. Stringify -> XOR -> Base64
-    const json = JSON.stringify(obfuscated);
-    const encrypted = xorData(json, getSecurityKey());
-    return Buffer.from(encrypted).toString('base64');
-  } catch (e) {
-    console.error("Obfuscation error:", e);
-    return data;
-  }
+/**
+ * Pass-through helper for clean rates data (XOR obfuscation removed)
+ */
+export const obfuscateData = <T>(data: T): T => {
+  return data;
 };
 
 // Helper to detect significant price changes (ignores tiny floating point noise)

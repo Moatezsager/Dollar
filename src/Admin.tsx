@@ -19,7 +19,6 @@ import { FlagIcon } from "./components/FlagIcon";
 import { TelegramStatus } from "./components/TelegramStatus";
 import { TelegramPoster } from "./components/TelegramPoster";
 import { safeStorage } from "./utils/storage";
-import { decodeData } from "./utils/security";
 import { io } from "socket.io-client";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 

@@ -101,9 +101,8 @@ import {
   sendRetentionPushNotifications 
 } from './server/services/push.service';
 import { 
-  getSecurityKey, 
-  xorData, 
   obfuscateData, 
+  generateHmacSignature,
   isSignificantChange, 
   isProbablyDateOrTime 
 } from './server/utils/helpers';

@@ -583,12 +583,20 @@ async function startServer() {
     crossOriginResourcePolicy: false,
     crossOriginOpenerPolicy: false,
     frameguard: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
     contentSecurityPolicy: {
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "default-src": ["'self'"],
+        "base-uri": ["'self'"],
+        "object-src": ["'none'"],
         "img-src": ["'self'", "data:", "https://flagcdn.com", "https://hatscripts.github.io", "https://picsum.photos", "https://*.supabase.co", "https://*.google.com", "https://*.gstatic.com", "https://*.facebook.com", "https://*.fbcdn.net"],
         "connect-src": ["'self'", "https://open.er-api.com", "https://t.me", "https://*.supabase.co", "wss:", "ws:", "https://*.google.com", "https://*.gstatic.com", "https://*.googleapis.com", "https://*.facebook.com", "https://*.fbcdn.net", "https://*.messenger.com"],
-        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "blob:", "https://*.google.com", "https://*.gstatic.com", "https://*.facebook.com", "https://*.facebook.net", "https://*.fbcdn.net"],
+        "script-src": ["'self'", "blob:", "https://*.google.com", "https://*.gstatic.com", "https://*.facebook.com", "https://*.facebook.net", "https://*.fbcdn.net"],
         "font-src": ["'self'", "https://fonts.gstatic.com", "data:", "https://*.googleapis.com"],
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.gstatic.com"],
         "frame-ancestors": ["'self'", "https://*.facebook.com", "https://*.fbcdn.net", "https://*.messenger.com", "https://*.google.com", "https://*.corp.google.com"],
@@ -597,6 +605,12 @@ async function startServer() {
       },
     },
   }));
+
+  // Extra Permissions-Policy Header for 100/100 (A+) security score
+  app.use((req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
 
   // Rate Limiting
   const loginLimiter = rateLimit({

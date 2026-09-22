@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 
 export let adminToken = crypto.randomBytes(32).toString('hex');
+export let tokenCreatedAt = Date.now();
 
 export function getAdminToken(): string {
   return adminToken;
@@ -9,6 +10,7 @@ export function getAdminToken(): string {
 
 export function setAdminToken(token: string): void {
   adminToken = token;
+  tokenCreatedAt = Date.now();
 }
 
 /**
@@ -31,6 +33,11 @@ export function requireAdmin(req: express.Request, res: express.Response, next: 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
     if (safeCompare(token, adminToken)) {
+      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+      if (Date.now() - tokenCreatedAt > TWENTY_FOUR_HOURS_MS) {
+        res.status(401).json({ success: false, message: "انتهت صلاحية الجلسة" });
+        return;
+      }
       return next();
     }
   }

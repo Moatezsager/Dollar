@@ -686,7 +686,7 @@ async function startServer() {
             supabase?.from('visitor_logs').insert([{
               ip_address: ip,
               user_agent: userAgent
-            }]).then(() => {}).catch(() => {});
+            }]).then(() => {}, () => {});
           }
         });
       }
@@ -1577,7 +1577,7 @@ async function startServer() {
         if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
           supabase.from('push_subscriptions').update({
             last_active: new Date().toISOString()
-          }).eq('endpoint', endpoint).then(() => {}).catch(() => {});
+          }).eq('endpoint', endpoint).then(() => {}, () => {});
         }
       }
       res.json({ success: true });

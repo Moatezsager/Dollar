@@ -90,7 +90,7 @@ export async function sendRetentionPushNotifications() {
         if (err.statusCode === 410 || err.statusCode === 404) {
           db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(sub.endpoint);
           if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-            supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).then(() => {}).catch(() => {});
+            supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).then(() => {}, () => {});
           }
         }
       }
@@ -164,7 +164,7 @@ export async function sendPushNotificationToAll(
             if (err.statusCode === 410 || err.statusCode === 404) {
               db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(sub.endpoint);
               if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-                supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).then(() => {}).catch(() => {});
+                supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).then(() => {}, () => {});
               }
               removed++;
             } else {

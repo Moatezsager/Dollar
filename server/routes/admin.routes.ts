@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions';
@@ -59,8 +60,21 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
   const router = express.Router();
   const tempClients: Record<string, { client: TelegramClient, apiId: number, apiHash: string }> = {};
 
+  // Rate limiter for admin login (5 attempts max per 15 minutes per IP)
+  const adminLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req: express.Request, res: express.Response) => {
+      const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown') as string;
+      console.warn(`[Admin Login Rate Limit] Limit exceeded for IP: ${ip}`);
+      res.status(429).json({ success: false, message: "محاولات كثيرة، حاول بعد قليل" });
+    }
+  });
+
   // Login endpoint - public (within admin context)
-  router.post('/login', async (req: express.Request, res: express.Response) => {
+  router.post('/login', adminLoginLimiter, async (req: express.Request, res: express.Response) => {
     const { password } = req.body;
     const effectiveAdminPassword = process.env.ADMIN_PASSWORD;
     if (effectiveAdminPassword && safeCompare(password, effectiveAdminPassword)) {
@@ -588,6 +602,7 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
   router.get('/stats', async (req: express.Request, res: express.Response) => {
     try {
       const minutesSinceLastScrape = Math.floor((Date.now() - lastSuccessfulScrape.getTime()) / 60000);
+      const todayStr = new Date(new Date().getTime() + 2 * 60 * 60 * 1000).toISOString().split('T')[0];
       
       let totalInstalls = 0;
       let installsToday = 0;
@@ -595,7 +610,6 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
         const installsRes = db.prepare('SELECT COUNT(*) as count FROM installs').get() as {count: number};
         if (installsRes) totalInstalls = installsRes.count;
         
-        const todayStr = new Date(new Date().getTime() + 2 * 60 * 60 * 1000).toISOString().split('T')[0];
         const installsTodayRes = db.prepare('SELECT COUNT(*) as count FROM installs WHERE created_at LIKE ?').get(`${todayStr}%`) as {count: number};
         if (installsTodayRes) installsToday = installsTodayRes.count;
       } catch (err) {

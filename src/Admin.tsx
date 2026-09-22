@@ -10,9 +10,8 @@ import { AdminLogs } from "./components/AdminLogs";
 import { AdminReport } from "./components/AdminReport";
 import { AdminTools } from "./components/AdminTools";
 import { AdminBroadcastLog } from "./components/AdminBroadcastLog";
-import { GoogleFormsManager } from "./components/GoogleFormsManager";
 import { motion, AnimatePresence } from "motion/react";
-import { Settings, Check, Edit2, Save, Plus, Trash2, ArrowRight, ShieldCheck, LogOut, X, Lock, Activity, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, ArrowUpRight, ArrowDownRight, CheckCircle2, RefreshCw, Layers, Globe, Zap, Search, ChevronDown, ChevronUp, Clock, Info, Building2, Coins, Send, Building, TrendingUp, Stethoscope, ListX, Trash, LayoutDashboard, Menu, BarChart3, Bell, Shield, Database, Link, Copy, Code2, Download, Pause, Play, Filter, XCircle, AlertCircle, Mail, MessageSquare, DownloadCloud, Sparkles, Monitor, Smartphone, Layout, Wifi, AppWindow , MapPin , LineChart, Radio, ClipboardList } from 'lucide-react';
+import { Settings, Check, Edit2, Save, Plus, Trash2, ArrowRight, ShieldCheck, LogOut, X, Lock, Activity, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, ArrowUpRight, ArrowDownRight, CheckCircle2, RefreshCw, Layers, Globe, Zap, Search, ChevronDown, ChevronUp, Clock, Info, Building2, Coins, Send, Building, TrendingUp, Stethoscope, ListX, Trash, LayoutDashboard, Menu, BarChart3, Bell, Shield, Database, Link, Copy, Code2, Download, Pause, Play, Filter, XCircle, AlertCircle, Mail, MessageSquare, DownloadCloud, Sparkles, Monitor, Smartphone, Layout, Wifi, AppWindow , MapPin , LineChart, Radio } from 'lucide-react';
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { logErrorToServer } from "./utils/logger";
@@ -200,7 +199,7 @@ export default function Admin() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'logs' | 'ai' | 'changes' | 'telegram' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'google-forms'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'logs' | 'ai' | 'changes' | 'telegram' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAuthorizedDevice, setIsAuthorizedDevice] = useState(true);
 
@@ -280,7 +279,6 @@ export default function Admin() {
       group: 'تكامل الخدمات',
       items: [
         { id: 'telegram', label: 'تيليجرام', icon: Globe },
-        { id: 'google-forms', label: 'نماذج Google Forms', icon: ClipboardList },
         { id: 'broadcast-log', label: 'سجل البث الاجتماعي', icon: Radio },
         { id: 'ai', label: 'الذكاء الاصطناعي', icon: Zap },
         { id: 'api', label: 'واجهة API', icon: Code2 },
@@ -1151,8 +1149,6 @@ export default function Admin() {
           {activeTab === 'ai' && <AdminAI token={token} config={config} setError={setError} setSuccess={setSuccess} triggerRefresh={triggerRefresh} decodeData={decodeData} />}
 
           {activeTab === 'telegram' && <AdminTelegram token={token} config={config} setConfig={setConfig} setError={setError} setSuccess={setSuccess} handleSave={handleSave} />}
-
-          {activeTab === 'google-forms' && <GoogleFormsManager token={token} setError={setError} setSuccess={setSuccess} />}
 
           {activeTab === 'broadcast-log' && <AdminBroadcastLog token={token} />}
 

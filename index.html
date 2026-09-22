@@ -45,102 +45,10 @@
     <link rel="mask-icon" href="/logo.png" color="#10b981" />
     <link rel="apple-touch-startup-image" href="/icon-512.png" />
     
-    <style>
-      /* Prevent pull-to-refresh on mobile if desired, but keep it for now as it's useful */
-      /* body { overscroll-behavior-y: contain; } */
-      
-      /* Safe area padding for notched phones */
-      :root {
-        --safe-area-inset-top: env(safe-area-inset-top);
-        --safe-area-inset-bottom: env(safe-area-inset-bottom);
-      }
-    </style>
+    <link rel="stylesheet" href="/splash.css" />
   </head>
   <body>
     <div id="root">
-      <style>
-        body {
-          margin: 0;
-          background-color: #091121;
-        }
-        .splash-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: 100vh;
-          width: 100vw;
-          background-color: #091121;
-          color: white;
-          font-family: system-ui, -apple-system, sans-serif;
-        }
-        .splash-logo-container {
-          position: relative;
-          width: 96px;
-          height: 96px;
-          margin-bottom: 32px;
-        }
-        .splash-logo-glow {
-          position: absolute;
-          inset: 0;
-          background-color: #10b981;
-          border-radius: 50%;
-          filter: blur(24px);
-          opacity: 0.4;
-          animation: pulse-glow 2s ease-in-out infinite;
-        }
-        .splash-logo {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          border-radius: 50%;
-          box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
-          z-index: 10;
-        }
-        .splash-title {
-          font-size: 30px;
-          line-height: 36px;
-          font-weight: 800;
-          letter-spacing: 0.025em;
-          background: linear-gradient(to right, #34d399, #10b981);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          margin: 0;
-        }
-        .splash-subtitle {
-          font-size: 14px;
-          color: #a1a1aa;
-          margin-top: 12px;
-          font-weight: 500;
-        }
-        .splash-loader {
-          margin-top: 48px;
-          width: 64px;
-          height: 4px;
-          background-color: rgba(255, 255, 255, 0.1);
-          border-radius: 4px;
-          overflow: hidden;
-          position: relative;
-        }
-        .splash-loader::after {
-          content: '';
-          position: absolute;
-          left: -50%;
-          height: 100%;
-          width: 50%;
-          background-color: #10b981;
-          border-radius: 4px;
-          animation: loading 1.5s infinite ease-in-out;
-        }
-        @keyframes pulse-glow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.1); }
-        }
-        @keyframes loading {
-          0% { left: -50%; }
-          100% { left: 100%; }
-        }
-      </style>
       <div class="splash-container">
         <div class="splash-logo-container">
           <div class="splash-logo-glow"></div>
@@ -149,9 +57,9 @@
         <h1 class="splash-title">مؤشر الدينار</h1>
         <p class="splash-subtitle" id="splash-sub">جاري التحديث...</p>
         <div class="splash-loader" id="splash-load"></div>
-        <div id="splash-fb-helper" style="display:none;margin-top:20px;text-align:center;">
-          <p style="font-size:13px;color:#94a3b8;margin-bottom:12px;">إذا كنت تستخدم متصفح فيسبوك وتعذر التحميل:</p>
-          <button id="splash-reload-btn" style="background:#10b981;color:#000;border:none;padding:8px 18px;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer;margin-left:8px;">إعادة التحميل</button>
+        <div id="splash-fb-helper" class="splash-fb-helper">
+          <p class="splash-fb-helper-text">إذا كنت تستخدم متصفح فيسبوك وتعذر التحميل:</p>
+          <button id="splash-reload-btn" class="splash-reload-btn">إعادة التحميل</button>
         </div>
       </div>
     </div>

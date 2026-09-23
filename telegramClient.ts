@@ -207,14 +207,14 @@ export class TelegramManager {
           await client.sendMessage('me', { 
             message,
             parseMode: options?.parseMode,
-            linkPreview: options?.linkPreview ?? false
+            linkPreview: options?.linkPreview ?? true
           });
           return true;
         } catch (meError: any) {
           if (options?.parseMode) {
             console.warn(`[TelegramManager] Sending with parseMode ${options.parseMode} failed (${meError.message}), falling back to plain text for 'me'...`);
             const plain = message.replace(/<[^>]+>/g, '');
-            await client.sendMessage('me', { message: plain, linkPreview: false });
+            await client.sendMessage('me', { message: plain, linkPreview: options?.linkPreview ?? true });
             return true;
           }
           throw meError;

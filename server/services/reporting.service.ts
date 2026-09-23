@@ -78,7 +78,8 @@ export async function broadcastDailyReport() {
     }
   }
   
-  message += `━━━━━━━━━━━━━━━━━\n📡 *مؤشر الدينار | الدقة والسرعة*\n🔗 https://tinyurl.com/2j7667u2`;
+  const reportRandomCode = Math.floor(100000 + Math.random() * 900000);
+  message += `━━━━━━━━━━━━━━━━━\n📡 *مؤشر الدينار | الدقة والسرعة*\n🔗 https://dollar-price-qp14.onrender.com/?r=${reportRandomCode}`;
   
   try {
     await broadcastToSocialMedia(message, false);
@@ -184,10 +185,11 @@ export async function broadcastWeeklyReport(isTest: boolean = false) {
     }
   }
   
+  const weeklyRandomCode = Math.floor(100000 + Math.random() * 900000);
   message += `━━━━━━━━━━━━━━━━━━━\n`;
   message += `💡 التقرير مبني على سجلات قاعدة البيانات طوال الأسبوع الماضي.\n\n`;
   message += `🌐 للمزيد من التفاصيل والرسوم البيانية:\n`;
-  message += `👉 https://tinyurl.com/2j7667u2`;
+  message += `👉 https://dollar-price-qp14.onrender.com/?r=${weeklyRandomCode}`;
   
   if (isTest) {
     await broadcastToSocialMedia(message, true, 'all');

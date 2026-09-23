@@ -759,7 +759,13 @@ async function startServer() {
     }
 
     try {
-      const success = await tgMgr.sendMessage(channel, message);
+      let finalMsg = message;
+      const randomNum = Math.floor(100000 + Math.random() * 900000);
+      const dynamicTgUrl = `https://dollar-price-qp14.onrender.com/?r=${randomNum}`;
+      finalMsg = finalMsg.replace(/https:\/\/tinyurl\.com\/2j7667u2/g, dynamicTgUrl);
+      finalMsg = finalMsg.replace(/https:\/\/dollar-price-qp14\.onrender\.com(?:\/[^\s]*)?/g, dynamicTgUrl);
+
+      const success = await tgMgr.sendMessage(channel, finalMsg, { linkPreview: true });
       if (success) {
         res.json({ success: true, message: "تم النشر بنجاح" });
       } else {

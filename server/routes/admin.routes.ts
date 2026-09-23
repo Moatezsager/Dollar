@@ -1378,7 +1378,8 @@ ${updates.join('\n')}
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
       finalMessage += `${text?.trim()}\n`;
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
-      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://tinyurl.com/2j7667u2\n\n`;
+      const analysisRandomCode1 = Math.floor(100000 + Math.random() * 900000);
+      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://dollar-price-qp14.onrender.com/?r=${analysisRandomCode1}\n\n`;
       finalMessage += `📱 المصدر: شبكة مراسلي مؤشر الدينار | الدقة والسرعة`;
 
       res.json({ success: true, message: finalMessage });
@@ -1437,7 +1438,8 @@ ${updates.join('\n')}
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
       finalMessage += `${text?.trim()}\n`;
       finalMessage += `━━━━━━━━━━━━━━━━━\n`;
-      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://tinyurl.com/2j7667u2\n\n`;
+      const analysisRandomCode2 = Math.floor(100000 + Math.random() * 900000);
+      finalMessage += `🔗 تابع التحديثات الحية على منصتنا:\n🌐 https://dollar-price-qp14.onrender.com/?r=${analysisRandomCode2}\n\n`;
       finalMessage += `📱 المصدر: شبكة مراسلي مؤشر الدينار | الدقة والسرعة`;
 
       await broadcastToSocialMedia(finalMessage, true, 'telegram');

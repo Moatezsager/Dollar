@@ -453,9 +453,16 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
       let lastErrMessage = "";
       const maxRetries = isTest ? 1 : 2;
 
+      // تجهيز رسالة تيليجرام: إزالة أي روابط مختصرة تماماً واستبدالها برابط الموقع المباشر مع رقم عشوائي
+      let tgMessage = message;
+      const tgRandomNum = Math.floor(100000 + Math.random() * 900000);
+      const dynamicTgUrl = `https://dollar-price-qp14.onrender.com/?r=${tgRandomNum}`;
+      tgMessage = tgMessage.replace(/https:\/\/tinyurl\.com\/2j7667u2/g, dynamicTgUrl);
+      tgMessage = tgMessage.replace(/https:\/\/dollar-price-qp14\.onrender\.com(?:\/[^\s]*)?/g, dynamicTgUrl);
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          success = await manager.sendMessage(tgChannel, message);
+          success = await manager.sendMessage(tgChannel, tgMessage, { linkPreview: true });
           if (success) {
             break;
           } else {
@@ -682,7 +689,8 @@ export async function broadcastOfficialRates(isTest: boolean = false) {
   }
 
   message += `\n━━━━━━━━━━━━━━━━━━━\n`;
-  message += `🔗 *لمزيد من التفاصيل والبيانات الحية:*\n🌐 https://dollar-price-qp14.onrender.com/?v=${Math.floor(Date.now() / 60000)}\n`;
+  const officialRandomCode = Math.floor(100000 + Math.random() * 900000);
+  message += `🔗 *لمزيد من التفاصيل والبيانات الحية:*\n🌐 https://dollar-price-qp14.onrender.com/?r=${officialRandomCode}\n`;
   message += `📱 *المصدر:* مصرف ليبيا المركزي`;
 
   try {
@@ -985,7 +993,8 @@ export async function executeBroadcast(
 
   message += `━━━━━━━━━━━━━━━━━━━\n`;
   message += `🔗 *المتابعة الحية والرسوم البيانية:*\n`;
-  message += `🌐 https://tinyurl.com/2j7667u2\n`;
+  const broadcastRandomNum = Math.floor(100000 + Math.random() * 900000);
+  message += `🌐 https://dollar-price-qp14.onrender.com/?r=${broadcastRandomNum}\n`;
   message += `📱 *المصدر:* شبكة مؤشر الدينار`;
 
   const startTime = Date.now();

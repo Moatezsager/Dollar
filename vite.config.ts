@@ -23,7 +23,9 @@ export default defineConfig(({mode}) => {
           'icon-192.png',
           'icon-512.png',
           'mask-icon.svg',
-          'logo.png'
+          'logo.png',
+          'dinar-preview.png',
+          'og-image.png'
         ],
         manifest: {
           name: 'مؤشر الدينار | أسعار العملات في ليبيا',

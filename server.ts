@@ -1709,6 +1709,9 @@ async function startServer() {
         html = html.replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${dynamicDesc}" />`);
         html = html.replace(/<meta property="twitter:title" content=".*?" \/>/, `<meta property="twitter:title" content="${dynamicTitle}" />`);
         html = html.replace(/<meta property="twitter:description" content=".*?" \/>/, `<meta property="twitter:description" content="${dynamicDesc}" />`);
+        html = html.replace(/<meta property="og:image" content=".*?" \/>/, `<meta property="og:image" content="https://dollar-price-qp14.onrender.com/dinar-preview.png?v=3" />`);
+        html = html.replace(/<meta property="og:image:secure_url" content=".*?" \/>/, `<meta property="og:image:secure_url" content="https://dollar-price-qp14.onrender.com/dinar-preview.png?v=3" />`);
+        html = html.replace(/<meta property="twitter:image" content=".*?" \/>/, `<meta property="twitter:image" content="https://dollar-price-qp14.onrender.com/dinar-preview.png?v=3" />`);
       }
       
       res.send(html);

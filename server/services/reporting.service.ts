@@ -142,58 +142,108 @@ export async function broadcastWeeklyReport(isTest: boolean = false) {
     }
   }
 
+  // ─── Calculate Summary Line ───
+  const checkedCurrencies = ['USD', 'USD_CHECKS', 'EUR', 'GBP', 'USD_TR'];
+  let usdTrend: 'up' | 'down' | 'stable' = 'stable';
+  let hasUp = false;
+  let hasDown = false;
+  let allStable = true;
+
+  for (const cid of checkedCurrencies) {
+    const s = stats[cid];
+    if (!s || s.count === 0) continue;
+    const d = s.end - s.start;
+    const isUp = d > 0.005;
+    const isDown = d < -0.005;
+
+    if (cid === 'USD') {
+      if (isUp) usdTrend = 'up';
+      else if (isDown) usdTrend = 'down';
+    }
+
+    if (isUp) {
+      hasUp = true;
+      allStable = false;
+    } else if (isDown) {
+      hasDown = true;
+      allStable = false;
+    }
+  }
+
+  let summaryText = "استقرار نسبي في السوق الموازي";
+  if (hasUp && hasDown) {
+    summaryText = "تباين في حركة السوق الأسبوع الماضي";
+  } else if (usdTrend === 'up' && !hasDown) {
+    summaryText = "ارتفاع عام في السوق";
+  } else if (usdTrend === 'down' && !hasUp) {
+    summaryText = "انخفاض طفيف بالسوق الموازي";
+  } else if (allStable) {
+    summaryText = "استقرار نسبي في السوق الموازي";
+  } else if (hasUp) {
+    summaryText = "ارتفاع عام في السوق";
+  } else if (hasDown) {
+    summaryText = "انخفاض طفيف بالسوق الموازي";
+  }
+
   let message = `📊 *مؤشر الدينار | الحصاد الأسبوعي*\n`;
   message += `🗓 ${pastWeek} — ${dateStr}\n`;
   message += `━━━━━━━━━━━━━━━━━━━\n\n`;
+  message += `📌 *ملخص الأسبوع:* ${summaryText}\n\n`;
+  message += `━━━━━━━━━━━━━━━━━━━\n`;
   
-  const mainCurrencies = ['USD', 'EUR', 'GBP', 'USD_CHECKS'];
-  const goldCurrencies = ['GOLD_CAST_24', 'GOLD_CAST_18', 'GOLD_EXT_21', 'GOLD_EXT_18'];
+  const mainCurrencies = [
+    { id: 'USD', name: 'دولار أمريكي (كاش)', flag: '🇺🇸' },
+    { id: 'USD_CHECKS', name: 'دولار أمريكي (صكوك)', flag: '🇺🇸' },
+    { id: 'EUR', name: 'يورو', flag: '🇪🇺' },
+    { id: 'GBP', name: 'جنيه إسترليني', flag: '🇬🇧' },
+    { id: 'USD_TR', name: 'حوالات تركيا', flag: '🇹🇷' }
+  ];
   
-  for (const cid of mainCurrencies) {
-    const stat = stats[cid];
-    const term = appConfig.terms.find(t => t.id === cid);
-    if (stat && term) {
-       const avg = stat.sum / stat.count;
-       const diff = stat.end - stat.start;
-       let trendStr = "➖ استقرار";
-       let trendIcon = "🔄";
-       if (diff > 0.01) { trendStr = `صعود بمقدار ${Math.abs(diff).toFixed(3)}`; trendIcon = "📈"; }
-       else if (diff < -0.01) { trendStr = `هبوط بمقدار ${Math.abs(diff).toFixed(3)}`; trendIcon = "📉"; }
-       
-       message += `💵 *${term.name}*\n`;
-       message += `🔸 أعلى سعر: ${stat.high.toFixed(3)}\n`;
-       message += `🔹 أدنى سعر: ${stat.low.toFixed(3)}\n`;
-       message += `📊 المتوسط: ${avg.toFixed(3)}\n`;
-       message += `${trendIcon} الإغلاق مقارنة بالافتتاح: ${trendStr}\n\n`;
+  for (const curr of mainCurrencies) {
+    const stat = stats[curr.id];
+    if (!stat || stat.count === 0) continue;
+
+    const diff = stat.end - stat.start;
+    let trend = '➖';
+    if (diff > 0.005) {
+      trend = '📈';
+    } else if (diff < -0.005) {
+      trend = '📉';
     }
+
+    const diffRounded = Number(diff.toFixed(3));
+    const diffFormatted = diffRounded > 0 ? `+${diff.toFixed(3)}` : (diffRounded < 0 ? `${diff.toFixed(3)}` : `+0.000`);
+
+    message += `${curr.flag} *${curr.name}*\n`;
+    message += `└ أعلى: ${stat.high.toFixed(3)} | أدنى: ${stat.low.toFixed(3)} | إغلاق: ${stat.end.toFixed(3)} ${trend} ${diffFormatted}\n\n`;
+  }
+  
+  const goldStat = stats['GOLD_CAST_24'];
+  if (goldStat && goldStat.count > 0) {
+    message += `━━━━━━━━━━━━━━━━━━━\n`;
+    const diff = goldStat.end - goldStat.start;
+    let trend = '➖';
+    if (diff > 0.005) {
+      trend = '📈';
+    } else if (diff < -0.005) {
+      trend = '📉';
+    }
+
+    const formatGold = (val: number) => Math.round(val).toLocaleString('en-US');
+
+    message += `💎 *ذهب مسبوك عيار 24*\n`;
+    message += `└ أعلى: ${formatGold(goldStat.high)} | أدنى: ${formatGold(goldStat.low)} | إغلاق: ${formatGold(goldStat.end)} ${trend}\n\n`;
   }
   
   message += `━━━━━━━━━━━━━━━━━━━\n`;
-  message += `🥇 *المعادن والذهب*\n\n`;
-  
-  for (const cid of goldCurrencies) {
-    const stat = stats[cid];
-    const term = appConfig.terms.find(t => t.id === cid);
-    if (stat && term) {
-       const diff = stat.end - stat.start;
-       let trendStr = "استقرار ➖";
-       if (diff > 0.1) trendStr = `صعود 📈`;
-       else if (diff < -0.1) trendStr = `هبوط 📉`;
-       
-       message += `▪️ ${term.name}:\n`;
-       message += `أعلى: ${stat.high.toFixed(2)} | أدنى: ${stat.low.toFixed(2)} | الاغلاق: ${trendStr}\n\n`;
-    }
-  }
-  
-  const weeklyRandomCode = Math.floor(100000 + Math.random() * 900000);
-  message += `━━━━━━━━━━━━━━━━━━━\n`;
-  message += `💡 التقرير مبني على سجلات قاعدة البيانات طوال الأسبوع الماضي.\n\n`;
-  message += `🌐 للمزيد من التفاصيل والرسوم البيانية:\n`;
-  message += `👉 https://dollar-price-qp14.onrender.com/?r=${weeklyRandomCode}`;
+  message += `🌐 التفاصيل والرسوم البيانية:\n`;
+  message += `👉 https://tinyurl.com/2j7667u2`;
   
   if (isTest) {
     await broadcastToSocialMedia(message, true, 'all');
   } else {
     broadcastToSocialMedia(message, false, 'all').catch(e => console.error("[Background Weekly Broadcast] Error:", e));
   }
+
+  return message;
 }

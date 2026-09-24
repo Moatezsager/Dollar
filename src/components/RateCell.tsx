@@ -26,10 +26,17 @@ export const RateCell = ({ term, rate, prevRate, trend, lastChangedDate, fallbac
   return (
     <div 
       onClick={onClick}
-      className={`flex flex-col group p-2.5 rounded-2xl transition-colors -m-2.5 cursor-pointer relative ${
-        flash === 'up' ? 'bg-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.3)]' : flash === 'down' ? 'bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'hover:bg-white/[0.02]'
+      className={`flex flex-col group p-4 rounded-3xl transition-all duration-400 cursor-pointer relative overflow-hidden ${
+        flash === 'up' 
+          ? 'bg-gradient-to-br from-rose-500/20 to-rose-900/10 shadow-[0_0_30px_rgba(244,63,94,0.3)] border border-rose-500/30' 
+          : flash === 'down' 
+          ? 'bg-gradient-to-br from-emerald-500/20 to-emerald-900/10 shadow-[0_0_30px_rgba(16,185,129,0.3)] border border-emerald-500/30' 
+          : 'glass-panel hover-lift premium-border'
       }`}
     >
+      {/* Decorative ambient light */}
+      <div className="absolute -top-10 -right-10 w-24 h-24 bg-white/5 rounded-full blur-[30px] group-hover:bg-emerald-500/10 transition-colors duration-500 pointer-events-none" />
+
       <div className="flex items-center justify-between mb-3 sm:mb-4">
         <div className="flex items-center gap-2">
           <FlagIcon flagCode={term.flag} name={term.name} fallbackType={fallbackType} />

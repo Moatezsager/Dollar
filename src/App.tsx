@@ -1980,42 +1980,42 @@ export default function App() {
         </motion.div>
       </motion.div>
 
-      {/* Header */}
-      <header className="border-b border-slate-800/60 sticky top-0 z-50 bg-[#020617]/80 backdrop-blur-xl pt-safe">
+      {/* Premium Header */}
+      <header className="border-b border-white/5 sticky top-0 z-50 bg-[#050505]/70 backdrop-blur-2xl pt-safe shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 sm:gap-4">
             <div 
-              className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.1)] cursor-pointer overflow-hidden p-1"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-400/20 to-emerald-900/10 border border-emerald-500/30 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.15)] cursor-pointer overflow-hidden p-1 sm:p-1.5 hover:scale-105 transition-transform duration-500"
               onClick={() => setCurrentPage('dashboard')}
               onDoubleClick={() => window.location.href = '/admin-panel-secure'}
               title="لوحة التحكم (انقر مرتين)"
             >
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain rounded-lg" />
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain rounded-lg drop-shadow-md" />
             </div>
             <div 
               className="flex flex-col cursor-pointer"
               onClick={() => setCurrentPage('dashboard')}
             >
-              <h1 className="text-sm sm:text-lg font-black tracking-tight text-white">المؤشر</h1>
-              <p className="text-[11px] text-emerald-500/70 font-mono uppercase tracking-[0.2em] mt-0.5">Al-Moasher</p>
+              <h1 className="text-base sm:text-xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-l from-white to-zinc-400">المؤشر</h1>
+              <p className="text-[10px] sm:text-[11px] text-emerald-400/80 font-mono uppercase tracking-[0.25em] mt-0.5">Al-Moasher</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-1.5 sm:gap-3">
-            <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-full border border-slate-800/60 bg-white/[0.02]">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-white/10 bg-white/5 shadow-inner">
               {isRefreshing ? (
-                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
               ) : (
-                <span className="relative flex h-2 w-2">
+                <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
                 </span>
               )}
-              <span className="text-xs font-mono text-slate-400 tracking-wider uppercase hidden sm:block" dir="ltr">
+              <span className="text-xs font-mono text-zinc-300 tracking-wider uppercase hidden sm:block" dir="ltr">
                 {isRefreshing ? "جاري التحديث..." : (lastFetchTime ? format(lastFetchTime, "HH:mm:ss") : "...")}
               </span>
             </div>
-            <div className="h-4 w-[1px] bg-white/10 hidden md:block mx-1"></div>
+            <div className="h-5 w-[1px] bg-white/10 hidden md:block mx-1"></div>
 
             <button 
               onClick={() => {
@@ -2023,36 +2023,36 @@ export default function App() {
                 setRunTour(true);
                 safeStorage.removeItem('tourCompleted');
               }}
-              className="flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-white/5 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-white/10 transition-all gap-1"
+              className="flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300 gap-1.5 shadow-sm"
               title="الدليل الشامل"
             >
               <BookOpen className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">الدليل الشامل</span>
+              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">الدليل</span>
             </button>
             
             {showInstallBanner && !isStandalone && (
               <button 
                 onClick={handleInstall}
-                className="flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 transition-all"
+                className="flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600/20 to-blue-500/10 border border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.15)]"
                 title="تثبيت التطبيق"
               >
                 <Download className="w-4 h-4" />
-                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline sm:mr-2">تثبيت</span>
+                <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline sm:mr-2">تثبيت</span>
               </button>
             )}
             
-            <div className="h-4 w-[1px] bg-white/10 mx-0.5 sm:mx-1"></div>
+            <div className="h-5 w-[1px] bg-white/10 mx-0.5 sm:mx-1"></div>
             
             <button 
               onClick={() => {
                 triggerHaptic(10);
                 fetchData(true);
               }}
-              className={`flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-white/5 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-white/10 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+              className={`flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`}
               title="تحديث البيانات"
             >
               <RefreshCw className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline sm:mr-2">تحديث</span>
+              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline sm:mr-2">تحديث</span>
             </button>
 
             <div className="relative" ref={moreMenuRef}>
@@ -2062,31 +2062,31 @@ export default function App() {
                   triggerHaptic(10);
                   setShowMoreMenu(!showMoreMenu);
                 }}
-                className="flex items-center justify-center w-8 h-8 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-white/5 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+                className="flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300"
                 title="المزيد"
               >
                 <MoreVertical className="w-4 h-4" />
-                <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline sm:mr-2">المزيد</span>
+                <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline sm:mr-1">المزيد</span>
               </button>
 
               <AnimatePresence>
                 {showMoreMenu && (
                   <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    initial={{ opacity: 0, y: 15, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute left-0 top-full mt-2 w-48 rounded-2xl glass-panel border border-slate-700/50 shadow-xl overflow-hidden z-50"
+                    exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="absolute left-0 top-full mt-3 w-56 rounded-2xl glass-panel-heavy border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden z-50"
                   >
-                    <div className="py-1 flex flex-col">
+                    <div className="py-2 flex flex-col">
                       <button
                         id="export-pdf-btn"
                         onClick={handleOpenPdfModal}
                         disabled={isGeneratingPDF}
-                        className={`flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors w-full text-right ${isGeneratingPDF ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right ${isGeneratingPDF ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         <FileText className="w-4 h-4 text-blue-400" />
-                        <span className="font-medium">{isGeneratingPDF ? 'جاري التحميل...' : 'طباعة PDF'}</span>
+                        <span className="font-semibold">{isGeneratingPDF ? 'جاري التحميل...' : 'طباعة PDF'}</span>
                       </button>
 
                       <button
@@ -2095,10 +2095,10 @@ export default function App() {
                           setShowMoreMenu(false);
                           handleShare();
                         }}
-                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
                       >
                         <Share2 className="w-4 h-4 text-emerald-400" />
-                        <span className="font-medium">مشاركة التطبيق</span>
+                        <span className="font-semibold">مشاركة التطبيق</span>
                       </button>
 
                       <button
@@ -2107,11 +2107,13 @@ export default function App() {
                           setShowMoreMenu(false);
                           setCurrentPage('api');
                         }}
-                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
                       >
                         <Code2 className="w-4 h-4 text-purple-400" />
-                        <span className="font-medium">بوابة المطورين</span>
+                        <span className="font-semibold">بوابة المطورين</span>
                       </button>
+
+                      <div className="h-[1px] bg-white/10 my-1 mx-4"></div>
 
                       <button
                         onClick={() => {
@@ -2119,10 +2121,10 @@ export default function App() {
                           setShowMoreMenu(false);
                           setCurrentPage('about');
                         }}
-                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
                       >
                         <Info className="w-4 h-4 text-blue-400" />
-                        <span className="font-medium">عن المنصة</span>
+                        <span className="font-semibold">عن المنصة</span>
                       </button>
                       <button
                         onClick={() => {
@@ -2130,13 +2132,13 @@ export default function App() {
                           setShowMoreMenu(false);
                           setCurrentPage('contact');
                         }}
-                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
                       >
                         <Mail className="w-4 h-4 text-emerald-400" />
-                        <span className="font-medium">اتصل بنا</span>
+                        <span className="font-semibold">اتصل بنا</span>
                       </button>
 
-                      <div className="h-[1px] bg-white/10 my-1"></div>
+                      <div className="h-[1px] bg-white/10 my-1 mx-4"></div>
 
                       <button
                         id="notification-settings-btn"
@@ -2145,19 +2147,16 @@ export default function App() {
                           setShowMoreMenu(false);
                           setShowSettingsModal(true);
                         }}
-                        className="flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
                       >
-                        <Settings2 className="w-4 h-4 text-slate-400" />
-                        <span className="font-medium">الإعدادات</span>
+                        <Settings2 className="w-4 h-4 text-zinc-400" />
+                        <span className="font-semibold">الإعدادات</span>
                       </button>
-
-
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-            
           </div>
         </div>
       </header>

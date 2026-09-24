@@ -2204,20 +2204,20 @@ export default function App() {
         </div>
 
         {/* Hero Section: Parallel USD */}
-        <section className="flex flex-col lg:flex-row items-start lg:items-end justify-between gap-8 lg:gap-12">
+        <section className="flex flex-col lg:flex-row items-start lg:items-end justify-between gap-8 lg:gap-12 relative z-10">
           <div className="w-full lg:w-auto">
             <div className="flex items-center gap-3 mb-4 sm:mb-6">
-              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] shrink-0">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full shadow-[0_4px_10px_rgba(0,0,0,0.5)] shrink-0 overflow-hidden border border-white/10">
                 <FlagIcon flagCode="us" name="US Flag" className="w-full h-full" />
               </div>
               <div className="flex items-center gap-2.5">
-                <h2 className="text-sm sm:text-base font-medium text-emerald-400 tracking-wide">السوق الموازي • دولار أمريكي</h2>
-                <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                <h2 className="text-sm sm:text-base font-semibold text-zinc-200 tracking-wide">السوق الموازي • دولار أمريكي</h2>
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 shadow-inner">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                   </span>
-                  <span className="text-[11px] font-black text-emerald-500 uppercase tracking-wider">Live</span>
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Live</span>
                 </div>
               </div>
             </div>
@@ -2232,62 +2232,48 @@ export default function App() {
                 <AnimatePresence mode="popLayout">
                   <motion.span
                     key={usdRate}
-                    initial={{ opacity: 0, y: -20 }}
+                    initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    className={`text-6xl sm:text-8xl lg:text-[140px] font-light tracking-tighter font-mono leading-none transition-colors relative z-10 ${
-                      usdFlash === 'up' ? 'text-rose-400 font-bold drop-shadow-[0_0_15px_rgba(244,63,94,0.8)]' : 
-                      usdFlash === 'down' ? 'text-emerald-400 font-bold drop-shadow-[0_0_15px_rgba(16,185,129,0.8)]' : 
-                      'text-white group-hover:text-emerald-400'
+                    exit={{ opacity: 0, y: 10 }}
+                    className={`text-6xl sm:text-8xl lg:text-[140px] font-light tracking-tighter font-mono leading-none transition-colors relative z-10 drop-shadow-sm ${
+                      usdFlash === 'up' ? 'text-rose-400 font-bold' : 
+                      usdFlash === 'down' ? 'text-emerald-400 font-bold' : 
+                      'text-white group-hover:text-zinc-300'
                     }`}
                   >
                     {usdRate.toFixed(2)}
                   </motion.span>
                 </AnimatePresence>
               )}
-              <span className="text-xl sm:text-3xl lg:text-4xl text-slate-500 font-light">د.ل</span>
+              <span className="text-xl sm:text-3xl lg:text-4xl text-zinc-500 font-medium">د.ل</span>
               
-              {rates && <LastChangedBadge date={rates?.lastChanged?.parallel["USD"]} className="absolute -bottom-6 right-0" />}
-
-              {/* Subtle pulsing glow behind the price */}
-              <motion.div 
-                animate={{ 
-                  opacity: [0.1, 0.2, 0.1],
-                  scale: [1, 1.05, 1]
-                }}
-                transition={{ 
-                  duration: 3, 
-                  repeat: Infinity, 
-                  ease: "easeInOut" 
-                }}
-                className="absolute -inset-4 bg-emerald-500/5 blur-2xl rounded-full -z-0 pointer-events-none"
-              />
+              {rates && <LastChangedBadge date={rates?.lastChanged?.parallel["USD"]} className="absolute -bottom-6 right-0 text-[10px] opacity-70" />}
             </div>
             
             <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-6 sm:mt-8">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-500">السعر السابق</span>
-                <span className="font-mono text-slate-300 text-base" dir="ltr">{prevUsdRate.toFixed(2)}</span>
+              <div className="flex items-center gap-2 text-sm bg-white/5 border border-white/10 rounded-xl px-4 py-2">
+                <span className="text-zinc-400 font-medium text-xs">السعر السابق</span>
+                <span className="font-mono text-zinc-200 text-sm font-semibold tracking-wide" dir="ltr">{prevUsdRate.toFixed(2)}</span>
               </div>
               {usdIsUp ? (
-                <div className="flex items-center gap-1.5 text-rose-400 text-sm font-medium bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
+                <div className="flex items-center gap-1.5 text-rose-400 text-sm font-semibold bg-rose-500/10 px-3 py-2 rounded-xl border border-rose-500/20 shadow-sm">
                   <ArrowUpRight className="w-4 h-4" />
                   <span className="font-mono" dir="ltr">+{usdChange.toFixed(2)}</span>
                 </div>
               ) : usdIsDown ? (
-                <div className="flex items-center gap-1.5 text-emerald-400 text-sm font-medium bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-sm font-semibold bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-500/20 shadow-sm">
                   <ArrowDownRight className="w-4 h-4" />
                   <span className="font-mono" dir="ltr">-{usdChange.toFixed(2)}</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-slate-400 text-sm font-medium bg-zinc-500/10 px-2.5 py-1 rounded-full border border-zinc-500/20">
+                <div className="flex items-center gap-1.5 text-zinc-400 text-sm font-semibold bg-zinc-500/10 px-3 py-2 rounded-xl border border-zinc-500/20 shadow-sm">
                   <span className="font-mono" dir="ltr">0.00</span>
                 </div>
               )}
               
               <button 
                 onClick={(e) => { e.stopPropagation(); handleShareCardImage('USD_CASH', 'دولار أمريكي', usdRate, false); }}
-                className="mr-auto w-10 h-10 rounded-full bg-white/5 border border-slate-700/50 flex items-center justify-center text-slate-400 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)]"
+                className="mr-auto w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all duration-300 shadow-sm"
                 title="مشاركة الصورة"
               >
                 {isGeneratingShareImage && shareData?.code === 'USD_CASH' ? <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div> : <Share2 className="w-4 h-4" />}
@@ -2297,29 +2283,31 @@ export default function App() {
             {/* USD Checks Card */}
             <div 
               onClick={() => setSelectedRate({ code: 'USD_CHECKS', name: 'دولار أمريكي (صكوك)', market: 'parallel' })}
-              className="mt-8 flex items-center gap-4 sm:gap-6 bg-white/[0.02] border border-slate-800/60 rounded-2xl p-4 sm:p-5 w-full sm:w-fit hover:bg-white/[0.04] transition-colors cursor-pointer group"
+              className="mt-8 flex items-center gap-4 sm:gap-6 glass-panel premium-border rounded-3xl p-4 sm:p-5 w-full sm:w-fit hover-lift cursor-pointer group"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                  <FlagIcon flagCode="us" name="دولار أمريكي (صكوك)" className="w-10 h-10" fallbackType="building" />
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-900/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                  <FlagIcon flagCode="us" name="دولار أمريكي (صكوك)" className="w-full h-full p-1.5" fallbackType="building" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-slate-500 font-medium mb-1">دولار (صكوك)</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-3xl font-light text-white font-mono leading-none group-hover:text-emerald-400 transition-colors">{usdChecksRate.toFixed(2)}</span>
-                    {usdChecksIsUp ? <ArrowUpRight className="w-4 h-4 text-rose-400" /> : usdChecksIsDown ? <ArrowDownRight className="w-4 h-4 text-emerald-400" /> : null}
+                  <span className="text-xs text-zinc-400 font-semibold mb-1 tracking-wide">دولار (صكوك)</span>
+                  <div className="flex items-end gap-2">
+                    <span className="text-3xl font-light text-white font-mono leading-none tracking-tighter group-hover:text-emerald-400 transition-colors">{usdChecksRate.toFixed(2)}</span>
+                    <div className="pb-1">
+                      {usdChecksIsUp ? <ArrowUpRight className="w-4 h-4 text-rose-400" /> : usdChecksIsDown ? <ArrowDownRight className="w-4 h-4 text-emerald-400" /> : null}
+                    </div>
                   </div>
-                  <LastChangedBadge date={rates?.lastChanged?.parallel["USD_CHECKS"]} className="mt-1" />
+                  <LastChangedBadge date={rates?.lastChanged?.parallel["USD_CHECKS"]} className="mt-1.5 text-[9px] opacity-70" />
                 </div>
               </div>
               <div className="w-px h-12 bg-white/10 mx-2"></div>
               <div className="flex flex-col justify-center">
-                <span className="text-xs text-zinc-500 mb-1">السعر السابق</span>
-                <span className="text-sm text-slate-400 font-mono" dir="ltr">{prevUsdChecksRate.toFixed(2)}</span>
+                <span className="text-[10px] text-zinc-500 font-medium mb-1">السعر السابق</span>
+                <span className="text-xs text-zinc-300 font-mono font-medium tracking-wide" dir="ltr">{prevUsdChecksRate.toFixed(2)}</span>
               </div>
               <button 
                 onClick={(e) => { e.stopPropagation(); handleShareCardImage('USD_CHECKS', 'دولار أمريكي (صكوك)', usdChecksRate, false); }}
-                className="mr-auto w-10 h-10 rounded-full bg-white/5 border border-slate-700/50 flex items-center justify-center text-slate-400 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all"
+                className="mr-auto w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all duration-300"
                 title="مشاركة الصورة"
               >
                 {isGeneratingShareImage && shareData?.code === 'USD_CHECKS' ? <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div> : <Share2 className="w-4 h-4" />}

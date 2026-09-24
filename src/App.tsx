@@ -2419,8 +2419,7 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.foreign ? 'rotate-180' : ''}`} />
               </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
               ) : (
@@ -2464,8 +2463,7 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.checks ? 'rotate-180' : ''}`} />
               </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
               ) : (
@@ -2509,8 +2507,7 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.transfers ? 'rotate-180' : ''}`} />
               </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
               ) : (
@@ -2555,8 +2552,7 @@ export default function App() {
             <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
               <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.official ? 'rotate-180' : ''}`} />
             </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-8 gap-y-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6 lg:gap-8">
             {(!rates || dynamicCurrencies.length === 0) ? (
               Array(6).fill(0).map((_, i) => <RateSkeleton key={i} />)
             ) : (
@@ -2610,8 +2606,7 @@ export default function App() {
                 </div>
               </div>
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
               ) : (

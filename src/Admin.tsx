@@ -10,6 +10,7 @@ import { AdminLogs } from "./components/AdminLogs";
 import { AdminReport } from "./components/AdminReport";
 import { AdminTools } from "./components/AdminTools";
 import { AdminBroadcastLog } from "./components/AdminBroadcastLog";
+import { TelegramVisitsCard } from "./components/TelegramVisitsCard";
 import { motion, AnimatePresence } from "motion/react";
 import { Settings, Check, Edit2, Save, Plus, Trash2, ArrowRight, ShieldCheck, LogOut, X, Lock, Activity, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, ArrowUpRight, ArrowDownRight, CheckCircle2, RefreshCw, Layers, Globe, Zap, Search, ChevronDown, ChevronUp, Clock, Info, Building2, Coins, Send, Building, TrendingUp, Stethoscope, ListX, Trash, LayoutDashboard, Menu, BarChart3, Bell, Shield, Database, Link, Copy, Code2, Download, Pause, Play, Filter, XCircle, AlertCircle, Mail, MessageSquare, DownloadCloud, Sparkles, Monitor, Smartphone, Layout, Wifi, AppWindow , MapPin , LineChart, Radio } from 'lucide-react';
 import { format, formatDistanceToNow } from "date-fns";
@@ -940,6 +941,9 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
+
+              {/* Dedicated Telegram Link Tracking Card (Facebook Comments) */}
+              <TelegramVisitsCard token={token} />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                 <section className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] p-6 md:p-8">

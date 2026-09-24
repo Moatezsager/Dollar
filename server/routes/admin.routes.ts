@@ -703,12 +703,16 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
     try {
       let count = 0;
       let lastEntryAt: string | null = null;
+      let record: any = null;
 
       if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
         try {
           const { data: tgRow } = await supabase.from('telegram_visits').select('*').eq('id', 0).maybeSingle();
-          if (tgRow && typeof tgRow.visits_count === 'number') {
-            count = tgRow.visits_count;
+          if (tgRow) {
+            record = tgRow;
+            if (typeof tgRow.visits_count === 'number') {
+              count = tgRow.visits_count;
+            }
             lastEntryAt = tgRow.last_entry_at || tgRow.updated_at || null;
           }
         } catch (e) {}
@@ -746,7 +750,7 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
         `).all();
       } catch (visitErr) {}
 
-      res.json({ success: true, count, last_entry_at: lastEntryAt, summary, recent });
+      res.json({ success: true, count, last_entry_at: lastEntryAt, record, summary, recent });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

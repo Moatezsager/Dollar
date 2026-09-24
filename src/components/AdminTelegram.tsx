@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Globe, RefreshCw, Send, CheckCircle2, Sparkles } from 'lucide-react';
 import { TelegramDetailedStatus } from "./TelegramDetailedStatus";
+import { TelegramVisitsCard } from "./TelegramVisitsCard";
 
 interface AdminTelegramProps {
   token: string;
@@ -119,6 +120,9 @@ export function AdminTelegram({ token, config, setConfig, setError, setSuccess, 
       exit={{ opacity: 0, y: -10 }}
       className="space-y-6"
     >
+      {/* Live Telegram Facebook Referral Stats Card */}
+      <TelegramVisitsCard token={token} />
+
       <section className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] p-6 md:p-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none"></div>
         

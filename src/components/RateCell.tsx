@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Share2 } from 'lucide-react';
 import { FlagIcon } from './FlagIcon';
 import { usePriceFlash } from '../hooks/usePriceFlash';
 import { formatDistanceToNow } from 'date-fns';
@@ -18,7 +18,17 @@ interface RateCellProps {
   onShare?: (e: React.MouseEvent) => void;
 }
 
-export const RateCell = ({ term, rate, prevRate, trend, lastChangedDate, fallbackType = "coins", decimals = 2, onClick, onShare }: RateCellProps) => {
+export const RateCell = ({ 
+  term, 
+  rate, 
+  prevRate, 
+  trend, 
+  lastChangedDate, 
+  fallbackType = "coins", 
+  decimals = 2, 
+  onClick, 
+  onShare 
+}: RateCellProps) => {
   const flash = usePriceFlash(rate);
   const isUp = rate > prevRate;
   const isDown = rate < prevRate;
@@ -26,7 +36,7 @@ export const RateCell = ({ term, rate, prevRate, trend, lastChangedDate, fallbac
   return (
     <div 
       onClick={onClick}
-      className={`flex flex-col group p-4 rounded-3xl transition-all duration-400 cursor-pointer relative overflow-hidden ${
+      className={`flex flex-col group p-4 rounded-3xl transition-all duration-300 cursor-pointer relative overflow-hidden ${
         flash === 'up' 
           ? 'bg-gradient-to-br from-rose-500/20 to-rose-900/10 shadow-[0_0_30px_rgba(244,63,94,0.3)] border border-rose-500/30' 
           : flash === 'down' 
@@ -40,7 +50,7 @@ export const RateCell = ({ term, rate, prevRate, trend, lastChangedDate, fallbac
       <div className="flex items-center justify-between mb-4 relative z-10">
         <div className="flex items-center gap-2.5">
           <FlagIcon flagCode={term.flag} name={term.name} fallbackType={fallbackType} />
-          <span className="text-[12px] sm:text-[13px] font-semibold text-zinc-300 drop-shadow-sm">{term.name}</span>
+          <span className="text-[13px] font-semibold text-zinc-300 drop-shadow-sm">{term.name}</span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
           {trend !== undefined && (
@@ -52,11 +62,14 @@ export const RateCell = ({ term, rate, prevRate, trend, lastChangedDate, fallbac
           )}
           {onShare && (
             <button 
-              onClick={onShare}
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(e);
+              }}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/5 hover:bg-emerald-500/20 border border-white/5 hover:border-emerald-500/30 flex items-center justify-center text-zinc-400 hover:text-emerald-400 transition-all duration-300"
               title="مشاركة الصورة"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+              <Share2 className="w-3.5 h-3.5" />
             </button>
           )}
         </div>

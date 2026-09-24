@@ -1622,6 +1622,10 @@ export default function App() {
   const prevUsdChecksRate = rates?.previousParallel?.["USD_JBANK"] || rates?.previousParallel?.["USD_NCB"] || rates?.previousParallel?.["USD_CHECKS"] || usdChecksRate;
   const usdChecksIsUp = usdChecksRate > prevUsdChecksRate;
   const usdChecksIsDown = usdChecksRate < prevUsdChecksRate;
+  const usdChecksFlash = usePriceFlash(usdChecksRate);
+  const usdChecksChange = Math.abs(usdChecksRate - prevUsdChecksRate);
+  const usdChecksSpread = usdChecksRate - usdRate;
+  const usdChecksLastChanged = rates?.lastChanged?.parallel?.["USD_JBANK"] || rates?.lastChanged?.parallel?.["USD_NCB"] || rates?.lastChanged?.parallel?.["USD_CHECKS"];
 
   const PdfFlagIcon = ({ flagCode, size = 24 }: { flagCode?: string, size?: number }) => {
     const code = flagCode?.trim().toLowerCase();
@@ -1981,80 +1985,100 @@ export default function App() {
       </motion.div>
 
       {/* Premium Header */}
-      <header className="border-b border-white/5 sticky top-0 z-50 bg-[#050505]/70 backdrop-blur-2xl pt-safe shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div 
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-400/20 to-emerald-900/10 border border-emerald-500/30 flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.15)] cursor-pointer overflow-hidden p-1 sm:p-1.5 hover:scale-105 transition-transform duration-500"
-              onClick={() => setCurrentPage('dashboard')}
-              onDoubleClick={() => window.location.href = '/admin-panel-secure'}
-              title="لوحة التحكم (انقر مرتين)"
-            >
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain rounded-lg drop-shadow-md" />
+      <header className="border-b border-white/[0.06] sticky top-0 z-50 bg-[#070b14]/90 backdrop-blur-2xl pt-safe shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-15 sm:h-18 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
+          {/* Site Title / Brand Bar */}
+          <div 
+            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer select-none min-w-0"
+            onClick={() => {
+              triggerHaptic(8);
+              setCurrentPage('dashboard');
+            }}
+            onDoubleClick={() => window.location.href = '/admin-panel-secure'}
+            title="الرئيسية (انقر مرتين للإدارة)"
+          >
+            {/* Logo */}
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-1 flex items-center justify-center shadow-sm shrink-0 hover:scale-105 active:scale-95 transition-transform">
+              <img src="/logo.png" alt="مؤشر الدينار" className="w-full h-full object-contain rounded-lg" />
             </div>
-            <div 
-              className="flex flex-col cursor-pointer"
-              onClick={() => setCurrentPage('dashboard')}
-            >
-              <h1 className="text-base sm:text-xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-l from-white to-zinc-400">المؤشر</h1>
-              <p className="text-[10px] sm:text-[11px] text-emerald-400/80 font-mono uppercase tracking-[0.25em] mt-0.5">Al-Moasher</p>
+
+            {/* Title & Subtitle */}
+            <div className="flex flex-col min-w-0 justify-center">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-white leading-tight hover:text-emerald-300 transition-colors truncate">
+                مؤشر الدينار
+              </h1>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                <span className="text-[11px] font-bold text-emerald-400">مباشر</span>
+                <span className="text-[11px] text-zinc-600">•</span>
+                <span className="text-[11px] text-zinc-400 font-medium truncate">السوق الموازي</span>
+              </div>
             </div>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border border-white/10 bg-white/5 shadow-inner">
+          {/* Header Action Icons */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Live Clock / Status Badge (Desktop Only) */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-white/[0.06] bg-white/[0.03] text-xs font-mono text-zinc-400">
               {isRefreshing ? (
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
               ) : (
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
                 </span>
               )}
-              <span className="text-xs font-mono text-zinc-300 tracking-wider uppercase hidden sm:block" dir="ltr">
+              <span className="tracking-wider uppercase" dir="ltr">
                 {isRefreshing ? "جاري التحديث..." : (lastFetchTime ? format(lastFetchTime, "HH:mm:ss") : "...")}
               </span>
             </div>
-            <div className="h-5 w-[1px] bg-white/10 hidden md:block mx-1"></div>
 
+            {/* Comprehensive Guide Button (Desktop Only) */}
             <button 
               onClick={() => {
                 triggerHaptic(10);
                 setRunTour(true);
                 safeStorage.removeItem('tourCompleted');
               }}
-              className="flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300 gap-1.5 shadow-sm"
+              className="hidden sm:flex h-9 px-3 rounded-xl bg-white/[0.04] hover:bg-emerald-500/10 active:scale-95 border border-white/[0.08] hover:border-emerald-500/30 text-zinc-300 hover:text-emerald-300 transition-all items-center justify-center gap-1.5 shadow-sm"
               title="الدليل الشامل"
+              aria-label="الدليل الشامل"
             >
-              <BookOpen className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">الدليل</span>
+              <BookOpen className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-xs font-semibold">الدليل</span>
             </button>
             
+            {/* Install Button (PWA) (Desktop / Tablet) */}
             {showInstallBanner && !isStandalone && (
               <button 
                 onClick={handleInstall}
-                className="flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600/20 to-blue-500/10 border border-blue-500/30 text-blue-400 hover:text-blue-300 hover:bg-blue-500/20 transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.15)]"
-                title="تثبيت التطبيق"
+                className="hidden sm:flex h-9 px-3 rounded-xl bg-gradient-to-r from-blue-600/20 to-cyan-600/20 hover:from-blue-600/30 hover:to-cyan-600/30 active:scale-95 border border-blue-500/30 text-blue-300 hover:text-white transition-all items-center justify-center gap-1.5 shadow-sm"
+                title="تثبيت التطبيق على جهازك"
+                aria-label="تثبيت التطبيق"
               >
-                <Download className="w-4 h-4" />
-                <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline sm:mr-2">تثبيت</span>
+                <Download className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="text-xs font-semibold">تثبيت</span>
               </button>
             )}
-            
-            <div className="h-5 w-[1px] bg-white/10 mx-0.5 sm:mx-1"></div>
-            
+
+            {/* Refresh Button */}
             <button 
               onClick={() => {
                 triggerHaptic(10);
                 fetchData(true);
               }}
-              className={`flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`}
-              title="تحديث البيانات"
+              className="w-9 h-9 sm:w-auto sm:h-9 sm:px-3 rounded-xl bg-white/[0.04] hover:bg-emerald-500/15 active:scale-95 border border-white/[0.08] hover:border-emerald-500/30 text-zinc-300 hover:text-emerald-300 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+              title="تحديث البيانات لحظياً"
+              aria-label="تحديث البيانات"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline sm:mr-2">تحديث</span>
+              <RefreshCw className={`w-4 h-4 text-emerald-400 shrink-0 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="text-xs font-semibold hidden md:inline">تحديث</span>
             </button>
 
+            {/* More Menu */}
             <div className="relative" ref={moreMenuRef}>
               <button
                 id="more-menu-btn"
@@ -2062,31 +2086,64 @@ export default function App() {
                   triggerHaptic(10);
                   setShowMoreMenu(!showMoreMenu);
                 }}
-                className="flex items-center justify-center w-9 h-9 sm:w-auto sm:h-auto sm:px-4 sm:py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-300"
-                title="المزيد"
+                className="w-9 h-9 sm:w-9 sm:h-9 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:scale-95 border border-white/[0.08] hover:border-white/20 text-zinc-300 hover:text-white transition-all flex items-center justify-center shadow-sm"
+                title="المزيد من الخيارات"
+                aria-label="المزيد من الخيارات"
               >
-                <MoreVertical className="w-4 h-4" />
-                <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline sm:mr-1">المزيد</span>
+                <MoreVertical className="w-4 h-4 shrink-0" />
               </button>
 
               <AnimatePresence>
                 {showMoreMenu && (
                   <motion.div
-                    initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 15, scale: 0.95 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="absolute left-0 top-full mt-3 w-56 rounded-2xl glass-panel-heavy border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden z-50"
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="absolute left-0 top-full mt-2 w-64 rounded-2xl bg-[#0a0f1d]/95 backdrop-blur-2xl border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-1.5 z-50 overflow-hidden"
                   >
-                    <div className="py-2 flex flex-col">
+                    <div className="flex flex-col gap-0.5">
+                      {/* Guide item for Mobile */}
+                      <button
+                        onClick={() => {
+                          triggerHaptic(10);
+                          setShowMoreMenu(false);
+                          setRunTour(true);
+                          safeStorage.removeItem('tourCompleted');
+                        }}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <BookOpen className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">الدليل الشامل للتطبيق</span>
+                      </button>
+
+                      {showInstallBanner && !isStandalone && (
+                        <button
+                          onClick={() => {
+                            setShowMoreMenu(false);
+                            handleInstall();
+                          }}
+                          className="flex sm:hidden items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                            <Download className="w-4 h-4" />
+                          </div>
+                          <span className="font-semibold">تثبيت التطبيق على هاتفك</span>
+                        </button>
+                      )}
+
                       <button
                         id="export-pdf-btn"
                         onClick={handleOpenPdfModal}
                         disabled={isGeneratingPDF}
-                        className={`flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right ${isGeneratingPDF ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right ${isGeneratingPDF ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        <FileText className="w-4 h-4 text-blue-400" />
-                        <span className="font-semibold">{isGeneratingPDF ? 'جاري التحميل...' : 'طباعة PDF'}</span>
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">{isGeneratingPDF ? 'جاري التحميل...' : 'طباعة نشرة PDF'}</span>
                       </button>
 
                       <button
@@ -2095,9 +2152,11 @@ export default function App() {
                           setShowMoreMenu(false);
                           handleShare();
                         }}
-                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
                       >
-                        <Share2 className="w-4 h-4 text-emerald-400" />
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <Share2 className="w-4 h-4" />
+                        </div>
                         <span className="font-semibold">مشاركة التطبيق</span>
                       </button>
 
@@ -2107,13 +2166,15 @@ export default function App() {
                           setShowMoreMenu(false);
                           setCurrentPage('api');
                         }}
-                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
                       >
-                        <Code2 className="w-4 h-4 text-purple-400" />
-                        <span className="font-semibold">بوابة المطورين</span>
+                        <div className="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                          <Code2 className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">بوابة المطورين (API)</span>
                       </button>
 
-                      <div className="h-[1px] bg-white/10 my-1 mx-4"></div>
+                      <div className="h-px bg-white/[0.08] my-1 mx-2" />
 
                       <button
                         onClick={() => {
@@ -2121,24 +2182,29 @@ export default function App() {
                           setShowMoreMenu(false);
                           setCurrentPage('about');
                         }}
-                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
                       >
-                        <Info className="w-4 h-4 text-blue-400" />
+                        <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                          <Info className="w-4 h-4" />
+                        </div>
                         <span className="font-semibold">عن المنصة</span>
                       </button>
+
                       <button
                         onClick={() => {
                           triggerHaptic(10);
                           setShowMoreMenu(false);
                           setCurrentPage('contact');
                         }}
-                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
                       >
-                        <Mail className="w-4 h-4 text-emerald-400" />
-                        <span className="font-semibold">اتصل بنا</span>
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">اتصل بنا وملاحظاتك</span>
                       </button>
 
-                      <div className="h-[1px] bg-white/10 my-1 mx-4"></div>
+                      <div className="h-px bg-white/[0.08] my-1 mx-2" />
 
                       <button
                         id="notification-settings-btn"
@@ -2147,10 +2213,12 @@ export default function App() {
                           setShowMoreMenu(false);
                           setShowSettingsModal(true);
                         }}
-                        className="flex items-center gap-3 px-5 py-3.5 text-sm text-zinc-300 hover:text-white hover:bg-white/10 transition-colors w-full text-right"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
                       >
-                        <Settings2 className="w-4 h-4 text-zinc-400" />
-                        <span className="font-semibold">الإعدادات</span>
+                        <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-white/10 text-zinc-300 flex items-center justify-center shrink-0">
+                          <Settings2 className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">الإعدادات والتنبيهات</span>
                       </button>
                     </div>
                   </motion.div>
@@ -2280,38 +2348,52 @@ export default function App() {
               </button>
             </div>
 
-            {/* USD Checks Card */}
+            {/* USD Checks Card - المرتب والمحسن */}
             <div 
               onClick={() => setSelectedRate({ code: 'USD_CHECKS', name: 'دولار أمريكي (صكوك)', market: 'parallel' })}
-              className="mt-8 flex items-center gap-4 sm:gap-6 glass-panel premium-border rounded-3xl p-4 sm:p-5 w-full sm:w-fit hover-lift cursor-pointer group"
+              className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 glass-panel premium-border rounded-2xl sm:rounded-3xl p-4 sm:p-5 w-full sm:w-fit hover-lift cursor-pointer group"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-900/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
-                  <FlagIcon flagCode="us" name="دولار أمريكي (صكوك)" className="w-full h-full p-1.5" fallbackType="building" />
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                  <FileText className="w-5 h-5" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-zinc-400 font-semibold mb-1 tracking-wide">دولار (صكوك)</span>
-                  <div className="flex items-end gap-2">
-                    <span className="text-3xl font-light text-white font-mono leading-none tracking-tighter group-hover:text-emerald-400 transition-colors">{usdChecksRate.toFixed(2)}</span>
-                    <div className="pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-300 font-bold tracking-wide">دولار (صكوك)</span>
+                    {usdChecksRate > usdRate && (
+                      <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                        +{(usdChecksRate - usdRate).toFixed(2)} د.ل
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <span className="text-2xl sm:text-3xl font-light text-white font-mono leading-none tracking-tight group-hover:text-cyan-300 transition-colors">
+                      {usdChecksRate.toFixed(2)}
+                    </span>
+                    <span className="text-xs text-zinc-500 font-semibold">د.ل</span>
+                    <div className="flex items-center">
                       {usdChecksIsUp ? <ArrowUpRight className="w-4 h-4 text-rose-400" /> : usdChecksIsDown ? <ArrowDownRight className="w-4 h-4 text-emerald-400" /> : null}
                     </div>
                   </div>
-                  <LastChangedBadge date={rates?.lastChanged?.parallel["USD_CHECKS"]} className="mt-1.5 text-[9px] opacity-70" />
                 </div>
               </div>
-              <div className="w-px h-12 bg-white/10 mx-2"></div>
-              <div className="flex flex-col justify-center">
-                <span className="text-[10px] text-zinc-500 font-medium mb-1">السعر السابق</span>
-                <span className="text-xs text-zinc-300 font-mono font-medium tracking-wide" dir="ltr">{prevUsdChecksRate.toFixed(2)}</span>
+
+              <div className="flex items-center justify-between sm:justify-start gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 sm:border-r sm:border-white/10 sm:pr-4">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-zinc-500 font-medium">السعر السابق</span>
+                  <span className="text-xs text-zinc-300 font-mono font-medium tracking-wide" dir="ltr">{prevUsdChecksRate.toFixed(2)}</span>
+                </div>
+                
+                <LastChangedBadge date={rates?.lastChanged?.parallel["USD_CHECKS"]} className="text-[9px] opacity-70" />
+
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleShareCardImage('USD_CHECKS', 'دولار أمريكي (صكوك)', usdChecksRate, false); }}
+                  className="w-9 h-9 rounded-full bg-white/5 hover:bg-cyan-500/20 border border-white/10 hover:border-cyan-500/30 flex items-center justify-center text-zinc-400 hover:text-cyan-300 transition-all shadow-sm shrink-0"
+                  title="مشاركة الصورة"
+                >
+                  {isGeneratingShareImage && shareData?.code === 'USD_CHECKS' ? <div className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin"></div> : <Share2 className="w-3.5 h-3.5" />}
+                </button>
               </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleShareCardImage('USD_CHECKS', 'دولار أمريكي (صكوك)', usdChecksRate, false); }}
-                className="mr-auto w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all duration-300"
-                title="مشاركة الصورة"
-              >
-                {isGeneratingShareImage && shareData?.code === 'USD_CHECKS' ? <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div> : <Share2 className="w-4 h-4" />}
-              </button>
             </div>
 
             {rates?.lastUpdated && (
@@ -2419,6 +2501,7 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.foreign ? 'rotate-180' : ''}`} />
               </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
@@ -2463,6 +2546,7 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.checks ? 'rotate-180' : ''}`} />
               </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
@@ -2507,6 +2591,7 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.transfers ? 'rotate-180' : ''}`} />
               </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8">
               {(!rates || configTerms.length === 0) ? (
                 Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
@@ -2552,6 +2637,7 @@ export default function App() {
             <div className="w-8 h-8 rounded-full bg-slate-800/50 flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
               <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.official ? 'rotate-180' : ''}`} />
             </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6 lg:gap-8">
             {(!rates || dynamicCurrencies.length === 0) ? (
               Array(6).fill(0).map((_, i) => <RateSkeleton key={i} />)

@@ -3,8 +3,19 @@ var tgUrl = "https://t.me/libya_index_dollar";
 
 // Track real human browser click silently (does not show to visitor)
 try {
+  var payload = JSON.stringify({ referrer: document.referrer || "" });
+  var sent = false;
   if (navigator.sendBeacon) {
-    navigator.sendBeacon("/api/telegram-click", JSON.stringify({ referrer: document.referrer || "" }));
+    var blob = new Blob([payload], { type: "application/json" });
+    sent = navigator.sendBeacon("/api/telegram-click", blob);
+  }
+  if (!sent && typeof fetch === "function") {
+    fetch("/api/telegram-click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true
+    }).catch(function() {});
   }
 } catch (e) {}
 

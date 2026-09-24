@@ -639,13 +639,12 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
       if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
         try {
-          const [parallel, official, logs, changes, tgVisits, tgVisitsTodayRes] = await Promise.all([
+          const [parallel, official, logs, changes, tgRow] = await Promise.all([
             supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
             supabase.from('official_rates').select('*', { count: 'exact', head: true }),
             supabase.from('error_logs').select('*', { count: 'exact', head: true }),
             supabase.from('price_changes_log').select('*', { count: 'exact', head: true }),
-            supabase.from('telegram_visits').select('*', { count: 'exact', head: true }).eq('is_bot', 0),
-            supabase.from('telegram_visits').select('*', { count: 'exact', head: true }).eq('is_bot', 0).gte('created_at', `${todayStr}T00:00:00Z`)
+            supabase.from('telegram_visits').select('visits_count, last_entry_at').eq('id', 0).maybeSingle()
           ]);
           dbStats = {
             parallelRatesCount: parallel.count || 0,
@@ -653,11 +652,8 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
             errorLogsCount: logs.count || 0,
             priceChangesCount: changes.count || 0
           };
-          if (typeof tgVisits?.count === 'number') {
-            totalTelegramVisits = tgVisits.count;
-          }
-          if (typeof tgVisitsTodayRes?.count === 'number') {
-            telegramVisitsToday = tgVisitsTodayRes.count;
+          if (tgRow?.data && typeof tgRow.data.visits_count === 'number') {
+            totalTelegramVisits = tgRow.data.visits_count;
           }
         } catch (e) {
           console.error("Failed to fetch DB stats:", e);
@@ -705,8 +701,23 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
   router.get('/telegram-visits', async (req: express.Request, res: express.Response) => {
     try {
-      const row = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number} | undefined;
-      const count = row ? row.count : 0;
+      let count = 0;
+      let lastEntryAt: string | null = null;
+
+      if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+        try {
+          const { data: tgRow } = await supabase.from('telegram_visits').select('*').eq('id', 0).maybeSingle();
+          if (tgRow && typeof tgRow.visits_count === 'number') {
+            count = tgRow.visits_count;
+            lastEntryAt = tgRow.last_entry_at || tgRow.updated_at || null;
+          }
+        } catch (e) {}
+      }
+
+      if (count === 0) {
+        const row = db.prepare('SELECT count FROM telegram_counter WHERE id = 1').get() as {count: number} | undefined;
+        if (row && typeof row.count === 'number') count = row.count;
+      }
 
       let summary = { total_all: count, total_human: count, total_bots: 0 };
       let recent: any[] = [];
@@ -722,6 +733,10 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
         if (localSummary && localSummary.total_all > 0) {
           summary = localSummary;
+          if (count > summary.total_all) {
+            summary.total_all = count;
+            summary.total_human = count;
+          }
         }
 
         recent = db.prepare(`
@@ -731,7 +746,7 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
         `).all();
       } catch (visitErr) {}
 
-      res.json({ success: true, count, summary, recent });
+      res.json({ success: true, count, last_entry_at: lastEntryAt, summary, recent });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

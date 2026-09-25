@@ -3,7 +3,7 @@ import { rates, history } from '../state';
 import { appConfig } from '../config';
 import { logErrorArabic, logPriceChange, saveToSupabase, syncCheckRates } from './db.service';
 import { extractRatesWithAI } from './ai.service';
-import { broadcastOfficialRates, broadcastRateChanges, getOrInitTelegramManager } from './social.service';
+import { broadcastOfficialRates, broadcastRateChanges, getOrInitTelegramManager, lastBroadcastState } from './social.service';
 import { isSignificantChange, isProbablyDateOrTime } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
@@ -787,44 +787,52 @@ export async function processWhatsAppMessage(
         }
       }
 
-      // If price has significantly changed, apply update
-      if (isSignificantChange(currentVal, newVal)) {
-        console.log(`[WhatsApp Scraper] Real-time rate update: ${term.id} (${currentVal} -> ${newVal}) Source: ${chatName}`);
+      const lastBroadcast = (term.id && lastBroadcastState[term.id]) || (term.name && lastBroadcastState[term.name]);
+      const hoursSinceBroadcast = lastBroadcast?.time ? (Date.now() - lastBroadcast.time) / (1000 * 60 * 60) : 999;
+      const isPriceShift = isSignificantChange(currentVal, newVal);
+      const isStaleBroadcast = hoursSinceBroadcast >= 3 && (term.id === 'USD' || term.id === 'EUR' || term.id === 'USD_CHECKS');
+
+      // If price has significantly changed OR if it's been > 3 hours (or since yesterday) since last broadcast
+      if (isPriceShift || isStaleBroadcast) {
+        console.log(`[WhatsApp Scraper] Rate update: ${term.id} (${currentVal} -> ${newVal}) [Shift: ${isPriceShift}, Stale: ${isStaleBroadcast}, Hours: ${hoursSinceBroadcast.toFixed(1)}] Source: ${chatName}`);
 
         collectedUpdates.push({
           id: term.id,
           name: term.name,
-          oldVal: currentVal || newVal,
+          oldVal: lastBroadcast?.price ?? currentVal ?? newVal,
           newVal,
           flag: term.flag || 'ly'
         });
 
-        rates.previousParallel[term.id] = currentVal || newVal;
-        rates.parallel[term.id] = newVal;
-        rates.lastChanged.parallel[term.id] = new Date(msgTime).toISOString();
+        if (isPriceShift) {
+          rates.previousParallel[term.id] = currentVal || newVal;
+          rates.parallel[term.id] = newVal;
+          rates.lastChanged.parallel[term.id] = new Date(msgTime).toISOString();
+
+          updateStats(term.id, newVal);
+
+          history.push({
+            time: new Date().toISOString(),
+            usdParallel: rates.parallel.USD || newVal,
+            usdOfficial: rates.official.USD,
+            ratesParallel: { ...rates.parallel },
+            ratesOfficial: { ...rates.official }
+          });
+          if (history.length > 500) history.shift();
+
+          const changeLog = {
+            id: Math.random().toString(36).substring(2, 9),
+            currencyCode: term.id,
+            currencyName: term.name,
+            oldPrice: currentVal || 0,
+            newPrice: newVal,
+            source: `واتساب - ${chatName}`,
+            timestamp: new Date().toISOString()
+          };
+          await logPriceChange(changeLog);
+        }
+
         anyChanged = true;
-
-        updateStats(term.id, newVal);
-
-        history.push({
-          time: new Date().toISOString(),
-          usdParallel: rates.parallel.USD || newVal,
-          usdOfficial: rates.official.USD,
-          ratesParallel: { ...rates.parallel },
-          ratesOfficial: { ...rates.official }
-        });
-        if (history.length > 500) history.shift();
-
-        const changeLog = {
-          id: Math.random().toString(36).substring(2, 9),
-          currencyCode: term.id,
-          currencyName: term.name,
-          oldPrice: currentVal || 0,
-          newPrice: newVal,
-          source: `واتساب - ${chatName}`,
-          timestamp: new Date().toISOString()
-        };
-        await logPriceChange(changeLog);
       }
     }
 

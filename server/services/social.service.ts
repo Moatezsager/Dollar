@@ -135,20 +135,36 @@ function filterEligibleUpdates(
 ): { id?: string; name: string; oldVal: number; newVal: number; flag: string }[] {
   const now = Date.now();
   const ONE_HOUR_MS = 60 * 60 * 1000;
+  const THREE_HOURS_MS = 3 * ONE_HOUR_MS;
 
   return updates
     .filter(u => {
-      const diff = Math.abs(u.newVal - u.oldVal);
+      const lastEntry = (u.id && lastBroadcastState[u.id]) || (u.name && lastBroadcastState[u.name]);
+      const lastTime = lastEntry?.time || 0;
+      const lastPrice = lastEntry?.price ?? u.oldVal;
+
+      // ── شرط 0: انقطاع طويل (أكثر من 3 ساعات أو منذ أمس) ──────────────
+      // إذا مر وقت طويل دون أي منشور للمتابعين (مثل اليوم التالي)، والبيانات مستخرجة وطازجة،
+      // يتم اعتماد النشر لتزويد المتابعين بنشرة السوق المحدثة حتى لو كان السعر مستقراً.
+      if (lastTime === 0 || (now - lastTime) >= THREE_HOURS_MS) {
+        console.log(`[SmartBroadcast] 📢 Eligible "${u.name}": catch-up broadcast (last broadcast was ${lastTime === 0 ? 'never' : Math.floor((now - lastTime) / 3600000) + ' hours ago'})`);
+        return true;
+      }
+
+      const diffFromOld = Math.abs(u.newVal - u.oldVal);
+      const diffFromLastBroadcast = Math.abs(u.newVal - lastPrice);
+      const effectiveDiff = Math.max(diffFromOld, diffFromLastBroadcast);
 
       // ── شرط 1: حجم التغيير كبير بمفرده ──────────────────────────────────
       let isLargeChange = false;
       if (isPreciousMetal(u.id)) {
         // للمعادن: نسبة مئوية (0.5%) لأن سعرها في المئات أو الآلاف
-        const pct = u.oldVal > 0 ? diff / u.oldVal : 0;
+        const baseVal = lastPrice > 0 ? lastPrice : (u.oldVal > 0 ? u.oldVal : 1);
+        const pct = effectiveDiff / baseVal;
         isLargeChange = pct >= MIN_PRICE_CHANGE_PCT_PRECIOUS;
       } else {
         // للعملات العادية: فارق مطلق (0.02 د.ل)
-        isLargeChange = diff >= MIN_PRICE_CHANGE;
+        isLargeChange = effectiveDiff >= MIN_PRICE_CHANGE;
       }
 
       if (isLargeChange) {
@@ -156,17 +172,14 @@ function filterEligibleUpdates(
       }
 
       // ── شرط 2: تغير السعر فعلياً ومضت 60 دقيقة على الأقل منذ آخر نشر مؤكد ──
-      const lastEntry = (u.id && lastBroadcastState[u.id]) || (u.name && lastBroadcastState[u.name]);
-      const lastTime = lastEntry?.time || 0;
-      const hasChanged = u.newVal !== u.oldVal;
-
-      if (hasChanged && (lastTime === 0 || (now - lastTime) >= ONE_HOUR_MS)) {
+      const hasChanged = effectiveDiff > 0.0001;
+      if (hasChanged && (now - lastTime) >= ONE_HOUR_MS) {
         return true;
       }
 
-      const elapsedMin = lastTime > 0 ? Math.floor((now - lastTime) / 60000) : 0;
+      const elapsedMin = Math.floor((now - lastTime) / 60000);
       console.log(
-        `[SmartBroadcast] ⏳ Skipped "${u.name}": small change (${diff.toFixed(4)}) and only ${elapsedMin}m elapsed since last broadcast`
+        `[SmartBroadcast] ⏳ Skipped "${u.name}": small change (${effectiveDiff.toFixed(4)}) and only ${elapsedMin}m elapsed since last broadcast`
       );
       return false;
     })
@@ -783,7 +796,7 @@ export async function broadcastRateChanges(
     return;
   }
 
-  // If live broadcast from scraper, use Smart Debounce Buffer (60s) to aggregate rapid updates and prevent spam/flooding
+  // If live broadcast from scraper, use Smart Debounce Buffer (25s) to aggregate rapid updates and prevent spam/flooding
   for (const u of updates) {
     const key = u.id || u.name;
     const existing = broadcastQueue.get(key);
@@ -795,18 +808,17 @@ export async function broadcastRateChanges(
     }
   }
 
-  if (broadcastQueueTimer) {
-    clearTimeout(broadcastQueueTimer);
+  // Throttle timer: Do not reset if already running to guarantee timely dispatch (25s max wait)
+  if (!broadcastQueueTimer) {
+    broadcastQueueTimer = setTimeout(() => {
+      broadcastQueueTimer = null;
+      const batchedUpdates = Array.from(broadcastQueue.values());
+      broadcastQueue.clear();
+      if (batchedUpdates.length > 0) {
+        executeBroadcast(batchedUpdates, false, target).catch(e => console.error("[Smart Queue] Broadcast error:", e));
+      }
+    }, 25000); // 25-second aggregation buffer
   }
-
-  broadcastQueueTimer = setTimeout(() => {
-    broadcastQueueTimer = null;
-    const batchedUpdates = Array.from(broadcastQueue.values());
-    broadcastQueue.clear();
-    if (batchedUpdates.length > 0) {
-      executeBroadcast(batchedUpdates, false, target).catch(e => console.error("[Smart Queue] Broadcast error:", e));
-    }
-  }, 60000); // 60-second aggregation buffer
 }
 
 // ─── ترتيب مخصص لعرض العملات في نص الرسالة المنشورة ───────────────────────

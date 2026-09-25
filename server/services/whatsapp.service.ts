@@ -28,6 +28,17 @@ export interface WhatsAppServiceStatus {
   hasSavedSession: boolean;
 }
 
+export interface WhatsAppChatSummary {
+  id: string;
+  name: string;
+  type: 'channel' | 'group' | 'chat';
+  messagesCount: number;
+  lastMessageTime: string | null;
+  lastSnippet: string;
+  isReadable: boolean;
+  participantsCount?: number;
+}
+
 const AUTH_DIR = path.resolve(process.cwd(), 'whatsapp_auth');
 
 /**
@@ -166,6 +177,7 @@ class WhatsAppManager {
   private autoProcessEnabled = true;
   private activeChats = new Set<string>();
   private chatNamesCache = new Map<string, string>();
+  private knownChats = new Map<string, WhatsAppChatSummary>();
   private isInitializing = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
@@ -414,6 +426,56 @@ class WhatsAppManager {
       this.ratesExtractedCount += result.extractedCount;
       console.log(`[WhatsApp] Successfully extracted ${result.extractedCount} rates from chat "${chatName}"`);
     }
+
+    // Update known chat directory for diagnostic reporting
+    const isChannel = remoteJid.includes('@newsletter');
+    const isGroup = remoteJid.includes('@g.us');
+    const snippet = text.replace(/\s+/g, ' ').substring(0, 100);
+    const prev = this.knownChats.get(remoteJid);
+    this.knownChats.set(remoteJid, {
+      id: remoteJid,
+      name: chatName,
+      type: isChannel ? 'channel' : isGroup ? 'group' : 'chat',
+      messagesCount: (prev?.messagesCount || 0) + 1,
+      lastMessageTime: new Date(msgTime).toISOString(),
+      lastSnippet: snippet,
+      isReadable: true,
+      participantsCount: prev?.participantsCount
+    });
+  }
+
+  public async getReachableChats(): Promise<WhatsAppChatSummary[]> {
+    if (this.sock && this.status === 'connected') {
+      try {
+        const groups = await (this.sock as any).groupFetchAllParticipating();
+        if (groups) {
+          for (const jid in groups) {
+            const g = groups[jid];
+            const existing = this.knownChats.get(jid);
+            this.knownChats.set(jid, {
+              id: jid,
+              name: g.subject || existing?.name || 'مجموعة تجار أسعار',
+              type: 'group',
+              messagesCount: existing?.messagesCount || 0,
+              lastMessageTime: existing?.lastMessageTime || null,
+              lastSnippet: existing?.lastSnippet || 'متصل وقابل للقراءة بنجاح',
+              isReadable: true,
+              participantsCount: g.participants ? g.participants.length : undefined
+            });
+            if (g.subject) {
+              this.chatNamesCache.set(jid, g.subject);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[WhatsApp] groupFetchAllParticipating warning:', err);
+      }
+    }
+    return Array.from(this.knownChats.values()).sort((a, b) => {
+      const aTime = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+      const bTime = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+      return bTime - aTime;
+    });
   }
 
   /**

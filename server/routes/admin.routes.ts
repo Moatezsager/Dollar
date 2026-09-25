@@ -16,7 +16,9 @@ import {
   liveFeed,
   clearLiveFeed,
   lastSuccessfulScrape,
-  channelStatusTracker
+  channelStatusTracker,
+  lastOfficialFetchDate,
+  lastSuccessfulFetchTime
 } from '../services/scraper.service';
 import {
   cleanupOldData,
@@ -940,37 +942,147 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
           if (logs) recentErrors = logs;
           
           const pingStart = Date.now();
-          const [parallel, official, errorLogsQuery] = await Promise.all([
+          const [parallel, official, errorLogsQuery, priceChangesQuery] = await Promise.all([
             supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
             supabase.from('official_rates').select('*', { count: 'exact', head: true }),
-            supabase.from('error_logs').select('*', { count: 'exact', head: true })
+            supabase.from('error_logs').select('*', { count: 'exact', head: true }),
+            supabase.from('price_changes_log').select('*', { count: 'exact', head: true })
           ]);
           const ping_ms = Date.now() - pingStart;
           dbStats = {
             parallel_rates: parallel.count || 0,
             official_rates: official.count || 0,
             error_logs_count: errorLogsQuery.count || 0,
+            price_changes_count: priceChangesQuery.count || 0,
             ping_ms
           };
         } catch (e) {}
       }
 
+      // ─── Reachable Sources (Telegram + WhatsApp) ───
+      const telegramChannels = (appConfig.channels || []).map(ch => {
+        const clean = ch.replace('@', '').trim();
+        const tracker = channelStatusTracker[clean] || {
+          status: 'active',
+          last_post_time: 0,
+          messages_processed: 0,
+          last_scrape_attempt: 0
+        };
+        return {
+          id: `@${clean}`,
+          name: clean,
+          platform: 'telegram' as const,
+          type: 'channel',
+          status: tracker.status || 'active',
+          last_post_time: tracker.last_post_time ? new Date(tracker.last_post_time).toISOString() : null,
+          messages_processed: tracker.messages_processed || 0,
+          last_scrape_attempt: tracker.last_scrape_attempt ? new Date(tracker.last_scrape_attempt).toISOString() : null,
+          is_readable: true
+        };
+      });
+
+      let whatsappChats: any[] = [];
+      try {
+        whatsappChats = await whatsappManager.getReachableChats();
+      } catch (waErr) {
+        console.warn('Failed to get whatsapp chats for system report:', waErr);
+      }
+
+      // SQLite metrics
+      let sqliteSizeKb = 0;
+      let pushSubsCount = 0;
+      let totalMessagesDb = 0;
+      try {
+        const fs = await import('fs');
+        if (fs.existsSync('messages.db')) {
+          sqliteSizeKb = Math.round(fs.statSync('messages.db').size / 1024);
+        }
+        const pushRes = db.prepare('SELECT COUNT(*) as count FROM push_subscriptions').get() as any;
+        if (pushRes) pushSubsCount = pushRes.count || 0;
+        const msgRes = db.prepare('SELECT COUNT(*) as count FROM messages').get() as any;
+        if (msgRes) totalMessagesDb = msgRes.count || 0;
+      } catch (dbE) {}
+
+      const uptimeSec = Math.floor(process.uptime());
+      const uptimeDays = Math.floor(uptimeSec / 86400);
+      const uptimeHours = Math.floor((uptimeSec % 86400) / 3600);
+      const uptimeMins = Math.floor((uptimeSec % 3600) / 60);
+      const uptimeFormatted = `${uptimeDays > 0 ? uptimeDays + ' يوم و ' : ''}${uptimeHours} ساعة و ${uptimeMins} دقيقة`;
+
       const memory = process.memoryUsage();
+      const heapUsedMb = Math.round(memory.heapUsed / 1024 / 1024);
+      const heapTotalMb = Math.round(memory.heapTotal / 1024 / 1024);
+      const rssMb = Math.round(memory.rss / 1024 / 1024);
+      const heapUsagePct = heapTotalMb > 0 ? Math.round((heapUsedMb / heapTotalMb) * 100) : 0;
+
+      const waStatus = whatsappManager.getStatus();
+
+      // Overall health calculation
+      const isTgOk = !!activeClient;
+      const isWaOk = waStatus.status === 'connected';
+      const isDbOk = !dbStats || dbStats.ping_ms < 1500;
+      const isScraperOk = minutesSinceLastScrape <= 30;
+      let healthScore = 100;
+      if (!isTgOk) healthScore -= 20;
+      if (!isWaOk && waStatus.status !== 'scan_qr') healthScore -= 10;
+      if (!isScraperOk) healthScore -= 15;
+      if (!isDbOk) healthScore -= 15;
+      healthScore = Math.max(10, healthScore);
+
       const report = {
         generated_at: new Date().toISOString(),
+        overall_health: {
+          score: healthScore,
+          status: healthScore >= 80 ? 'healthy' : healthScore >= 60 ? 'warning' : 'critical',
+          status_arabic: healthScore >= 80 ? 'ممتاز ومستقر 🟢' : healthScore >= 60 ? 'تنبيه - أداء متوسط 🟡' : 'حرج - يتطلب تدخلاً 🔴'
+        },
         system_health: {
+          uptime_formatted: uptimeFormatted,
           uptime_hours: (process.uptime() / 3600).toFixed(2),
           server_start_time: serverStartTime.toISOString(),
           memory_mb: {
-            rss: Math.round(memory.rss / 1024 / 1024),
-            heap_total: Math.round(memory.heapTotal / 1024 / 1024),
-            heap_used: Math.round(memory.heapUsed / 1024 / 1024)
+            rss: rssMb,
+            heap_total: heapTotalMb,
+            heap_used: heapUsedMb,
+            heap_usage_percent: heapUsagePct
           },
-          node_version: process.version
+          node_version: process.version,
+          platform: process.platform,
+          architecture: process.arch
+        },
+        sources_directory: {
+          summary: {
+            total_reachable_sources: telegramChannels.length + whatsappChats.length,
+            telegram_channels_count: telegramChannels.length,
+            whatsapp_chats_count: whatsappChats.length,
+            active_telegram_count: telegramChannels.filter(c => c.status === 'active').length,
+            active_whatsapp_count: whatsappChats.length
+          },
+          telegram_channels: telegramChannels,
+          whatsapp_chats: whatsappChats.map(w => ({
+            id: w.id,
+            name: w.name,
+            platform: 'whatsapp' as const,
+            type: w.type,
+            messages_count: w.messagesCount,
+            last_message_time: w.lastMessageTime,
+            last_snippet: w.lastSnippet,
+            is_readable: w.isReadable,
+            participants_count: w.participantsCount
+          }))
         },
         database_status: {
-          supabase_connected: !!(supabase && process.env.VITE_SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY.includes('dummy')),
-          stats: dbStats
+          sqlite: {
+            connected: true,
+            file_size_kb: sqliteSizeKb,
+            journal_mode: 'WAL',
+            push_subscriptions_count: pushSubsCount,
+            visitor_messages_count: totalMessagesDb
+          },
+          supabase: {
+            connected: !!(supabase && process.env.VITE_SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY.includes('dummy')),
+            stats: dbStats
+          }
         },
         scraper_status: {
           last_successful_scrape: lastSuccessfulScrape.toISOString(),
@@ -979,8 +1091,29 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
           channels_count: appConfig.channels.length,
           terms_count: appConfig.terms.length
         },
+        central_bank_status: {
+          last_official_fetch_date: lastOfficialFetchDate || 'اليوم',
+          last_successful_fetch_time: lastSuccessfulFetchTime ? new Date(lastSuccessfulFetchTime).toISOString() : null,
+          usd_official: rates.official.USD || null,
+          eur_official: rates.official.EUR || null,
+          gbp_official: rates.official.GBP || null,
+          is_synced: !!rates.official.USD
+        },
         telegram_status: {
           is_authenticated: !!activeClient
+        },
+        whatsapp_status: {
+          status: waStatus.status,
+          phone: waStatus.phoneNumber,
+          user: waStatus.userName,
+          messages_count: waStatus.messagesReceivedCount,
+          rates_extracted: waStatus.ratesExtractedCount,
+          active_chats: waStatus.activeChatsCount
+        },
+        ai_engine: {
+          configured: !!process.env.GEMINI_API_KEY,
+          model: 'gemini-flash-latest',
+          status: process.env.GEMINI_API_KEY ? 'active' : 'unconfigured'
         },
         network_stats: {
           public_api_requests: deps.apiStats.public.totalRequests,
@@ -998,6 +1131,7 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
       res.json(report);
     } catch (e: any) {
+      console.error("System report generation failed:", e);
       res.status(500).json({ error: "Failed to generate system report", details: e.message });
     }
   });

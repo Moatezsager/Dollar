@@ -41,6 +41,7 @@ class WhatsAppManager {
   private ratesExtractedCount = 0;
   private autoProcessEnabled = true;
   private activeChats = new Set<string>();
+  private chatNamesCache = new Map<string, string>();
   private isInitializing = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
@@ -186,7 +187,7 @@ class WhatsAppManager {
 
       // Handle incoming messages
       this.sock.ev.on('messages.upsert', async (m) => {
-        if (!this.autoProcessEnabled || m.type !== 'notify') return;
+        if (!this.autoProcessEnabled) return;
 
         for (const msg of m.messages) {
           try {
@@ -211,12 +212,20 @@ class WhatsAppManager {
     if (!msg.message) return;
     if (msg.key.fromMe) return; // Ignore messages sent by the bot itself
 
-    // Extract text content
+    const mObj = msg.message;
+    // Extract text content from all possible WhatsApp message structures (including channels/newsletters)
     const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      msg.message.imageMessage?.caption ||
-      msg.message.videoMessage?.caption ||
+      mObj.conversation ||
+      mObj.extendedTextMessage?.text ||
+      mObj.imageMessage?.caption ||
+      mObj.videoMessage?.caption ||
+      mObj.documentMessage?.caption ||
+      (mObj as any)?.ephemeralMessage?.message?.extendedTextMessage?.text ||
+      (mObj as any)?.ephemeralMessage?.message?.conversation ||
+      (mObj as any)?.viewOnceMessage?.message?.extendedTextMessage?.text ||
+      (mObj as any)?.viewOnceMessage?.message?.conversation ||
+      (mObj as any)?.viewOnceMessageV2?.message?.extendedTextMessage?.text ||
+      (mObj as any)?.viewOnceMessageV2?.message?.conversation ||
       '';
 
     if (!text || text.trim().length < 4) return;
@@ -228,14 +237,22 @@ class WhatsAppManager {
     this.activeChats.add(remoteJid);
 
     // Determine chat name
-    let chatName = remoteJid.includes('@g.us')
-      ? 'مجموعة تجار'
-      : remoteJid.includes('@newsletter')
-      ? 'قناة واتساب'
-      : 'محادثة خاصة';
-
-    if (msg.pushName) {
-      chatName += ` (${msg.pushName})`;
+    let chatName = this.chatNamesCache.get(remoteJid);
+    if (!chatName) {
+      if (remoteJid.includes('@g.us')) {
+        chatName = 'مجموعة تجار';
+        if (this.sock) {
+          this.sock.groupMetadata(remoteJid).then(meta => {
+            if (meta?.subject) {
+              this.chatNamesCache.set(remoteJid, meta.subject);
+            }
+          }).catch(() => {});
+        }
+      } else if (remoteJid.includes('@newsletter')) {
+        chatName = msg.pushName ? `قناة ${msg.pushName}` : 'قناة أسعار واتساب';
+      } else {
+        chatName = msg.pushName ? `محادثة (${msg.pushName})` : 'محادثة خاصة';
+      }
     }
 
     // Convert message timestamp

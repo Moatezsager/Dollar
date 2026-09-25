@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
+import { db, supabase, supabaseAnonKey } from '../db';
 import { processWhatsAppMessage } from './scraper.service';
 import { logErrorArabic } from './db.service';
 
@@ -24,9 +25,132 @@ export interface WhatsAppServiceStatus {
   ratesExtractedCount: number;
   autoProcessEnabled: boolean;
   activeChatsCount: number;
+  hasSavedSession: boolean;
 }
 
 const AUTH_DIR = path.resolve(process.cwd(), 'whatsapp_auth');
+
+/**
+ * Backs up all session authentication files from disk to SQLite and Supabase
+ * so that session credentials survive any server reboot, container redeploy, or rebuild.
+ */
+export function backupAuthToStorage(): void {
+  try {
+    if (!fs.existsSync(AUTH_DIR)) return;
+    const files = fs.readdirSync(AUTH_DIR);
+    if (files.length === 0) return;
+
+    const bundle: Record<string, string> = {};
+    const upsertStmt = db.prepare('INSERT OR REPLACE INTO whatsapp_auth (filename, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    
+    db.transaction(() => {
+      for (const file of files) {
+        try {
+          const filePath = path.join(AUTH_DIR, file);
+          if (fs.statSync(filePath).isFile()) {
+            const content = fs.readFileSync(filePath, 'utf8');
+            upsertStmt.run(file, content);
+            bundle[file] = content;
+          }
+        } catch (e) {}
+      }
+      db.prepare('INSERT OR REPLACE INTO server_config (key, value) VALUES (?, ?)').run('whatsapp_session_backup', JSON.stringify(bundle));
+    })();
+
+    // Background sync to Supabase cloud storage (if configured)
+    if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+      supabase.from('server_config').upsert({
+        key: 'whatsapp_session_backup',
+        value: JSON.stringify(bundle)
+      }).then(() => {}).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[WhatsApp] Error backing up session files to DB:', err);
+  }
+}
+
+/**
+ * Restores session authentication files from SQLite / Supabase into the local auth folder.
+ */
+export async function restoreAuthFromStorage(): Promise<boolean> {
+  try {
+    if (!fs.existsSync(AUTH_DIR)) {
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
+    }
+
+    // 1. Try SQLite whatsapp_auth table
+    const rows = db.prepare('SELECT filename, content FROM whatsapp_auth').all() as { filename: string; content: string }[];
+    if (rows && rows.length > 0) {
+      console.log(`[WhatsApp] Restoring ${rows.length} session files from SQLite database...`);
+      for (const row of rows) {
+        fs.writeFileSync(path.join(AUTH_DIR, row.filename), row.content, 'utf8');
+      }
+      return true;
+    }
+
+    // 2. Try SQLite server_config bundle
+    const storedBackup = db.prepare('SELECT value FROM server_config WHERE key = ?').get('whatsapp_session_backup') as any;
+    if (storedBackup && storedBackup.value) {
+      try {
+        const bundle = JSON.parse(storedBackup.value) as Record<string, string>;
+        const keys = Object.keys(bundle);
+        if (keys.length > 0) {
+          console.log(`[WhatsApp] Restoring ${keys.length} session files from server_config backup...`);
+          for (const key of keys) {
+            fs.writeFileSync(path.join(AUTH_DIR, key), bundle[key], 'utf8');
+          }
+          return true;
+        }
+      } catch (e) {}
+    }
+
+    // 3. Try Supabase cloud storage
+    if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+      try {
+        const { data } = await supabase.from('server_config').select('value').eq('key', 'whatsapp_session_backup').maybeSingle();
+        if (data && data.value) {
+          const bundle = JSON.parse(data.value) as Record<string, string>;
+          const keys = Object.keys(bundle);
+          if (keys.length > 0) {
+            console.log(`[WhatsApp] Restoring ${keys.length} session files from Supabase cloud...`);
+            for (const key of keys) {
+              fs.writeFileSync(path.join(AUTH_DIR, key), bundle[key], 'utf8');
+            }
+            backupAuthToStorage();
+            return true;
+          }
+        }
+      } catch (sbErr) {
+        console.warn('[WhatsApp] Supabase restore check skipped/failed:', sbErr);
+      }
+    }
+
+    // 4. Check if files already exist on disk
+    if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+      backupAuthToStorage();
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.error('[WhatsApp] Error restoring auth from database:', err);
+    return false;
+  }
+}
+
+/**
+ * Checks if a saved WhatsApp session exists in disk, SQLite, or Supabase.
+ */
+export function hasSavedSession(): boolean {
+  if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) return true;
+  try {
+    const row = db.prepare('SELECT 1 FROM whatsapp_auth WHERE filename = ?').get('creds.json');
+    if (row) return true;
+    const backup = db.prepare('SELECT value FROM server_config WHERE key = ?').get('whatsapp_session_backup') as any;
+    if (backup && backup.value && backup.value.includes('creds.json')) return true;
+  } catch (e) {}
+  return false;
+}
 
 class WhatsAppManager {
   private sock: WASocket | null = null;
@@ -44,7 +168,8 @@ class WhatsAppManager {
   private chatNamesCache = new Map<string, string>();
   private isInitializing = false;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 10;
+  private reconnectTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     // Ensure auth directory exists
@@ -69,7 +194,8 @@ class WhatsAppManager {
       messagesReceivedCount: this.messagesReceivedCount,
       ratesExtractedCount: this.ratesExtractedCount,
       autoProcessEnabled: this.autoProcessEnabled,
-      activeChatsCount: this.activeChats.size
+      activeChatsCount: this.activeChats.size,
+      hasSavedSession: hasSavedSession()
     };
   }
 
@@ -79,13 +205,18 @@ class WhatsAppManager {
 
   public async initClient(): Promise<void> {
     if (this.isInitializing) {
-      console.log('[WhatsApp] Client is already initializing...');
+      console.log('[WhatsApp] Client is already initializing, skipping duplicate call.');
       return;
     }
 
     if (this.sock && this.status === 'connected') {
-      console.log('[WhatsApp] Already connected.');
+      console.log('[WhatsApp] Already actively connected.');
       return;
+    }
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
 
     this.isInitializing = true;
@@ -93,7 +224,11 @@ class WhatsAppManager {
     this.lastError = null;
 
     try {
-      console.log('[WhatsApp] Initializing Baileys client...');
+      console.log('[WhatsApp] Initializing Baileys client with multi-layer persistent session...');
+      
+      // Step 1: Restore existing session from SQLite/Supabase if needed
+      await restoreAuthFromStorage();
+
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
       const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({
         version: [2, 3000, 1015901307] as [number, number, number],
@@ -104,7 +239,15 @@ class WhatsAppManager {
 
       const logger = pino({ level: 'silent' });
 
-      // Instantiate socket
+      // Step 2: Clean up previous socket if exists before creating new one
+      if (this.sock) {
+        try {
+          this.sock.end(undefined);
+        } catch (e) {}
+        this.sock = null;
+      }
+
+      // Step 3: Instantiate socket
       const makeSocketFn = (makeWASocket as any).default || makeWASocket;
       this.sock = makeSocketFn({
         version,
@@ -113,22 +256,32 @@ class WhatsAppManager {
         auth: state,
         browser: ['Dinar Indicator', 'Chrome', '1.0.0'],
         syncFullHistory: false,
-        markOnlineOnConnect: false
+        markOnlineOnConnect: false,
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000,
+        retryRequestDelayMs: 2000
       });
 
       if (!this.sock) {
         throw new Error('Failed to create WhatsApp socket instance');
       }
 
-      // Handle credentials update
-      this.sock.ev.on('creds.update', saveCreds);
+      // Step 4: Handle credentials update and mirror to persistent SQLite & Supabase
+      this.sock.ev.on('creds.update', async () => {
+        try {
+          await saveCreds();
+          backupAuthToStorage();
+        } catch (err) {
+          console.error('[WhatsApp] Error in creds.update handler:', err);
+        }
+      });
 
-      // Handle connection updates
+      // Step 5: Handle connection updates
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log('[WhatsApp] New QR code generated.');
+          console.log('[WhatsApp] New QR code generated for pairing.');
           this.status = 'scan_qr';
           try {
             this.qrCodeUrl = await QRCode.toDataURL(qr, {
@@ -143,34 +296,26 @@ class WhatsAppManager {
 
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-          console.log(`[WhatsApp] Connection closed. Status code: ${statusCode}. Should reconnect: ${shouldReconnect}`);
+          console.log(`[WhatsApp] Connection closed. Status code: ${statusCode}. Preserving session in DB...`);
+
+          // Back up latest state before handling reconnect
+          backupAuthToStorage();
 
           this.status = 'disconnected';
           this.qrCodeUrl = null;
 
-          if (statusCode === DisconnectReason.loggedOut) {
-            console.log('[WhatsApp] Logged out. Clearing credentials...');
-            this.clearAuthFiles();
-            this.phoneNumber = null;
-            this.userName = null;
-            this.connectedAt = null;
-          } else if (shouldReconnect) {
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-              this.reconnectAttempts++;
-              const delay = Math.min(5000 * this.reconnectAttempts, 30000);
-              console.log(`[WhatsApp] Reconnecting in ${delay / 1000}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-              setTimeout(() => {
-                this.isInitializing = false;
-                this.initClient().catch(console.error);
-              }, delay);
-            } else {
-              this.lastError = 'فشل الاتصال المتكرر بواتساب. يرجى إعادة الربط.';
-              this.status = 'error';
-            }
-          }
+          // CRITICAL: NEVER delete auth files automatically on disconnect!
+          // Auto-reconnect with exponential backoff
+          const delay = Math.min(3000 * Math.max(1, this.reconnectAttempts + 1), 30000);
+          this.reconnectAttempts++;
+          console.log(`[WhatsApp] Will attempt stealth reconnection in ${delay / 1000}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+          
+          this.reconnectTimer = setTimeout(() => {
+            this.isInitializing = false;
+            this.initClient().catch(console.error);
+          }, delay);
         } else if (connection === 'open') {
-          console.log('[WhatsApp] Connection established successfully!');
+          console.log('[WhatsApp] Connection established successfully and persistent!');
           this.status = 'connected';
           this.qrCodeUrl = null;
           this.connectedAt = new Date().toISOString();
@@ -180,12 +325,15 @@ class WhatsAppManager {
           if (this.sock?.user) {
             this.phoneNumber = this.sock.user.id ? this.sock.user.id.split(':')[0] : null;
             this.userName = this.sock.user.name || null;
-            console.log(`[WhatsApp] Connected as: ${this.userName || 'Bot'} (${this.phoneNumber})`);
+            console.log(`[WhatsApp] Connected permanently as: ${this.userName || 'Bot'} (${this.phoneNumber})`);
           }
+
+          // Immediately mirror all session keys to SQLite and Supabase
+          backupAuthToStorage();
         }
       });
 
-      // Handle incoming messages
+      // Step 6: Handle incoming messages
       this.sock.ev.on('messages.upsert', async (m) => {
         if (!this.autoProcessEnabled) return;
 
@@ -268,10 +416,32 @@ class WhatsAppManager {
     }
   }
 
+  /**
+   * Graceful close on server shutdown: ends socket connection WITHOUT logging out
+   * so the session remains 100% valid on WhatsApp servers and database.
+   */
+  public closeOnly(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.sock) {
+      try {
+        console.log('[WhatsApp] Gracefully closing socket for server shutdown (preserving session credentials)...');
+        this.sock.end(undefined);
+        this.sock = null;
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Explicit manual disconnect: ONLY called when admin clicks "تسجيل الخروج وقطع الاتصال".
+   * This clears credentials from disk, SQLite, and Supabase.
+   */
   public async disconnect(): Promise<void> {
     try {
       if (this.sock) {
-        console.log('[WhatsApp] Disconnecting socket...');
+        console.log('[WhatsApp] Disconnecting socket upon explicit admin request...');
         await this.sock.logout().catch(() => {});
         this.sock.end(undefined);
         this.sock = null;
@@ -279,7 +449,7 @@ class WhatsAppManager {
     } catch (e) {
       console.warn('[WhatsApp] Error during socket logout:', e);
     } finally {
-      this.clearAuthFiles();
+      this.clearAuthFilesAndDb();
       this.status = 'disconnected';
       this.qrCodeUrl = null;
       this.phoneNumber = null;
@@ -287,11 +457,12 @@ class WhatsAppManager {
       this.connectedAt = null;
       this.lastError = null;
       this.reconnectAttempts = 0;
-      console.log('[WhatsApp] Disconnected and session cleared.');
+      console.log('[WhatsApp] Disconnected and session cleared permanently by admin.');
     }
   }
 
-  private clearAuthFiles(): void {
+  private clearAuthFilesAndDb(): void {
+    // 1. Clear disk files
     if (fs.existsSync(AUTH_DIR)) {
       try {
         const files = fs.readdirSync(AUTH_DIR);
@@ -299,8 +470,19 @@ class WhatsAppManager {
           fs.unlinkSync(path.join(AUTH_DIR, file));
         }
       } catch (err) {
-        console.error('[WhatsApp] Failed to clear auth files:', err);
+        console.error('[WhatsApp] Failed to clear auth files on disk:', err);
       }
+    }
+    // 2. Clear SQLite database
+    try {
+      db.prepare('DELETE FROM whatsapp_auth').run();
+      db.prepare('DELETE FROM server_config WHERE key = ?').run('whatsapp_session_backup');
+    } catch (dbErr) {
+      console.error('[WhatsApp] Failed to clear auth files in SQLite:', dbErr);
+    }
+    // 3. Clear Supabase cloud storage
+    if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+      supabase.from('server_config').delete().eq('key', 'whatsapp_session_backup').then(() => {}).catch(() => {});
     }
   }
 }

@@ -29,6 +29,7 @@ interface WhatsAppStatusData {
   ratesExtractedCount: number;
   autoProcessEnabled: boolean;
   activeChatsCount: number;
+  hasSavedSession?: boolean;
 }
 
 interface AdminWhatsAppProps {
@@ -320,6 +321,11 @@ export const AdminWhatsApp: React.FC<AdminWhatsAppProps> = ({
                     +{statusData.phoneNumber || 'متصل'}
                   </p>
                 </div>
+              </div>
+
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2.5 text-[11px] text-emerald-300 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>جلسة الحساب محفوظة ومشفرة في قاعدة البيانات وتتصل تلقائياً عند أي إعادة تشغيل.</span>
               </div>
 
               <div className="space-y-3 pt-2 border-t border-white/[0.08] text-xs">

@@ -100,7 +100,7 @@ import {
   sendPushNotificationToAll, 
   sendRetentionPushNotifications 
 } from './server/services/push.service';
-import { whatsappManager } from './server/services/whatsapp.service';
+import { whatsappManager, hasSavedSession } from './server/services/whatsapp.service';
 import { 
   obfuscateData, 
   isSignificantChange, 
@@ -1855,11 +1855,10 @@ async function startServer() {
       }
     }, 10 * 60 * 1000);
 
-    // Auto-reconnect WhatsApp if previously authenticated
+    // Auto-reconnect WhatsApp if previously authenticated (stored permanently in SQLite/Supabase/Disk)
     try {
-      const authCredsPath = path.resolve(process.cwd(), 'whatsapp_auth', 'creds.json');
-      if (fs.existsSync(authCredsPath)) {
-        console.log('[WhatsApp] Found existing session credentials. Auto-connecting...');
+      if (hasSavedSession()) {
+        console.log('[WhatsApp] Found permanent session credentials in SQLite/Supabase. Auto-connecting...');
         whatsappManager.initClient().catch(err => {
           console.warn('[WhatsApp] Auto-connection on boot failed:', err);
         });
@@ -1887,10 +1886,18 @@ async function startMonitoring() {
   // Reduced frequency to avoid connection conflicts
   setInterval(async () => {
      try {
-       // Only attempt if not already connected
+       // Telegram check
        if (!activeClient || !activeClient.connected) {
          console.log("[Reconnector] Telegram disconnected or not initialized, attempting reconnect...");
          await initializeTelegram();
+       }
+       // WhatsApp stealth reconnect check
+       if (hasSavedSession()) {
+         const waStatus = whatsappManager.getStatus();
+         if (waStatus.status !== 'connected' && waStatus.status !== 'connecting') {
+           console.log("[Reconnector] WhatsApp session saved but not connected, attempting reconnect...");
+           whatsappManager.initClient().catch(() => {});
+         }
        }
      } catch (e) {
        console.warn("[Reconnector] Stealth reconnection failed, will retry next cycle.");
@@ -1902,6 +1909,8 @@ async function startMonitoring() {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received. Shutting down gracefully...');
   
+  whatsappManager.closeOnly();
+
   if (activeClient) {
     try {
       console.log('Disconnecting Telegram Client...');
@@ -1914,6 +1923,8 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   console.log('SIGINT received. Shutting down gracefully...');
   
+  whatsappManager.closeOnly();
+
   if (activeClient) {
     try {
       console.log('Disconnecting Telegram Client...');

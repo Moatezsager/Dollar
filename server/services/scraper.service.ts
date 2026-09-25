@@ -691,3 +691,177 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
     return null;
   }
 }
+
+/**
+ * Processes incoming real-time messages from WhatsApp channels or dealer groups.
+ * Implements identical validation, sanity checks, and consensus rules as Telegram.
+ */
+export async function processWhatsAppMessage(
+  chatName: string,
+  rawText: string,
+  msgTime: number
+): Promise<{ processed: boolean; extractedCount: number; rates?: { code: string; value: number }[] }> {
+  try {
+    // 1. Time boundary check: message must be from today in Libya (GMT+2)
+    const nowTime = new Date();
+    const libyaTime = new Date(nowTime.getTime() + (2 * 60 * 60 * 1000));
+    const startOfTodayLibya = new Date(Date.UTC(
+      libyaTime.getUTCFullYear(),
+      libyaTime.getUTCMonth(),
+      libyaTime.getUTCDate(),
+      0, 0, 0, 0
+    )).getTime() - (2 * 60 * 60 * 1000);
+
+    if (msgTime < startOfTodayLibya) {
+      return { processed: false, extractedCount: 0 };
+    }
+
+    // 2. Extract rates using regex rules (Gold is handled manually by Admin)
+    let extracted = extractRatesFromText(rawText).filter(r => !r.code.startsWith('GOLD_') && r.code !== 'GOLD');
+
+    // 3. Fallback to AI extraction if currency keywords exist and text is suitable
+    const hasCurrencyKeywords = /(?:يورو|دولار|باوند|دينار|EUR|USD|GBP|TND|TRY|EGP|صك|صكوك|شيك)/i.test(rawText);
+    if (hasCurrencyKeywords && rawText.length > 10 && rawText.length < 800) {
+      try {
+        const aiExtracted = await extractRatesWithAI(rawText, `واتساب - ${chatName}`);
+        if (aiExtracted.length > 0) {
+          const merged = [...extracted];
+          for (const aiRate of aiExtracted) {
+            if (aiRate.code.startsWith('GOLD_') || aiRate.code === 'GOLD') continue;
+            const existingIdx = merged.findIndex(r => r.code === aiRate.code);
+            if (existingIdx >= 0) {
+              merged[existingIdx] = aiRate;
+            } else {
+              merged.push(aiRate);
+            }
+          }
+          extracted = merged.filter(r => !r.code.startsWith('GOLD_') && r.code !== 'GOLD');
+        }
+      } catch (aiErr) {
+        console.warn('[WhatsApp Scraper] AI extraction fallback warning:', aiErr);
+      }
+    }
+
+    // 4. Record to Live Feed Audit Trail
+    const feedMsg: LiveFeedMessage = {
+      id: Math.random().toString(36).substring(2, 11),
+      channel: `واتساب: ${chatName}`,
+      text: rawText,
+      time: msgTime,
+      status: extracted.length > 0 ? 'processed' : 'skipped',
+      extractedRates: extracted
+    };
+    liveFeed.unshift(feedMsg);
+    if (liveFeed.length > 100) liveFeed = liveFeed.slice(0, 100);
+
+    if (extracted.length === 0) {
+      return { processed: true, extractedCount: 0 };
+    }
+
+    // 5. Validate extracted rates against sanity boundaries & max deviation
+    const collectedUpdates: { id?: string; name: string; oldVal: number; newVal: number; flag: string }[] = [];
+    let anyChanged = false;
+
+    for (const res of extracted) {
+      const term = appConfig.terms.find(t => t.id === res.code);
+      if (!term) continue;
+
+      const currentVal = rates.parallel[term.id];
+      const newVal = res.value;
+
+      // Check min/max boundary
+      if (newVal < term.min || newVal > term.max) {
+        console.warn(`[WhatsApp Scraper] Rate ${res.code} (${newVal}) outside boundaries [${term.min}, ${term.max}], rejected.`);
+        continue;
+      }
+
+      // Check sudden spike deviation (max 25% for USD/EUR, 100% for TND/EGP)
+      if (currentVal !== undefined && currentVal > 0) {
+        const deviation = Math.abs(newVal - currentVal) / currentVal;
+        const allowedDeviation = (term.id === 'TND' || term.id === 'EGP') ? 1.0 : 0.25;
+        if (deviation > allowedDeviation) {
+          const msg = `تم رفض تحديث سعر ${term.name} (${term.id}) من واتساب (${chatName}) بسبب قفزة غير منطقية من ${currentVal} إلى ${newVal} (تغيير بنسبة ${(deviation * 100).toFixed(1)}%)`;
+          console.warn(`[WhatsApp Scraper] ${msg}`);
+          await logErrorArabic(msg, 'حماية بيانات واتساب');
+          continue;
+        }
+      }
+
+      // If price has significantly changed, apply update
+      if (isSignificantChange(currentVal, newVal)) {
+        console.log(`[WhatsApp Scraper] Real-time rate update: ${term.id} (${currentVal} -> ${newVal}) Source: ${chatName}`);
+
+        collectedUpdates.push({
+          id: term.id,
+          name: term.name,
+          oldVal: currentVal || newVal,
+          newVal,
+          flag: term.flag || 'ly'
+        });
+
+        rates.previousParallel[term.id] = currentVal || newVal;
+        rates.parallel[term.id] = newVal;
+        rates.lastChanged.parallel[term.id] = new Date(msgTime).toISOString();
+        anyChanged = true;
+
+        updateStats(term.id, newVal);
+
+        history.push({
+          time: new Date().toISOString(),
+          usdParallel: rates.parallel.USD || newVal,
+          usdOfficial: rates.official.USD,
+          ratesParallel: { ...rates.parallel },
+          ratesOfficial: { ...rates.official }
+        });
+        if (history.length > 500) history.shift();
+
+        const changeLog = {
+          id: Math.random().toString(36).substring(2, 9),
+          currencyCode: term.id,
+          currencyName: term.name,
+          oldPrice: currentVal || 0,
+          newPrice: newVal,
+          source: `واتساب - ${chatName}`,
+          timestamp: new Date().toISOString()
+        };
+        await logPriceChange(changeLog);
+      }
+    }
+
+    if (anyChanged) {
+      rates.lastUpdated = new Date().toISOString();
+      lastSuccessfulFetchTime = Date.now();
+      await saveToSupabase();
+
+      // Check if USD changed and sync bank checks accordingly
+      const usdUpdate = collectedUpdates.find(u => u.id === 'USD');
+      if (usdUpdate) {
+        try {
+          const checkPrice = await syncCheckRates(usdUpdate.newVal);
+          if (checkPrice !== null) {
+            collectedUpdates.push({
+              id: 'USD_CHECKS',
+              name: 'دولار أمريكي (صكوك)',
+              oldVal: rates.previousParallel['USD_CHECKS'] ?? checkPrice,
+              newVal: checkPrice,
+              flag: 'us'
+            });
+          }
+        } catch (syncErr) {
+          console.error('[WhatsApp Scraper] Error syncing check rates:', syncErr);
+        }
+      }
+
+      // Broadcast changes across channels if needed
+      if (collectedUpdates.length > 0) {
+        broadcastRateChanges(collectedUpdates).catch(e => console.error('[WhatsApp Scraper] Broadcast error:', e));
+      }
+    }
+
+    return { processed: true, extractedCount: extracted.length, rates: extracted };
+  } catch (err: any) {
+    console.error('[WhatsApp Scraper] Error processing message:', err);
+    await logErrorArabic(`خطأ في معالجة رسالة واتساب: ${err?.message || err}`, 'واتساب');
+    return { processed: false, extractedCount: 0 };
+  }
+}

@@ -100,6 +100,7 @@ import {
   sendPushNotificationToAll, 
   sendRetentionPushNotifications 
 } from './server/services/push.service';
+import { whatsappManager } from './server/services/whatsapp.service';
 import { 
   obfuscateData, 
   isSignificantChange, 
@@ -1853,6 +1854,19 @@ async function startServer() {
         console.error("[Auto-Refresh] Error during automatic update:", err);
       }
     }, 10 * 60 * 1000);
+
+    // Auto-reconnect WhatsApp if previously authenticated
+    try {
+      const authCredsPath = path.resolve(process.cwd(), 'whatsapp_auth', 'creds.json');
+      if (fs.existsSync(authCredsPath)) {
+        console.log('[WhatsApp] Found existing session credentials. Auto-connecting...');
+        whatsappManager.initClient().catch(err => {
+          console.warn('[WhatsApp] Auto-connection on boot failed:', err);
+        });
+      }
+    } catch (waBootErr) {
+      console.warn('[WhatsApp] Boot check warning:', waBootErr);
+    }
 
     // Keep-alive ping for Render Free Tier (pings itself every 4 minutes)
     // This combined with external cron-job.org ensures 24/7 uptime

@@ -1855,17 +1855,20 @@ async function startServer() {
       }
     }, 10 * 60 * 1000);
 
-    // Auto-reconnect WhatsApp if previously authenticated (stored permanently in SQLite/Supabase/Disk)
-    try {
-      if (hasSavedSession()) {
-        console.log('[WhatsApp] Found permanent session credentials in SQLite/Supabase. Auto-connecting...');
-        whatsappManager.initClient().catch(err => {
-          console.warn('[WhatsApp] Auto-connection on boot failed:', err);
-        });
+    // Auto-reconnect WhatsApp if previously authenticated in Supabase cloud
+    (async () => {
+      try {
+        await loadConfigFromSupabase();
+        if (hasSavedSession()) {
+          console.log('[WhatsApp] Found permanent session credentials in Supabase cloud. Auto-connecting...');
+          await whatsappManager.initClient();
+        } else {
+          console.log('[WhatsApp] No saved session in Supabase cloud. Awaiting user QR pairing in admin panel.');
+        }
+      } catch (waBootErr) {
+        console.warn('[WhatsApp] Boot check warning:', waBootErr);
       }
-    } catch (waBootErr) {
-      console.warn('[WhatsApp] Boot check warning:', waBootErr);
-    }
+    })();
 
     // Keep-alive ping for Render Free Tier (pings itself every 4 minutes)
     // This combined with external cron-job.org ensures 24/7 uptime

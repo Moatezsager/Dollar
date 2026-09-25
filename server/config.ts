@@ -1,6 +1,8 @@
 import { AppConfig } from './types';
 import { TelegramManager } from '../telegramClient';
 import { db, supabase, supabaseAnonKey } from './db';
+import fs from 'fs';
+import path from 'path';
 
 export let appConfig: AppConfig = {
   channels: ["dollarr_ly", "musheermarket", "lydollar", "suqalmushir"],
@@ -53,10 +55,23 @@ export let appConfig: AppConfig = {
 };
 
 export function updateAppConfig(newConfig: Partial<AppConfig>) {
+  const preservedTelegram = appConfig.telegramSessionString;
+  const preservedTelegramApiId = appConfig.telegramApiId;
+  const preservedTelegramApiHash = appConfig.telegramApiHash;
+  const preservedFbToken = appConfig.facebookAccessToken;
+  const preservedWhatsappAuth = appConfig.whatsappAuth;
+
   for (const key of Object.keys(appConfig)) {
     delete (appConfig as any)[key];
   }
   Object.assign(appConfig, newConfig);
+
+  // Preserve critical authentication credentials
+  if (!appConfig.telegramSessionString && preservedTelegram) appConfig.telegramSessionString = preservedTelegram;
+  if (!appConfig.telegramApiId && preservedTelegramApiId) appConfig.telegramApiId = preservedTelegramApiId;
+  if (!appConfig.telegramApiHash && preservedTelegramApiHash) appConfig.telegramApiHash = preservedTelegramApiHash;
+  if (!appConfig.facebookAccessToken && preservedFbToken) appConfig.facebookAccessToken = preservedFbToken;
+  if (!appConfig.whatsappAuth && preservedWhatsappAuth) appConfig.whatsappAuth = preservedWhatsappAuth;
 }
 
 export let telegramManager: TelegramManager | null = null;
@@ -155,6 +170,22 @@ export async function loadConfigFromSupabase() {
       }
     } else if (data && data.config) {
       applyLoadedConfig(data.config as AppConfig, "Supabase");
+
+      // Auto-unpack WhatsApp credentials from Supabase cloud into local directory
+      if (data.config.whatsappAuth && Object.keys(data.config.whatsappAuth).length > 0) {
+        try {
+          const authDir = path.resolve(process.cwd(), 'whatsapp_auth');
+          if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+          for (const [filename, content] of Object.entries(data.config.whatsappAuth)) {
+            if (typeof content === 'string') {
+              fs.writeFileSync(path.join(authDir, filename), content, 'utf8');
+            }
+          }
+          console.log(`[Config] Restored ${Object.keys(data.config.whatsappAuth).length} WhatsApp session files from Supabase app_config!`);
+        } catch (waErr) {
+          console.error("[Config] Error unpacking WhatsApp auth from Supabase:", waErr);
+        }
+      }
       
       try {
         db.prepare(`

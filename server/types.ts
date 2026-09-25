@@ -48,6 +48,7 @@ export interface AppConfig {
   facebookPageId?: string;
   facebookAccessToken?: string;
   facebookAutoPost?: boolean;
+  whatsappAuth?: Record<string, string>;
   apiConfig?: {
     enabled: boolean;
     rateLimitWindowMs: number;

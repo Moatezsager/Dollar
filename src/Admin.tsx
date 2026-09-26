@@ -12,6 +12,7 @@ import { AdminTools } from "./components/AdminTools";
 import { AdminBroadcastLog } from "./components/AdminBroadcastLog";
 import { TelegramVisitsCard } from "./components/TelegramVisitsCard";
 import { AdminWhatsApp } from "./components/AdminWhatsApp";
+import { AdminWeeklyHarvest } from "./components/AdminWeeklyHarvest";
 import { motion, AnimatePresence } from "motion/react";
 import { Settings, Check, Edit2, Save, Plus, Trash2, ArrowRight, ShieldCheck, LogOut, X, Lock, Activity, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, ArrowUpRight, ArrowDownRight, CheckCircle2, RefreshCw, Layers, Globe, Zap, Search, ChevronDown, ChevronUp, Clock, Info, Building2, Coins, Send, Building, TrendingUp, Stethoscope, ListX, Trash, LayoutDashboard, Menu, BarChart3, Bell, Shield, Database, Link, Copy, Code2, Download, Pause, Play, Filter, XCircle, AlertCircle, Mail, MessageSquare, DownloadCloud, Sparkles, Monitor, Smartphone, Layout, Wifi, AppWindow , MapPin , LineChart, Radio } from 'lucide-react';
 import { format, formatDistanceToNow } from "date-fns";
@@ -201,7 +202,7 @@ export default function Admin() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'weekly-harvest'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAuthorizedDevice, setIsAuthorizedDevice] = useState(true);
 
@@ -271,6 +272,7 @@ export default function Admin() {
     {
       group: 'البيانات والسجلات',
       items: [
+        { id: 'weekly-harvest', label: 'حصاد الأسبوع (توليد الصور)', icon: BarChart3 },
         { id: 'database', label: 'الأسعار السابقة', icon: Database },
         { id: 'changes', label: 'حركة الأسعار', icon: HistoryIcon },
         { id: 'messages', label: 'رسائل الزوار', icon: Mail },
@@ -1145,6 +1147,10 @@ export default function Admin() {
                 </div>
               </section>
             </motion.div>
+          )}
+
+          {activeTab === 'weekly-harvest' && (
+            <AdminWeeklyHarvest token={token} config={config} setError={setError} setSuccess={setSuccess} />
           )}
 
           {activeTab === 'messages' && <AdminMessages token={token} />}

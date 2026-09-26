@@ -21,37 +21,31 @@ export function FlagIcon({ flagCode, name, className = "w-5 h-5", fallbackType =
 
   if (isGold) {
     return (
-      <div className={`${className} rounded-full flex items-center justify-center overflow-hidden border border-yellow-500/30 shadow-[0_0_15px_rgba(234,179,8,0.2)] relative group/flag bg-gradient-to-br from-yellow-100 via-yellow-500 to-yellow-700 flex-shrink-0`}>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(255,255,255,0.6)_0%,_transparent_60%)]"></div>
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2/3 h-2/3 relative z-10 text-white drop-shadow-md">
-          <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" fill="url(#goldGradient)" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M15.5 9.5C15.5 9.5 14 7 12 7C10 7 8.5 9.5 8.5 9.5M8.5 14.5C8.5 14.5 10 17 12 17C14 17 15.5 14.5 15.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          <path d="M12 5V19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          <defs>
-            <linearGradient id="goldGradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#FDE047" />
-              <stop offset="1" stopColor="#A16207" />
-            </linearGradient>
-          </defs>
-        </svg>
+      <div className={`${className} rounded-full overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-amber-500/10 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.25)]`}>
+        <img
+          src="/gold.png"
+          alt="ذهب"
+          className="w-full h-full object-contain p-0.5"
+          onError={(e) => {
+            (e.target as HTMLElement).style.display = 'none';
+          }}
+        />
       </div>
     );
   }
 
   if (isSilver) {
     return (
-      <div className={`${className} rounded-full flex items-center justify-center overflow-hidden border border-slate-300/30 shadow-[0_0_15px_rgba(148,163,184,0.2)] relative group/flag bg-gradient-to-br from-slate-100 via-slate-400 to-slate-600 flex-shrink-0`}>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_rgba(255,255,255,0.7)_0%,_transparent_60%)]"></div>
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-2/3 h-2/3 relative z-10 text-white drop-shadow-md">
-          <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" fill="url(#silverGradient)" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M12 7L15 12L12 17L9 12L12 7Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-          <defs>
-            <linearGradient id="silverGradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#F8FAFC" />
-              <stop offset="1" stopColor="#475569" />
-            </linearGradient>
-          </defs>
-        </svg>
+      <div className={`${className} rounded-full overflow-hidden border border-slate-300/40 shadow-[0_0_12px_rgba(203,213,225,0.25)] relative group/flag flex-shrink-0 bg-slate-900`}>
+        <img
+          src="/silver-icon.jpg"
+          alt="فضة"
+          className="w-full h-full object-cover scale-110"
+          onError={(e) => {
+            (e.target as HTMLElement).style.display = 'none';
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-400/20 to-transparent pointer-events-none"></div>
       </div>
     );
   }

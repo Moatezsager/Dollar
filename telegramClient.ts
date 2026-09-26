@@ -1,5 +1,6 @@
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions";
+import { CustomFile } from "telegram/client/uploads";
 
 export class TelegramManager {
   private client: TelegramClient | null = null;
@@ -262,6 +263,66 @@ export class TelegramManager {
         this.client = null;
         activeClient = null;
       }
+      return false;
+    }
+  }
+
+  /**
+   * Sends a file/image to a Telegram channel or 'me' (Saved Messages).
+   */
+  public async sendFile(
+    channelUsername: string,
+    fileBuffer: Buffer,
+    options?: { caption?: string; filename?: string; parseMode?: 'md' | 'html' }
+  ): Promise<boolean> {
+    const client = await this.getClient();
+    if (!client) {
+      this.lastError = "تعذر الاتصال بحساب تيليجرام";
+      return false;
+    }
+
+    try {
+      this.lastError = "";
+      let targetEntity: any = 'me';
+
+      if (channelUsername && channelUsername !== 'me') {
+        let username = channelUsername.trim();
+        if (username.includes('t.me/')) {
+          username = username.split('t.me/')[1].split('/')[0].split('?')[0];
+        }
+        username = username.replace('@', '').trim();
+        try {
+          targetEntity = await client.getEntity(username);
+        } catch (e) {
+          try {
+            const resolved = await client.invoke(new Api.contacts.ResolveUsername({ username }));
+            if (resolved.chats && resolved.chats.length > 0) {
+              targetEntity = resolved.chats[0];
+            } else if (resolved.users && resolved.users.length > 0) {
+              targetEntity = resolved.users[0];
+            } else {
+              targetEntity = username;
+            }
+          } catch (resolveErr) {
+            targetEntity = username;
+          }
+        }
+      }
+
+      const filename = options?.filename || 'weekly-harvest.png';
+      const customFile = new CustomFile(filename, fileBuffer.length, '', fileBuffer);
+
+      await client.sendFile(targetEntity, {
+        file: customFile,
+        caption: options?.caption || '',
+        parseMode: options?.parseMode || 'md',
+      });
+
+      console.log(`[TelegramManager] Successfully sent file to ${channelUsername}`);
+      return true;
+    } catch (error: any) {
+      this.lastError = error.message || String(error);
+      console.error(`[TelegramManager] Error sending file to ${channelUsername}:`, this.lastError);
       return false;
     }
   }

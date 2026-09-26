@@ -1870,12 +1870,10 @@ async function startServer() {
       }
     })();
 
-    // Keep-alive ping for Render Free Tier (pings itself every 4 minutes)
-    // This combined with external cron-job.org ensures 24/7 uptime
+    // Keep-alive ping for Render / Cloud Run (pings internal localhost to avoid 302 preview redirects)
     setInterval(() => {
-      const publicUrl = process.env.APP_URL || `http://localhost:${PORT}`;
-      const url = `${publicUrl}/api/health`;
-      console.log(`[Keep-Alive] Pinging ${url} to prevent hibernation...`);
+      const url = `http://127.0.0.1:${PORT}/api/health`;
+      console.log(`[Keep-Alive] Pinging ${url} to keep server healthy...`);
       fetch(url).catch(() => {});
     }, 4 * 60 * 1000);
   });

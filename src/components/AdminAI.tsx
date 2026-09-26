@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Zap, 
@@ -30,6 +30,42 @@ const GOLD_METAL_IDS = [
   "SILVER_CAST_1000"
 ];
 
+// Fallback metadata for all parallel currencies and instruments
+const CURRENCY_METADATA: Record<string, { name: string; flag?: string }> = {
+  USD: { name: "دولار أمريكي (كاش)", flag: "us" },
+  USD_CHECKS: { name: "دولار أمريكي (صكوك)", flag: "us" },
+  USD_JBANK: { name: "صكوك الجمهورية", flag: "us" },
+  USD_BCD: { name: "صكوك التجارة", flag: "us" },
+  USD_NCB: { name: "صكوك التجاري", flag: "us" },
+  USD_AB: { name: "صكوك الأمان", flag: "us" },
+  USD_WB: { name: "صكوك الوحدة", flag: "us" },
+  EUR: { name: "يورو", flag: "eu" },
+  GBP: { name: "جنيه إسترليني", flag: "gb" },
+  TND: { name: "دينار تونسي", flag: "tn" },
+  TRY: { name: "ليرة تركية", flag: "tr" },
+  EGP: { name: "جنيه مصري", flag: "eg" },
+  USD_TR: { name: "حوالات تركيا", flag: "tr" },
+  USD_AE: { name: "حوالات دبي", flag: "ae" },
+  USD_CN: { name: "حوالات الصين", flag: "cn" },
+  AED: { name: "درهم إماراتي", flag: "ae" },
+  SAR: { name: "ريال سعودي", flag: "sa" },
+  QAR: { name: "ريال قطري", flag: "qa" },
+  JOD: { name: "دينار أردني", flag: "jo" },
+  BHD: { name: "دينار بحريني", flag: "bh" },
+  KWD: { name: "دينار كويتي", flag: "kw" },
+  CNY: { name: "يوان صيني", flag: "cn" },
+  GOLD_EXT_18: { name: "ذهب خارجي 18", flag: "gold" },
+  GOLD_EXT_21: { name: "ذهب خارجي 21", flag: "gold" },
+  GOLD_SCRAP_18: { name: "ذهب كسر 18", flag: "gold" },
+  GOLD_SCRAP_21: { name: "ذهب كسر 21", flag: "gold" },
+  GOLD_CAST_18: { name: "ذهب مسبوك 18", flag: "gold" },
+  GOLD_CAST_24: { name: "ذهب مسبوك 24", flag: "gold" },
+  GOLD_LIRA_8G: { name: "ليرة ذهب 8 جرام", flag: "gold" },
+  GOLD_LIRA_14G: { name: "ليرة ذهب 14 جرام", flag: "gold" },
+  GOLD_MUJARA_14G: { name: "مجارة ذهب 14", flag: "gold" },
+  SILVER_CAST_1000: { name: "مسبوك فضة", flag: "silver" }
+};
+
 interface AdminAIProps {
   token: string;
   config: any;
@@ -47,22 +83,37 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
   const [aiLoading, setAiLoading] = useState(false);
   const [filterTodayOnly, setFilterTodayOnly] = useState(true);
   const [activeCategory, setActiveCategory] = useState<'text' | 'currencies' | 'gold'>('text');
+  const tableRef = useRef<HTMLElement | null>(null);
+
+  // Auto-fetch latest rates on mount
+  useEffect(() => {
+    fetchCurrentRates().catch(() => {});
+  }, []);
 
   const fetchCurrentRates = async (): Promise<Record<string, number>> => {
     try {
-      const res = await fetch("/api/rates");
+      const res = await fetch(`/api/rates?t=${Date.now()}`);
       if (res.ok) {
         const json = await res.json();
         const data = typeof json === 'string' ? decodeData(json) : json;
-        if (data && data.parallel) {
-          setCurrentRates(data.parallel);
-          return data.parallel;
+        if (data && (data.parallel || data.rates)) {
+          const parallelRates = data.parallel || data.rates || {};
+          setCurrentRates(parallelRates);
+          return parallelRates;
         }
       }
     } catch (err) {
       console.error("Failed to fetch current rates", err);
     }
     return currentRates;
+  };
+
+  const scrollToTable = () => {
+    setTimeout(() => {
+      if (tableRef.current) {
+        tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 150);
   };
 
   const processExtractedData = (rates: Record<string, number>, dates: Record<string, string> | undefined) => {
@@ -126,6 +177,7 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
         if (hasData) {
           setActiveCategory('text');
           setSuccess(`تم استخراج ${Object.keys(data.extractedRates).length} سعر بنجاح`);
+          scrollToTable();
         } else {
           setError("لم يتم العثور على أسعار مطابقة");
         }
@@ -157,6 +209,7 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
         if (hasData) {
           setActiveCategory('text');
           setSuccess("تم جلب الأسعار من تطبيق الصراف بنجاح");
+          scrollToTable();
         } else {
           setError("لم يتم العثور على أسعار بتاريخ اليوم");
         }
@@ -176,31 +229,37 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
     setSuccess("");
     try {
       const liveRates = await fetchCurrentRates();
-      const termsList = config?.terms || [];
+      const termsList = config?.terms && config.terms.length > 0 ? config.terms : [];
       const newRates: Record<string, number> = {};
 
-      termsList.forEach((t: any) => {
-        const isMetal = t.id === "GOLD" || t.id.startsWith("GOLD_") || t.id.startsWith("SILVER_") || t.flag === "gold" || t.flag === "silver";
-        if (!isMetal && t.id !== "OFFICIAL_USD") {
-          newRates[t.id] = liveRates[t.id] ?? currentRates[t.id] ?? 0;
-        }
-      });
-
-      if (Object.keys(newRates).length === 0) {
-        const defaultCodes = [
-          "USD", "EUR", "GBP", "TND", "TRY", "EGP", 
-          "USD_CHECKS", "USD_JBANK", "USD_BCD", "USD_NCB", "USD_AB", "USD_WB",
-          "USD_TR", "USD_AE", "USD_CN", "AED", "SAR", "QAR", "JOD", "BHD", "KWD", "CNY"
-        ];
-        defaultCodes.forEach(code => {
-          newRates[code] = liveRates[code] ?? currentRates[code] ?? 0;
+      if (termsList.length > 0) {
+        termsList.forEach((t: any) => {
+          const isMetal = t.id === "GOLD" || t.id.startsWith("GOLD_") || t.id.startsWith("SILVER_") || t.flag === "gold" || t.flag === "silver";
+          if (!isMetal && t.id !== "OFFICIAL_USD") {
+            const val = liveRates[t.id] ?? currentRates[t.id] ?? 0;
+            newRates[t.id] = typeof val === 'number' ? val : parseFloat(val) || 0;
+          }
         });
       }
+
+      // Also ensure standard currencies are always present even if config is empty
+      const defaultCodes = [
+        "USD", "EUR", "GBP", "TND", "TRY", "EGP", 
+        "USD_CHECKS", "USD_JBANK", "USD_BCD", "USD_NCB", "USD_AB", "USD_WB",
+        "USD_TR", "USD_AE", "USD_CN", "AED", "SAR", "QAR", "JOD", "BHD", "KWD", "CNY"
+      ];
+      defaultCodes.forEach(code => {
+        if (newRates[code] === undefined) {
+          const val = liveRates[code] ?? currentRates[code] ?? 0;
+          newRates[code] = typeof val === 'number' ? val : parseFloat(val) || 0;
+        }
+      });
 
       setExtractedRates(newRates);
       setExtractedDates(null);
       setActiveCategory('currencies');
-      setSuccess(`تم عرض جميع أسعار العملات الموازية (${Object.keys(newRates).length} عملة) للتحكم اليدوي`);
+      setSuccess(`تم استخراج وعرض جميع أسعار العملات (${Object.keys(newRates).length} عملة) من قاعدة البيانات لتعديلها`);
+      scrollToTable();
     } catch (err) {
       setError("فشل تحميل أسعار العملات الموازية");
     }
@@ -217,13 +276,15 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
       const newRates: Record<string, number> = {};
 
       GOLD_METAL_IDS.forEach(id => {
-        newRates[id] = liveRates[id] ?? currentRates[id] ?? 0;
+        const val = liveRates[id] ?? currentRates[id] ?? 0;
+        newRates[id] = typeof val === 'number' ? val : parseFloat(val) || 0;
       });
 
       setExtractedRates(newRates);
       setExtractedDates(null);
       setActiveCategory('gold');
-      setSuccess(`تم عرض جميع أصناف الذهب والمعادن المعتمدة (${Object.keys(newRates).length} أصناف) للتحكم اليدوي`);
+      setSuccess(`تم استخراج وعرض جميع أصناف الذهب والمعادن (${Object.keys(newRates).length} أصناف) من قاعدة البيانات`);
+      scrollToTable();
     } catch (err) {
       setError("فشل تحميل أصناف الذهب والمعادن");
     }
@@ -463,10 +524,11 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
       <AnimatePresence>
         {extractedRates && Object.keys(extractedRates).length > 0 && (
           <motion.section
+            ref={tableRef as any}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] overflow-hidden"
+            className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] overflow-hidden scroll-mt-6"
           >
             <div className="p-6 border-b border-slate-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
@@ -529,6 +591,8 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
                       const isDown = diff < -0.001;
                       const isSkipped = !!(extractedRates as any)[`_skip_${key}`];
                       const term = config?.terms?.find((t: any) => t.id === key);
+                      const meta = CURRENCY_METADATA[key];
+                      const displayName = term ? term.name : (meta ? meta.name : key);
 
                       return (
                         <tr
@@ -553,13 +617,13 @@ export function AdminAI({ token, config, setError, setSuccess, triggerRefresh, d
                               {term?.icon ? (
                                 <img src={term.icon} className="w-6 h-6 rounded-full" alt={key} />
                               ) : (
-                                <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center text-[10px] text-slate-400 font-bold">
+                                <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center text-[10px] text-emerald-400 font-bold">
                                   {key.substring(0, 2)}
                                 </div>
                               )}
                               <div>
                                 <div className="font-bold text-white text-sm">
-                                  {term ? term.name : key}
+                                  {displayName}
                                 </div>
                                 <div className="text-[10px] text-zinc-500 font-mono tracking-wider">{key}</div>
                               </div>

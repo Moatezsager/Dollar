@@ -401,16 +401,19 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
 
       const mgr = getOrInitTelegramManager();
       if (mgr) {
-        console.log("[Scraper] TelegramManager ready. Fetching channels in parallel...");
+        console.log("[Scraper] TelegramManager ready. Fetching channels sequentially with stability pauses...");
         
-        const gramJsResults = await Promise.allSettled(channels.map(async (channel) => {
+        const gramJsResults: Array<{ status: 'fulfilled'; value: { channel: string; messages: { text: string; date: number }[] } } | { status: 'rejected'; reason: { channel: string; error: any } }> = [];
+        for (const channel of channels) {
           try {
             const messages = await mgr.fetchMessages(channel, 20);
-            return { channel, messages };
-          } catch (err) {
-            throw { channel, error: err };
+            gramJsResults.push({ status: 'fulfilled', value: { channel, messages } });
+            // Small pause between channels to keep MTProto connection calm and avoid flood wait
+            await new Promise(r => setTimeout(r, 250));
+          } catch (err: any) {
+            gramJsResults.push({ status: 'rejected', reason: { channel, error: err } });
           }
-        }));
+        }
 
         for (const result of gramJsResults) {
           if (result.status === 'rejected') {
@@ -680,7 +683,7 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
   })();
 
   const timeoutPromise = new Promise<null>((_, reject) => {
-    setTimeout(() => reject(new Error("Global Scraper Timeout")), 22000);
+    setTimeout(() => reject(new Error("Global Scraper Timeout")), 90000);
   });
 
   try {

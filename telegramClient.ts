@@ -9,7 +9,7 @@ export class TelegramManager {
   private sessionString: string;
   private isConnecting = false;
   private connectPromise: Promise<TelegramClient | null> | null = null;
-  private lastFailureTime = 0;
+  private cooldownUntil = 0;
   public lastFetchTime: number = 0;
 
   constructor(apiId: number, apiHash: string, sessionString: string) {
@@ -31,6 +31,7 @@ export class TelegramManager {
         activeClient = null;
       }
       this.connectPromise = null;
+      this.cooldownUntil = 0;
     }
   }
 
@@ -59,8 +60,9 @@ export class TelegramManager {
 
     // Cooldown check to prevent rapid reconnection loops
     const now = Date.now();
-    if (now - this.lastFailureTime < 30000) {
-      console.warn(`[TelegramManager] In cooldown period (${Math.ceil((30000 - (now - this.lastFailureTime)) / 1000)}s remaining), skipping connection attempt.`);
+    if (now < this.cooldownUntil) {
+      const remainingSec = Math.ceil((this.cooldownUntil - now) / 1000);
+      console.warn(`[TelegramManager] In cooldown period (${remainingSec}s remaining), skipping connection attempt.`);
       return null;
     }
 
@@ -108,10 +110,10 @@ export class TelegramManager {
       const errorMsg = error.message || String(error);
       console.error("[TelegramManager] Connection failed:", errorMsg);
       
-      let cooldownExtra = 0;
+      let cooldownDuration = 30000;
       if (errorMsg.includes("AUTH_KEY_DUPLICATED")) {
         console.warn("[TelegramManager] AUTH_KEY_DUPLICATED: This Telegram session is currently held by another active connection. Pausing reconnect attempts for 60s...");
-        cooldownExtra = 60000;
+        cooldownDuration = 60000;
       }
       
       if (this.client) {
@@ -122,7 +124,7 @@ export class TelegramManager {
       }
       this.client = null;
       activeClient = null;
-      this.lastFailureTime = Date.now() + cooldownExtra;
+      this.cooldownUntil = Date.now() + cooldownDuration;
       return null;
     } finally {
       this.isConnecting = false;
@@ -249,13 +251,28 @@ export class TelegramManager {
         }
       }
 
-      await client.sendMessage(entity || username, { 
-        message,
-        parseMode: options?.parseMode,
-        linkPreview: options?.linkPreview ?? true
-      });
-      console.log(`[TelegramManager] Successfully sent message to ${channelUsername}`);
-      return true;
+      try {
+        await client.sendMessage(entity || username, { 
+          message,
+          parseMode: options?.parseMode,
+          linkPreview: options?.linkPreview ?? true
+        });
+        console.log(`[TelegramManager] Successfully sent message to ${channelUsername}`);
+        return true;
+      } catch (sendErr: any) {
+        // If it failed due to markdown formatting or entity parsing, retry as plain text
+        if (options?.parseMode || /parse|entity|markdown|tag|unclosed/i.test(sendErr.message || '')) {
+          console.warn(`[TelegramManager] Sending with parseMode failed (${sendErr.message}), falling back to plain text for ${channelUsername}...`);
+          const plain = message.replace(/[*_`]/g, '');
+          await client.sendMessage(entity || username, { 
+            message: plain, 
+            linkPreview: options?.linkPreview ?? true 
+          });
+          console.log(`[TelegramManager] Successfully sent message as plain text fallback to ${channelUsername}`);
+          return true;
+        }
+        throw sendErr;
+      }
     } catch (error: any) {
       this.lastError = error.message || String(error);
       console.error(`[TelegramManager] Error sending message to ${channelUsername}:`, this.lastError);

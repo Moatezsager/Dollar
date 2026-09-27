@@ -770,7 +770,7 @@ async function startServer() {
       if (success) {
         res.json({ success: true, message: "تم النشر بنجاح" });
       } else {
-        res.status(500).json({ success: false, error: "فشل النشر" });
+        res.status(500).json({ success: false, error: tgMgr.lastError || "فشل النشر في تيليجرام" });
       }
     } catch (error: any) {
       console.error(`[API] Error sending message to ${channel}:`, error);
@@ -1809,7 +1809,7 @@ async function startServer() {
         const libyaFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Tripoli', hour: 'numeric', hourCycle: 'h23' });
         const currentLibyaHour = parseInt(libyaFormatter.format(new Date()), 10);
         
-        if (currentLibyaHour >= 1 && currentLibyaHour < 9) {
+        if (currentLibyaHour >= 1 && currentLibyaHour < 7) {
           console.log(`[Startup] Skipping initial update during quiet hours (Hour ${currentLibyaHour} Libya Time). Market is sleeping.`);
         } else {
           console.log("[Startup] Triggering initial rates update...");
@@ -1831,11 +1831,11 @@ async function startServer() {
     // Auto-refresh rates every 10 minutes as long as server is awake
     setInterval(async () => {
       try {
-        // Stop fetching and publishing between 12 AM (00:00) and 6 AM (06:00) Libya time
+        // Stop fetching and publishing between 1 AM (01:00) and 7 AM (07:00) Libya time
         const libyaFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Tripoli', hour: 'numeric', hourCycle: 'h23' });
         const currentLibyaHour = parseInt(libyaFormatter.format(new Date()), 10);
         
-        if (currentLibyaHour >= 1 && currentLibyaHour < 9) {
+        if (currentLibyaHour >= 1 && currentLibyaHour < 7) {
           console.log(`[Auto-Refresh] Skipping update during quiet hours (Current Hour: ${currentLibyaHour}:00 Libya Time). Market is sleeping.`);
           return;
         }

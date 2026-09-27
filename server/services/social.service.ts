@@ -32,7 +32,7 @@ export let lastSocialBroadcastTime = 0;
 
 // ─── Smart Broadcast Rate Limiter ──────────────────────────────────────────
 /** حد أقصى لعدد المنشورات في الساعة الواحدة عبر كل المنصات */
-const BROADCAST_HOURLY_LIMIT = 2;
+const BROADCAST_HOURLY_LIMIT = 6;
 
 /** مصفوفة تحتفظ بطوابع زمنية لآخر {BROADCAST_HOURLY_LIMIT} منشورات */
 const recentBroadcastTimestamps: number[] = [];
@@ -40,8 +40,8 @@ const recentBroadcastTimestamps: number[] = [];
 /** حالة آخر بث منشور لكل عملة (السعر ووقت النشر) - محفوظة في SQLite و Supabase وتُحمّل عند الإقلاع */
 export let lastBroadcastState: Record<string, { price: number; time: number }> = {};
 
-/** الحد الأدنى للتغيير المطلق في السعر للعملات العادية (د.ل) */
-const MIN_PRICE_CHANGE = 0.02;
+/** الحد الأدنى للتغيير المطلق في السعر للعملات العادية (د.ل) - قرش واحد (0.01 د.ل) */
+const MIN_PRICE_CHANGE = 0.01;
 
 /** الحد الأدنى للتغيير النسبي للمعادن الثمينة (ذهب / فضة) → 0.5% */
 const MIN_PRICE_CHANGE_PCT_PRECIOUS = 0.005;
@@ -93,8 +93,6 @@ let retryEngineTimer: NodeJS.Timeout | null = null;
 
 
 export function getOrInitTelegramManager(): TelegramManager | null {
-  if (telegramManager) return telegramManager;
-  
   const apiId = Number(process.env.TELEGRAM_API_ID || appConfig.telegramApiId);
   const apiHash = process.env.TELEGRAM_API_HASH || appConfig.telegramApiHash || "";
   const sessionString = process.env.TELEGRAM_SESSION || process.env.TG_SESSION_V2 || appConfig.telegramSessionString || "";
@@ -108,7 +106,7 @@ export function getOrInitTelegramManager(): TelegramManager | null {
       console.error("[TelegramManager] Initialization error:", e.message || e);
     }
   }
-  return null;
+  return telegramManager;
 }
 
 // ─── Smart Broadcast Helpers ────────────────────────────────────────────────
@@ -651,6 +649,16 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
         }
       }
     }
+  }
+
+  const hadAttempts = shouldPostTg || shouldPostFb;
+  const anySuccess = (shouldPostTg && telegramBroadcastStatus.status === 'ok') || (shouldPostFb && facebookBroadcastStatus.status === 'ok');
+
+  if (hadAttempts && !anySuccess) {
+    const errorDetails: string[] = [];
+    if (shouldPostTg) errorDetails.push(`تيليجرام: ${telegramBroadcastStatus.lastError || 'فشل الاتصال'}`);
+    if (shouldPostFb) errorDetails.push(`فيسبوك: ${facebookBroadcastStatus.lastError || 'فشل الاتصال'}`);
+    throw new Error(`فشل النشر عبر الشبكات: ${errorDetails.join(' | ')}`);
   }
 }
 

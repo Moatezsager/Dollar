@@ -58,6 +58,7 @@ export function updateAppConfig(newConfig: Partial<AppConfig>) {
   const preservedTelegram = appConfig.telegramSessionString;
   const preservedTelegramApiId = appConfig.telegramApiId;
   const preservedTelegramApiHash = appConfig.telegramApiHash;
+  const preservedTelegramBotToken = appConfig.telegramBotToken;
   const preservedFbToken = appConfig.facebookAccessToken;
   const preservedWhatsappAuth = appConfig.whatsappAuth;
 
@@ -70,6 +71,7 @@ export function updateAppConfig(newConfig: Partial<AppConfig>) {
   if (!appConfig.telegramSessionString && preservedTelegram) appConfig.telegramSessionString = preservedTelegram;
   if (!appConfig.telegramApiId && preservedTelegramApiId) appConfig.telegramApiId = preservedTelegramApiId;
   if (!appConfig.telegramApiHash && preservedTelegramApiHash) appConfig.telegramApiHash = preservedTelegramApiHash;
+  if (!appConfig.telegramBotToken && preservedTelegramBotToken) appConfig.telegramBotToken = preservedTelegramBotToken;
   if (!appConfig.facebookAccessToken && preservedFbToken) appConfig.facebookAccessToken = preservedFbToken;
   if (!appConfig.whatsappAuth && preservedWhatsappAuth) appConfig.whatsappAuth = preservedWhatsappAuth;
 }

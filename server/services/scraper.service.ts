@@ -4,6 +4,7 @@ import { appConfig } from '../config';
 import { logErrorArabic, logPriceChange, saveToSupabase, syncCheckRates } from './db.service';
 import { extractRatesWithAI } from './ai.service';
 import { broadcastOfficialRates, broadcastRateChanges, getOrInitTelegramManager, lastBroadcastState, lastOfficialBroadcastDate } from './social.service';
+import { fetchPublicChannelMessages } from '../../telegramClient';
 import { isSignificantChange, isProbablyDateOrTime } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 

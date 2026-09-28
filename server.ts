@@ -1583,10 +1583,14 @@ async function startServer() {
 
   // Telegram status endpoint
   app.get("/api/telegram/status", (req: express.Request, res: express.Response) => {
-    const isConnected = !!(activeClient && activeClient.connected);
     const tgMgr = getOrInitTelegramManager();
+    const isConnected = !!(activeClient && activeClient.connected);
+    const hasBotToken = !!((tgMgr && tgMgr.botToken) || appConfig.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
     res.json({
-      isConnected,
+      isConnected: isConnected || hasBotToken,
+      isAuthRevoked: tgMgr ? tgMgr.isAuthRevoked : false,
+      lastError: tgMgr ? tgMgr.lastError : "",
+      hasBotToken,
       lastFetchTime: tgMgr ? tgMgr.lastFetchTime : 0
     });
   });

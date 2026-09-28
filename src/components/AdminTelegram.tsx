@@ -16,14 +16,19 @@ interface AdminTelegramProps {
 export function AdminTelegram({ token, config, setConfig, setError, setSuccess, handleSave }: AdminTelegramProps) {
   // Telegram Auth State
   const [tgPhoneNumber, setTgPhoneNumber] = useState("");
-  const [tgApiId, setTgApiId] = useState("");
-  const [tgApiHash, setTgApiHash] = useState("");
+  const [tgApiId, setTgApiId] = useState(config?.telegramApiId ? String(config.telegramApiId) : "");
+  const [tgApiHash, setTgApiHash] = useState(config?.telegramApiHash || "");
   const [tgCode, setTgCode] = useState("");
   const [tgPassword, setTgPassword] = useState("");
   const [tgAuthId, setTgAuthId] = useState("");
   const [tgPhoneCodeHash, setTgPhoneCodeHash] = useState("");
   const [tgStep, setTgStep] = useState<'init' | 'code' | 'password'>('init');
   const [tgLoading, setTgLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (config?.telegramApiId && !tgApiId) setTgApiId(String(config.telegramApiId));
+    if (config?.telegramApiHash && !tgApiHash) setTgApiHash(config.telegramApiHash);
+  }, [config]);
 
   const handleTgSendCode = async () => {
     setTgLoading(true);
@@ -201,7 +206,25 @@ export function AdminTelegram({ token, config, setConfig, setError, setSuccess, 
                 className="w-full bg-black/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500/50"
                 dir="ltr"
               />
-              <p className="text-xs text-slate-500 mt-2">انسخ الرابط أو ضع المعرف، ويجب أن يكون حسابك لديه صلاحيات النشر (أدمن).</p>
+              <p className="text-xs text-slate-500 mt-2">انسخ الرابط أو ضع المعرف، ويجب أن يكون حسابك أو بوتك لديه صلاحيات النشر (أدمن).</p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-bold text-slate-400">توكن بوت تيليجرام (Telegram Bot Token - خيار النشر الفائق الاستقرار ⚡)</label>
+                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">اختياري وموصى به</span>
+              </div>
+              <input
+                type="text"
+                value={config?.telegramBotToken || ''}
+                onChange={(e) => setConfig({ ...config, telegramBotToken: e.target.value })}
+                placeholder="مثال: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                className="w-full bg-black/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500/50 font-mono text-sm"
+                dir="ltr"
+              />
+              <p className="text-xs text-slate-500 mt-2">
+                أنشئ بوتاً في ثوانٍ من @BotFather ثم أضفه كـ مشرف (Admin) في قناتك وضع التوكن هنا. يعمل عبر HTTP REST رسمي ولا ينقطع أبداً ولا يتأثر بتسجيل الخروج.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-400 mb-2">تنسيق رسالة النشر (قالب النشر تلقائي/تجريبي)</label>

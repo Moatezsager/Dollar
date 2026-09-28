@@ -92,21 +92,15 @@ let retryEngineTimer: NodeJS.Timeout | null = null;
 
 
 
-export function getOrInitTelegramManager(): TelegramManager | null {
-  const apiId = Number(process.env.TELEGRAM_API_ID || appConfig.telegramApiId);
+export function getOrInitTelegramManager(): TelegramManager {
+  const apiId = Number(process.env.TELEGRAM_API_ID || appConfig.telegramApiId || 0);
   const apiHash = process.env.TELEGRAM_API_HASH || appConfig.telegramApiHash || "";
   const sessionString = process.env.TELEGRAM_SESSION || process.env.TG_SESSION_V2 || appConfig.telegramSessionString || "";
+  const botToken = process.env.TELEGRAM_BOT_TOKEN || appConfig.telegramBotToken || "";
   
-  if (apiId && apiHash && sessionString) {
-    try {
-      const manager = getTelegramManager(apiId, apiHash, sessionString);
-      setTelegramManager(manager);
-      return manager;
-    } catch (e: any) {
-      console.error("[TelegramManager] Initialization error:", e.message || e);
-    }
-  }
-  return telegramManager;
+  const manager = getTelegramManager(apiId, apiHash, sessionString, botToken);
+  setTelegramManager(manager);
+  return manager;
 }
 
 // ─── Smart Broadcast Helpers ────────────────────────────────────────────────
@@ -478,6 +472,10 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
             break;
           } else {
             lastErrMessage = (manager as any).lastError || "فشل غير معروف";
+            if ((manager as any).isAuthRevoked || lastErrMessage.includes("AUTH_KEY_DUPLICATED")) {
+              console.warn(`[Telegram Broadcast] Telegram authorization invalidated (AUTH_KEY_DUPLICATED). Halting retry attempts.`);
+              break;
+            }
             if (attempt < maxRetries) {
               console.warn(`[Telegram Broadcast] Attempt ${attempt} failed: ${lastErrMessage}. Retrying in 2s...`);
               await delay(2000);
@@ -485,6 +483,10 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
           }
         } catch (e: any) {
           lastErrMessage = e.message || String(e);
+          if ((manager as any).isAuthRevoked || lastErrMessage.includes("AUTH_KEY_DUPLICATED")) {
+            console.warn(`[Telegram Broadcast] Telegram authorization invalidated (${lastErrMessage}). Halting retry attempts.`);
+            break;
+          }
           if (attempt < maxRetries) {
             console.warn(`[Telegram Broadcast] Exception in attempt ${attempt}: ${lastErrMessage}. Retrying in 2s...`);
             await delay(2000);

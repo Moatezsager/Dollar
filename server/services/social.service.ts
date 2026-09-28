@@ -665,48 +665,98 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
 import { sendPushNotificationToAll } from './push.service';
 
 export let lastOfficialBroadcastDate = "";
+try {
+  const row = db.prepare('SELECT value FROM server_config WHERE key = ?').get('last_official_broadcast_date') as any;
+  if (row && row.value) {
+    lastOfficialBroadcastDate = row.value;
+  }
+} catch (e) {}
 
 // Smart Queue (Debounce Buffer) to aggregate rapid price updates safely
 export let broadcastQueue: Map<string, { id?: string, name: string, oldVal: number, newVal: number, flag: string }> = new Map();
 export let broadcastQueueTimer: NodeJS.Timeout | null = null;
 
-export async function broadcastOfficialRates(isTest: boolean = false) {
-  if (!appConfig.telegramPostChannel || !telegramManager) {
-    console.log("[Telegram Broadcast] Aborting broadcast. channel or manager missing.");
+const OFFICIAL_CURRENCIES_INFO: Record<string, { name: string; flag: string; rank: number }> = {
+  USD: { name: 'دولار أمريكي', flag: '🇺🇸', rank: 1 },
+  EUR: { name: 'يورو أوروبي', flag: '🇪🇺', rank: 2 },
+  GBP: { name: 'جنيه إسترليني', flag: '🇬🇧', rank: 3 },
+  TND: { name: 'دينار تونسي', flag: '🇹🇳', rank: 4 },
+  EGP: { name: 'جنيه مصري', flag: '🇪🇬', rank: 5 },
+  TRY: { name: 'ليرة تركية', flag: '🇹🇷', rank: 6 },
+  AED: { name: 'درهم إماراتي', flag: '🇦🇪', rank: 7 },
+  SAR: { name: 'ريال سعودي', flag: '🇸🇦', rank: 8 },
+  JOD: { name: 'دينار أردني', flag: '🇯🇴', rank: 9 },
+  KWD: { name: 'دينار كويتي', flag: '🇰🇼', rank: 10 },
+  BHD: { name: 'دينار بحريني', flag: '🇧🇭', rank: 11 },
+  QAR: { name: 'ريال قطري', flag: '🇶🇦', rank: 12 },
+  CNY: { name: 'يوان صيني', flag: '🇨🇳', rank: 13 },
+  CAD: { name: 'دولار كندي', flag: '🇨🇦', rank: 14 },
+  AUD: { name: 'دولار أسترالي', flag: '🇦🇺', rank: 15 },
+  CHF: { name: 'فرنك سويسري', flag: '🇨🇭', rank: 16 },
+  JPY: { name: 'ين ياباني', flag: '🇯🇵', rank: 17 },
+  SEK: { name: 'كرونة سويدية', flag: '🇸🇪', rank: 18 },
+  NOK: { name: 'كرونة نرويجية', flag: '🇳🇴', rank: 19 },
+  DKK: { name: 'كرونة دنماركية', flag: '🇩🇰', rank: 20 },
+};
+
+export async function broadcastOfficialRates(
+  isTest: boolean = false, 
+  target: 'all' | 'telegram' | 'facebook' = (appConfig.facebookAutoPost ? 'all' : 'telegram')
+) {
+  const manager = getOrInitTelegramManager();
+  if (!appConfig.telegramPostChannel || !manager) {
+    console.warn("[Official Broadcast] Aborting broadcast: channel or telegram manager not ready.");
     return;
   }
 
   if (!isTest && !appConfig.telegramAutoPost) {
-    console.log("[Telegram Broadcast] Aborting official broadcast because telegramAutoPost is disabled.");
+    console.log("[Official Broadcast] Aborting official broadcast because telegramAutoPost is disabled in settings.");
     return;
   }
 
   const now = new Date();
+  const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
+  const yyyy = libyaDateObj.getFullYear();
+  const mm = String(libyaDateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(libyaDateObj.getDate()).padStart(2, '0');
+  const todayLibyaKey = `${yyyy}-${mm}-${dd}`;
   const dateStr = now.toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli' });
   const timeStr = now.toLocaleTimeString('ar-LY', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
   
-  if (!isTest && lastOfficialBroadcastDate === dateStr) {
-    console.log("[Official Broadcast] Already broadcasted today. Skipping duplicate post.");
+  if (!isTest && (lastOfficialBroadcastDate === todayLibyaKey || lastOfficialBroadcastDate === dateStr)) {
+    console.log(`[Official Broadcast] Already broadcasted for today (${todayLibyaKey}). Skipping duplicate post.`);
     return;
   }
 
   const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   let dayName = "الخميس";
   try {
-    const dayIndex = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' })).getDay();
+    const dayIndex = libyaDateObj.getDay();
     dayName = dayNames[dayIndex];
   } catch (e) {}
 
-  let message = `🏦 *نشرة أسعار مصرف ليبيا المركزي* 🏦\n`;
+  let message = `🏦 *نشرة أسعار مصرف ليبيا المركزي الرسمية* 🏦\n`;
   message += `━━━━━━━━━━━━━━━━━━━\n`;
   message += `🗓 ${dayName}، ${dateStr} | ⏰ ${timeStr}\n\n`;
 
-  for (const t of appConfig.terms) {
-    if (rates.official[t.id]) {
-      const val = rates.official[t.id];
-      const flag = t.flag === 'us' ? '🇺🇸' : t.flag === 'eu' ? '🇪🇺' : t.flag === 'gb' ? '🇬🇧' : t.flag === 'tn' ? '🇹🇳' : t.flag === 'eg' ? '🇪🇬' : t.flag === 'tr' ? '🇹🇷' : '💰';
-      message += `${flag} *${t.name}*: ${val.toFixed(4)} د.ل\n`;
-    }
+  const officialEntries = Object.entries(rates.official)
+    .filter(([key, val]) => typeof val === 'number' && val > 0 && key !== 'OFFICIAL_USD')
+    .sort(([keyA], [keyB]) => {
+      const rankA = OFFICIAL_CURRENCIES_INFO[keyA]?.rank || 999;
+      const rankB = OFFICIAL_CURRENCIES_INFO[keyB]?.rank || 999;
+      return rankA - rankB;
+    });
+
+  if (officialEntries.length === 0) {
+    console.warn("[Official Broadcast] No official rates available to publish.");
+    return;
+  }
+
+  for (const [code, val] of officialEntries) {
+    const info = OFFICIAL_CURRENCIES_INFO[code];
+    const name = info?.name || appConfig.terms.find(t => t.id === code)?.name || code;
+    const flag = info?.flag || '💰';
+    message += `${flag} *${name}*: ${val.toFixed(4)} د.ل\n`;
   }
 
   message += `\n━━━━━━━━━━━━━━━━━━━\n`;
@@ -715,13 +765,22 @@ export async function broadcastOfficialRates(isTest: boolean = false) {
   message += `📱 *المصدر:* مصرف ليبيا المركزي`;
 
   try {
-    // Send only to Telegram, disable Facebook for official rates to prevent spamming
-    await broadcastToSocialMedia(message, typeof isTest !== "undefined" ? isTest : false, 'telegram');
+    console.log(`[Official Broadcast] Dispatching official bulletin (${officialEntries.length} currencies) to ${target}...`);
+    await broadcastToSocialMedia(message, typeof isTest !== "undefined" ? isTest : false, target, isTest);
     if (!isTest) {
-      lastOfficialBroadcastDate = dateStr;
+      lastOfficialBroadcastDate = todayLibyaKey;
+      try {
+        db.prepare(`
+          INSERT INTO server_config (key, value) VALUES ('last_official_broadcast_date', ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `).run(todayLibyaKey);
+      } catch (dbErr) {
+        console.error("[Official Broadcast] Failed to persist date to SQLite:", dbErr);
+      }
     }
+    console.log(`[Official Broadcast] Successfully posted daily official bulletin for ${todayLibyaKey}!`);
   } catch(e) {
-    console.error("[Official Broadcast] Failed to broadcast", e);
+    console.error("[Official Broadcast] Failed to broadcast official rates:", e);
   }
 }
 

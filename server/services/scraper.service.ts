@@ -3,7 +3,7 @@ import { rates, history } from '../state';
 import { appConfig } from '../config';
 import { logErrorArabic, logPriceChange, saveToSupabase, syncCheckRates } from './db.service';
 import { extractRatesWithAI } from './ai.service';
-import { broadcastOfficialRates, broadcastRateChanges, getOrInitTelegramManager, lastBroadcastState } from './social.service';
+import { broadcastOfficialRates, broadcastRateChanges, getOrInitTelegramManager, lastBroadcastState, lastOfficialBroadcastDate } from './social.service';
 import { isSignificantChange, isProbablyDateOrTime } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
@@ -148,13 +148,14 @@ export async function fetchOfficialRates(): Promise<boolean> {
       }
     });
 
-    if (anyChanged) {
-      rates.official = { ...rates.official, ...cblRates };
+    rates.official = { ...rates.official, ...cblRates };
+    if (rates.official.USD) {
       rates.parallel.OFFICIAL_USD = rates.official.USD;
       rates.lastChanged.parallel.OFFICIAL_USD = new Date().toISOString();
-      console.log(`[Official] Rates updated via CBL Scraper`);
-      broadcastOfficialRates(false).catch(console.error);
+    }
 
+    if (anyChanged) {
+      console.log(`[Official] Rates updated via CBL Scraper (USD: ${rates.official.USD})`);
       history.push({
         time: new Date().toISOString(),
         usdParallel: rates.parallel.USD,
@@ -166,9 +167,21 @@ export async function fetchOfficialRates(): Promise<boolean> {
         history.shift();
       }
     }
+
+    // Daily official bulletin broadcast condition:
+    // If today's bulletin has not yet been posted to followers and CBL rates are ready for today,
+    // broadcast today's official bulletin!
+    const isAlreadyBroadcastedToday = (lastOfficialBroadcastDate === currentLibyaDate);
+    if (!isAlreadyBroadcastedToday && (cblDate === currentLibyaDate || anyChanged)) {
+      console.log(`[Official] Broadcasting daily official bulletin for today (${currentLibyaDate})...`);
+      broadcastOfficialRates(false).catch(console.error);
+    } else if (anyChanged) {
+      console.log(`[Official] Rates changed during the day, broadcasting official update...`);
+      broadcastOfficialRates(false).catch(console.error);
+    }
     
-    if (cblDate === currentLibyaDate) {
-      console.log(`[Official] CBL published rates for today (${cblDate}). Locking updates until tomorrow.`);
+    if (cblDate === currentLibyaDate && isAlreadyBroadcastedToday) {
+      console.log(`[Official] CBL published rates for today (${cblDate}) and already broadcasted. Locking updates until tomorrow.`);
       lastOfficialFetchDate = currentLibyaDate;
     }
     
@@ -642,8 +655,13 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
             let checkPrice: number | null = null;
             let checkOldPrice: number | null = null;
 
+            const isBankCheck = (id?: string) => {
+              if (!id) return false;
+              return id === 'USD_JBANK' || id === 'USD_NCB' || id === 'USD_BCD' || id === 'USD_AB' || id === 'USD_WB' || id === 'USD_CHECKS' || id === 'USD_SUKUK';
+            };
+
             for (const u of collectedUpdates) {
-              if (u.id === 'USD_JBANK' || u.id === 'USD_NCB' || u.id === 'USD_CHECKS') {
+              if (isBankCheck(u.id)) {
                 if (checkPrice === null) {
                   checkPrice = u.newVal;
                   checkOldPrice = u.oldVal;

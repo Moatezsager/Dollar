@@ -1088,6 +1088,7 @@ async function startServer() {
 
   app.get("/api/rates", async (req: express.Request, res: express.Response) => {
     try {
+      res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=30');
       const force = req.query.refresh === 'true';
       await initializeRatesFromDB(force);
       res.json(obfuscateData(rates));
@@ -1561,11 +1562,18 @@ async function startServer() {
 
   app.get("/api/history", async (req: express.Request, res: express.Response) => {
     try {
+      res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=300');
       const dbHistory = await fetchHistoryFromSupabase();
-      res.json(obfuscateData(dbHistory));
+      const trimmed = Array.isArray(dbHistory) && dbHistory.length > 120 
+        ? dbHistory.slice(-120) 
+        : dbHistory;
+      res.json(obfuscateData(trimmed));
     } catch (err) {
       if (!res.headersSent) {
-        res.json(obfuscateData(history));
+        const fallback = Array.isArray(history) && history.length > 120 
+          ? history.slice(-120) 
+          : history;
+        res.json(obfuscateData(fallback));
       }
     }
   });
@@ -1723,7 +1731,22 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath, { index: false }));
+    app.use(express.static(distPath, { 
+      index: false,
+      maxAge: '7d',
+      setHeaders: (res, filePath) => {
+        if (filePath.includes('/assets/')) {
+          // Hashed static bundles (JS, CSS) can be cached forever (1 year)
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (/\.(jpg|jpeg|png|gif|ico|svg|webp|woff2?|ttf|eot)$/i.test(filePath)) {
+          // Images and fonts cached for 7 days with stale-while-revalidate
+          res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+        } else {
+          // Other static files (e.g. manifest, robots)
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+      }
+    }));
     
     // Handle SPA fallback, but ignore static file extensions to prevent redirect/html serving for missing static files
     app.get(/^(?!.*\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webmanifest|xml)$).*$/, (req, res, next) => {

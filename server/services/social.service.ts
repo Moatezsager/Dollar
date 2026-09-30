@@ -715,12 +715,30 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
 import { sendPushNotificationToAll } from './push.service';
 
 export let lastOfficialBroadcastDate = "";
-try {
-  const row = db.prepare('SELECT value FROM server_config WHERE key = ?').get('last_official_broadcast_date') as any;
-  if (row && row.value) {
-    lastOfficialBroadcastDate = row.value;
+(async () => {
+  try {
+    if (db) {
+      const row = db.prepare('SELECT value FROM server_config WHERE key = ?').get('last_official_broadcast_date') as { value: string } | undefined;
+      if (row?.value) {
+        lastOfficialBroadcastDate = row.value;
+        console.log(`[Official Broadcast] Loaded lastOfficialBroadcastDate from SQLite: ${row.value}`);
+      }
+    }
+    if (!lastOfficialBroadcastDate && supabase) {
+      const { data } = await supabase
+        .from('server_config')
+        .select('value')
+        .eq('key', 'last_official_broadcast_date')
+        .single();
+      if (data?.value) {
+        lastOfficialBroadcastDate = data.value;
+        console.log(`[Official Broadcast] Loaded lastOfficialBroadcastDate from Supabase: ${data.value}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Official Broadcast] Could not load lastOfficialBroadcastDate on startup:', e);
   }
-} catch (e) {}
+})();
 
 // Smart Queue (Debounce Buffer) to aggregate rapid price updates safely
 export let broadcastQueue: Map<string, { id?: string, name: string, oldVal: number, newVal: number, flag: string }> = new Map();
@@ -820,12 +838,25 @@ export async function broadcastOfficialRates(
     if (!isTest) {
       lastOfficialBroadcastDate = todayLibyaKey;
       try {
-        db.prepare(`
-          INSERT INTO server_config (key, value) VALUES ('last_official_broadcast_date', ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        `).run(todayLibyaKey);
+        if (db) {
+          db.prepare(`
+            INSERT INTO server_config (key, value) VALUES ('last_official_broadcast_date', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+          `).run(todayLibyaKey);
+        }
       } catch (dbErr) {
         console.error("[Official Broadcast] Failed to persist date to SQLite:", dbErr);
+      }
+      if (supabase) {
+        supabase.from('server_config').upsert({
+          key: 'last_official_broadcast_date',
+          value: todayLibyaKey,
+          updated_at: new Date().toISOString()
+        }).then(({ error }) => {
+          if (error) console.error("[Official Broadcast] Failed to persist date to Supabase:", error);
+        }, err => {
+          console.error("[Official Broadcast] Supabase error:", err);
+        });
       }
     }
     console.log(`[Official Broadcast] Successfully posted daily official bulletin for ${todayLibyaKey}!`);

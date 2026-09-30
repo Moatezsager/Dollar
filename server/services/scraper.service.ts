@@ -1,6 +1,7 @@
 import { RateMap, LiveFeedMessage, ChannelStatusInfo } from '../types';
 import { rates, history } from '../state';
 import { appConfig } from '../config';
+import { db, supabase } from '../db';
 import { logErrorArabic, logPriceChange, saveToSupabase, syncCheckRates } from './db.service';
 import { extractRatesWithAI } from './ai.service';
 import { broadcastOfficialRates, broadcastRateChanges, getOrInitTelegramManager, lastBroadcastState, lastOfficialBroadcastDate } from './social.service';
@@ -9,6 +10,35 @@ import { isSignificantChange, isProbablyDateOrTime } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
 export let lastOfficialFetchDate = "";
+
+// Load lastOfficialFetchDate from SQLite + Supabase on startup
+(async () => {
+  try {
+    if (db) {
+      const row = db.prepare(
+        'SELECT value FROM server_config WHERE key = ?'
+      ).get('last_official_fetch_date') as { value: string } | undefined;
+      if (row?.value) {
+        lastOfficialFetchDate = row.value;
+        console.log(`[Official] Loaded lastOfficialFetchDate from SQLite: ${row.value}`);
+      }
+    }
+    if (!lastOfficialFetchDate && supabase) {
+      const { data } = await supabase
+        .from('server_config')
+        .select('value')
+        .eq('key', 'last_official_fetch_date')
+        .single();
+      if (data?.value) {
+        lastOfficialFetchDate = data.value;
+        console.log(`[Official] Loaded lastOfficialFetchDate from Supabase: ${data.value}`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Official] Could not load lastOfficialFetchDate on startup:', e);
+  }
+})();
+
 export let lastSuccessfulFetchTime = Date.now();
 export let isScraping = false;
 export let lastSuccessfulScrape = new Date();
@@ -115,24 +145,30 @@ export async function fetchFromCBL(): Promise<{ cblDate: string, rates: RateMap 
 export async function fetchOfficialRates(): Promise<boolean> {
   console.log("[Official] Starting official rates fetch cycle...");
 
-  const libyaFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Tripoli' });
   const now = new Date();
-  const dayIndex = new Date(libyaFormatter.format(now)).getDay();
-  
   const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
+  const dayIndex = libyaDateObj.getDay();
+  const currentLibyaHour = libyaDateObj.getHours();
+
   const yyyy = libyaDateObj.getFullYear();
   const mm = String(libyaDateObj.getMonth() + 1).padStart(2, '0');
   const dd = String(libyaDateObj.getDate()).padStart(2, '0');
   const currentLibyaDate = `${yyyy}-${mm}-${dd}`;
 
-  if (lastOfficialFetchDate === currentLibyaDate) {
-    console.log(`[Official] Already successfully updated rates for today (${currentLibyaDate}). Skipping.`);
+  // 1. تحقق: أيام العمل فقط (الأحد=0 إلى الخميس=4)
+  if (dayIndex === 5 || dayIndex === 6) {
+    console.log("[Official] Skipping fetch. CBL is closed on Friday and Saturday.");
     return false;
   }
 
-  // Stop fetching official rates on Fridays (5) and Saturdays (6)
-  if (dayIndex === 5 || dayIndex === 6) {
-    console.log("[Official] Skipping fetch. Official markets (CBL) are closed on Friday and Saturday.");
+  // 2. تحقق: نافذة الوقت 9 ص - 11 ص بتوقيت ليبيا فقط
+  if (currentLibyaHour < 9 || currentLibyaHour >= 11) {
+    console.log(`[Official] Outside fetch window (current Libya hour: ${currentLibyaHour}). Skipping.`);
+    return false;
+  }
+
+  if (lastOfficialFetchDate === currentLibyaDate) {
+    console.log(`[Official] Already successfully updated rates for today (${currentLibyaDate}). Skipping.`);
     return false;
   }
 
@@ -181,9 +217,30 @@ export async function fetchOfficialRates(): Promise<boolean> {
       broadcastOfficialRates(false).catch(console.error);
     }
     
-    if (cblDate === currentLibyaDate && isAlreadyBroadcastedToday) {
-      console.log(`[Official] CBL published rates for today (${cblDate}) and already broadcasted. Locking updates until tomorrow.`);
+    if (cblDate === currentLibyaDate) {
+      console.log(`[Official] CBL published rates for today (${cblDate}). Locking updates until tomorrow.`);
       lastOfficialFetchDate = currentLibyaDate;
+      try {
+        if (db) {
+          db.prepare(`
+            INSERT INTO server_config (key, value) VALUES ('last_official_fetch_date', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+          `).run(currentLibyaDate);
+        }
+      } catch (dbErr) {
+        console.error("[Official] Failed to persist lastOfficialFetchDate to SQLite:", dbErr);
+      }
+      if (supabase) {
+        supabase.from('server_config').upsert({
+          key: 'last_official_fetch_date',
+          value: currentLibyaDate,
+          updated_at: new Date().toISOString()
+        }).then(({ error }) => {
+          if (error) console.error("[Official] Failed to persist lastOfficialFetchDate to Supabase:", error);
+        }, err => {
+          console.error("[Official] Supabase error:", err);
+        });
+      }
     }
     
     return anyChanged;
@@ -858,15 +915,18 @@ export async function processWhatsAppMessage(
       const usdUpdate = collectedUpdates.find(u => u.id === 'USD');
       if (usdUpdate) {
         try {
-          const checkPrice = await syncCheckRates(usdUpdate.newVal);
-          if (checkPrice !== null) {
-            collectedUpdates.push({
-              id: 'USD_CHECKS',
-              name: 'دولار أمريكي (صكوك)',
-              oldVal: rates.previousParallel['USD_CHECKS'] ?? checkPrice,
-              newVal: checkPrice,
-              flag: 'us'
-            });
+          const synced = await syncCheckRates('WhatsApp Scraper', usdUpdate.newVal);
+          if (synced) {
+            const checkPrice = rates.parallel['USD_CHECKS'];
+            if (checkPrice > 0) {
+              collectedUpdates.push({
+                id: 'USD_CHECKS',
+                name: 'دولار أمريكي (صكوك)',
+                oldVal: rates.previousParallel['USD_CHECKS'] ?? checkPrice,
+                newVal: checkPrice,
+                flag: 'us'
+              });
+            }
           }
         } catch (syncErr) {
           console.error('[WhatsApp Scraper] Error syncing check rates:', syncErr);

@@ -306,7 +306,7 @@ async function startServer() {
   // Online Users Tracking
   const io = new SocketIOServer(server, {
     cors: {
-      origin: "*",
+      origin: process.env.ALLOWED_ORIGIN || "https://dollar-price-qp14.onrender.com",
       methods: ["GET", "POST"]
     },
     pingInterval: 10000,

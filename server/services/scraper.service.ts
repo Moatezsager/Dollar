@@ -912,33 +912,7 @@ export async function processWhatsAppMessage(
     if (anyChanged) {
       rates.lastUpdated = new Date().toISOString();
       lastSuccessfulFetchTime = Date.now();
-      // ← BUG FIX: was saveToSupabase() with no argument → defaults to 'both' which
-      //   also writes official rates and metal rates unnecessarily from WhatsApp messages.
-      //   WhatsApp only updates parallel rates so we explicitly pass 'parallel'.
       await saveToSupabase('parallel');
-
-      // Check if USD changed and sync bank checks accordingly
-      const usdUpdate = collectedUpdates.find(u => u.id === 'USD');
-      if (usdUpdate) {
-        try {
-          const synced = await syncCheckRates('WhatsApp Scraper', usdUpdate.newVal);
-          if (synced) {
-            const checkPrice = rates.parallel['USD_CHECKS'];
-            const alreadyHasChecks = collectedUpdates.some(u => u.id === 'USD_CHECKS');
-            if (checkPrice > 0 && !alreadyHasChecks) {
-              collectedUpdates.push({
-                id: 'USD_CHECKS',
-                name: 'دولار أمريكي (صكوك)',
-                oldVal: rates.previousParallel['USD_CHECKS'] ?? checkPrice,
-                newVal: checkPrice,
-                flag: 'us'
-              });
-            }
-          }
-        } catch (syncErr) {
-          console.error('[WhatsApp Scraper] Error syncing check rates:', syncErr);
-        }
-      }
 
       // Broadcast changes across channels if needed
       if (collectedUpdates.length > 0) {

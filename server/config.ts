@@ -30,12 +30,12 @@ export let appConfig: AppConfig = {
     { id: "AED", name: "درهم إماراتي", regex: "(?:AED|aed|إماراتي|امارات|🇦🇪)[^\\d]{0,40}(\\d{0,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{0,2}(?:[\\.,]\\d{1,4})?))?", min: 0.5, max: 10.0, isInverse: false, flag: "ae" },
     { id: "SAR", name: "ريال سعودي", regex: "(?:SAR|sar|سعودي|ريال|🇸🇦)[^\\d]{0,40}(\\d{0,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{0,2}(?:[\\.,]\\d{1,4})?))?", min: 0.5, max: 10.0, isInverse: false, flag: "sa" },
     { id: "QAR", name: "ريال قطري", regex: "(?:QAR|qar|قطري|🇶🇦)[^\\d]{0,40}(\\d{0,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{0,2}(?:[\\.,]\\d{1,4})?))?", min: 0.5, max: 10.0, isInverse: false, flag: "qa" },
-    { id: "USD_CHECKS", name: "دولار أمريكي (صكوك)", regex: "(?:صكوك|شيكات|شيك|بصك|صك)(?![^\\d]*?(?:الجمهورية|التجاري|التجارة|الأمان|الامان|الوحدة))[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
-    { id: "USD_JBANK", name: "صكوك الجمهورية", regex: "(?:jbank|الجمهورية|صكوك الجمهورية|بصك الجمهورية)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
-    { id: "USD_BCD", name: "صكوك التجارة", regex: "(?:bcd|التجارة والتنمية|صكوك التجارة|بصك التجارة)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
-    { id: "USD_NCB", name: "صكوك التجاري", regex: "(?:NCB|التجاري الوطني|صكوك التجاري|بصك التجاري)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
-    { id: "USD_AB", name: "صكوك الأمان", regex: "(?:AB|الأمان|الامان|صكوك الأمان|صكوك الامان)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
-    { id: "USD_WB", name: "صكوك الوحدة", regex: "(?:WB|الوحدة|صكوك الوحدة|بصك الوحدة)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
+    { id: "USD_CHECKS", name: "دولار أمريكي (صكوك)", regex: "(?:(?:صكوك|شيكات|شيك|بصك|صك|🏦)(?![^\\d]*?(?:ال)?(?:جمهورية|تجاري|تجارة|أمان|امان|وحدة))[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?)|(?:(\\d{1,2}(?:[\\.,]\\d{1,4})?)[^\\d\\n]{0,25}(?:صكوك|شيكات|شيك|بصك|صك)(?![^\\d]*?(?:ال)?(?:جمهورية|تجاري|تجارة|أمان|امان|وحدة)))", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
+    { id: "USD_JBANK", name: "صكوك الجمهورية", regex: "(?:jbank|(?:صكوك\\s+|بصك\\s+)?(?:ال)?جمهورية)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
+    { id: "USD_BCD", name: "صكوك التجارة", regex: "(?:bcd|(?:صكوك\\s+|بصك\\s+)?(?:التجارة والتنمية|(?:ال)?تجارة))[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
+    { id: "USD_NCB", name: "صكوك التجاري", regex: "(?:NCB|التجاري الوطني|(?:صكوك\\s+|بصك\\s+)?(?:ال)?تجاري)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
+    { id: "USD_AB", name: "صكوك الأمان", regex: "(?:AB|(?:صكوك\\s+|بصك\\s+)?(?:الأمان|الامان|أمان|امان))[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
+    { id: "USD_WB", name: "صكوك الوحدة", regex: "(?:WB|(?:صكوك\\s+|بصك\\s+)?(?:ال)?وحدة)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "us" },
     { id: "USD_AE", name: "حوالات دبي", regex: "(?:دبي|امارات|الإمارات|حوالة دبي|حوالات دبي|🇦🇪)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "ae" },
     { id: "USD_TR", name: "حوالات تركيا", regex: "(?:(?<!فضة\\s*)تركيا|(?<!فضة\\s*)تركي(?![ا-ي])|حوالة تركي[اة]|حوالات تركي[اة]|🇹🇷)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "tr" },
     { id: "USD_CN", name: "حوالات الصين", regex: "(?:الصين|صينية|حوالة الصين|حوالات الصين|🇨🇳)[^\\d]{0,40}(\\d{1,2}(?:[\\.,]\\d{1,4})?)(?:\\s+(?:بيع|شراء)?[^\\d]{0,15}(\\d{1,2}(?:[\\.,]\\d{1,4})?))?", min: 5.0, max: 25.0, isInverse: false, flag: "cn" },
@@ -89,8 +89,8 @@ export function applyLoadedConfig(loadedConfig: AppConfig, source: string) {
     const defaultTerm = appConfig.terms.find(t => t.id === dbTerm.id);
     const isMetal = (defaultTerm && (defaultTerm.flag === "gold" || defaultTerm.flag === "silver")) ||
       dbTerm.id.startsWith("GOLD_") || dbTerm.id.startsWith("SILVER_");
-    const isOutdatedOrNarrow = !dbTerm.regex || isMetal || 
-      ["USD", "EUR", "GBP", "USD_CHECKS"].includes(dbTerm.id) ||
+    const isOutdatedOrNarrow = !dbTerm.regex || isMetal ||
+      ["USD", "EUR", "GBP", "USD_CHECKS", "USD_JBANK", "USD_BCD", "USD_NCB", "USD_AB", "USD_WB"].includes(dbTerm.id) ||
       (dbTerm.id === "TND" && (dbTerm.max > 3.8 || dbTerm.min < 2.5)) ||
       (dbTerm.id === "EGP" && (dbTerm.max > 0.28 || dbTerm.min < 0.13));
 
@@ -164,7 +164,7 @@ export async function loadConfigFromSupabase() {
       .select('config')
       .eq('id', 1)
       .single();
-      
+
     if (error) {
       if (error.code === 'PGRST116') {
         await supabase.from('app_config').insert([{ id: 1, config: appConfig }]);
@@ -189,7 +189,7 @@ export async function loadConfigFromSupabase() {
           console.error("[Config] Error unpacking WhatsApp auth from Supabase:", waErr);
         }
       }
-      
+
       try {
         db.prepare(`
           INSERT INTO server_config (key, value) VALUES ('app_config', ?)
@@ -222,7 +222,7 @@ export async function saveConfigToSupabase(newConfig: AppConfig) {
     const { error } = await supabase
       .from('app_config')
       .upsert({ id: 1, config: newConfig });
-      
+
     if (error) {
       console.error("Error saving config to Supabase:", error);
       return false;

@@ -1013,7 +1013,13 @@ export async function broadcastRateChanges(
       const batchedUpdates = Array.from(broadcastQueue.values());
       broadcastQueue.clear();
       if (batchedUpdates.length > 0) {
-        executeBroadcast(batchedUpdates, false, target).catch(e => console.error("[Smart Queue] Broadcast error:", e));
+        // ✅ FIX: derive the merged target from ALL pending updates, not just the current call's `target`
+        // This prevents a race where two calls with different targets cause one to be lost
+        const resolvedTarget: 'all' | 'telegram' | 'facebook' =
+          (appConfig.telegramAutoPost && appConfig.facebookAutoPost) ? 'all'
+          : appConfig.telegramAutoPost ? 'telegram'
+          : 'facebook';
+        executeBroadcast(batchedUpdates, false, resolvedTarget).catch(e => console.error("[Smart Queue] Broadcast error:", e));
       }
     }, 25000); // 25-second aggregation buffer
   }

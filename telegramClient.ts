@@ -118,10 +118,8 @@ export class TelegramManager {
    */
   public async getClient(): Promise<TelegramClient | null> {
     if (this.isAuthRevoked) {
-      const now = Date.now();
-      if (now < this.cooldownUntil) {
-        return null;
-      }
+      // Session revoked or duplicate key: avoid reconnect attempts and let public scraper handle messages
+      return null;
     }
 
     // If a connection attempt is already in flight, reuse its promise
@@ -199,15 +197,15 @@ export class TelegramManager {
       return this.client;
     } catch (error: any) {
       const errorMsg = error.message || String(error);
-      console.error("[TelegramManager] Connection failed:", errorMsg);
       
       let cooldownDuration = 30000;
       if (errorMsg.includes("AUTH_KEY_DUPLICATED")) {
         this.isAuthRevoked = true;
         this.lastError = "تم إبطال جلسة تيليجرام (AUTH_KEY_DUPLICATED) من سيرفرات تيليجرام بسبب تشغيلها في مكان آخر أو إعادة تشغيل التطبيق. يرجى تجديد تسجيل الدخول من لوحة التحكم أو استخدام Bot Token.";
-        console.warn("[TelegramManager] AUTH_KEY_DUPLICATED: This Telegram session is invalidated on Telegram servers. Pausing reconnect attempts.");
-        cooldownDuration = 5 * 60 * 1000; // 5 mins cooldown
+        console.warn("[TelegramManager] Telegram session active elsewhere or duplicate auth key (AUTH_KEY_DUPLICATED). Switched to public web channel scraper (no session required).");
+        cooldownDuration = 24 * 60 * 60 * 1000;
       } else {
+        console.error("[TelegramManager] Connection failed:", errorMsg);
         this.lastError = errorMsg;
       }
       

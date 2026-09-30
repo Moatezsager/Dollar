@@ -457,20 +457,11 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
                 // Exclude gold rates from Telegram scraping; gold is managed solely via Admin manual entry
                 let extracted = extractRatesFromText(cleanText).filter(r => !r.code.startsWith('GOLD_') && r.code !== 'GOLD');
                 const hasCurrencyKeywords = /(?:يورو|دولار|باوند|دينار|EUR|USD|GBP|TND|TRY|EGP)/i.test(cleanText);
-                if (hasCurrencyKeywords && cleanText.length > 10 && cleanText.length < 800) {
+                // Only call AI if deterministic regex extraction yielded no rates
+                if (extracted.length === 0 && hasCurrencyKeywords && cleanText.length > 10 && cleanText.length < 800) {
                    const aiExtracted = await extractRatesWithAI(cleanText, channel);
                    if (aiExtracted.length > 0) {
-                      const merged = [...extracted];
-                      for (const aiRate of aiExtracted) {
-                          if (aiRate.code.startsWith('GOLD_') || aiRate.code === 'GOLD') continue;
-                          const existingIdx = merged.findIndex(r => r.code === aiRate.code);
-                          if (existingIdx >= 0) {
-                              merged[existingIdx] = aiRate; 
-                          } else {
-                              merged.push(aiRate);
-                          }
-                      }
-                      extracted = merged.filter(r => !r.code.startsWith('GOLD_') && r.code !== 'GOLD');
+                      extracted = aiExtracted.filter(r => !r.code.startsWith('GOLD_') && r.code !== 'GOLD');
                    }
                 }
                 

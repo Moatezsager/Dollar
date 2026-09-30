@@ -20,7 +20,8 @@ import {
   Check,
   TrendingUp,
   Globe,
-  Share2
+  Share2,
+  Coins
 } from "lucide-react";
 import { toPng } from "html-to-image";
 
@@ -67,32 +68,16 @@ const flagEmojiMap: Record<string, string> = {
 function renderItemIcon(flag: string) {
   if (flag === 'gold') {
     return (
-      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full overflow-hidden border border-amber-400/40 shadow-[0_0_10px_rgba(245,158,11,0.3)] shrink-0 bg-amber-500/10">
-        <img
-          src="/gold.png"
-          alt="ذهب"
-          className="w-full h-full object-contain p-0.5"
-          crossOrigin="anonymous"
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = 'none';
-          }}
-        />
+      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full overflow-hidden border border-amber-400/40 shadow-[0_0_10px_rgba(245,158,11,0.3)] shrink-0 bg-gradient-to-br from-amber-500/20 to-amber-500/5 text-amber-400">
+        <Coins className="w-3.5 h-3.5 text-amber-400 drop-shadow-[0_0_4px_rgba(245,158,11,0.6)]" />
       </span>
     );
   }
 
   if (flag === 'silver') {
     return (
-      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full overflow-hidden border border-slate-300/50 shadow-[0_0_10px_rgba(203,213,225,0.3)] shrink-0 bg-slate-900">
-        <img
-          src="/silver-icon.jpg"
-          alt="فضة"
-          className="w-full h-full object-cover scale-110"
-          crossOrigin="anonymous"
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = 'none';
-          }}
-        />
+      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full overflow-hidden border border-slate-300/40 shadow-[0_0_10px_rgba(203,213,225,0.25)] shrink-0 bg-gradient-to-br from-slate-300/20 to-slate-400/5 text-slate-300">
+        <Coins className="w-3.5 h-3.5 text-slate-300 drop-shadow-[0_0_4px_rgba(203,213,225,0.6)]" />
       </span>
     );
   }

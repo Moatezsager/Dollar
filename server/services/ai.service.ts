@@ -2,10 +2,20 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { appConfig } from '../config';
 
 const aiProcessedTexts = new Set<string>();
+let aiQuotaExceededUntil = 0;
+
+export function isAiQuotaExceeded(): boolean {
+  return Date.now() < aiQuotaExceededUntil;
+}
 
 export async function extractRatesWithAI(text: string, channel: string): Promise<{ code: string, value: number, date?: string }[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return [];
+
+  // If in quota cooldown, skip calling AI to avoid 429 errors
+  if (Date.now() < aiQuotaExceededUntil) {
+    return [];
+  }
   
   const cacheKey = channel + "_" + text.substring(0, 30) + text.length;
   if (aiProcessedTexts.has(cacheKey)) return [];
@@ -77,8 +87,15 @@ ${text}
         });
       }
     }
-  } catch (e) {
-    console.error(`[Scraper-AI] Error calling AI for ${channel}: `, e);
+  } catch (e: any) {
+    const errStr = e?.message || String(e);
+    if (errStr.includes("429") || errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("quota") || errStr.includes("Quota exceeded")) {
+      // Pause AI scraper for 5 minutes when quota is reached
+      aiQuotaExceededUntil = Date.now() + 5 * 60 * 1000;
+      console.warn(`[Scraper-AI] Gemini API quota reached for ${channel}. Pausing AI scraper requests for 5 minutes (standard regex parser continues unaffected).`);
+    } else {
+      console.warn(`[Scraper-AI] Notice calling AI for ${channel}:`, errStr.substring(0, 150));
+    }
   }
   return [];
 }

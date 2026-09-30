@@ -21,31 +21,16 @@ export function FlagIcon({ flagCode, name, className = "w-5 h-5", fallbackType =
 
   if (isGold) {
     return (
-      <div className={`${className} rounded-full overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-amber-500/10 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.25)]`}>
-        <img
-          src="/gold.png"
-          alt="ذهب"
-          className="w-full h-full object-contain p-0.5"
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = 'none';
-          }}
-        />
+      <div className={`${className} rounded-full overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-gradient-to-br from-amber-500/20 to-amber-500/5 border border-amber-500/30 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)]`}>
+        <Coins className="w-3/5 h-3/5 text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
       </div>
     );
   }
 
   if (isSilver) {
     return (
-      <div className={`${className} rounded-full overflow-hidden border border-slate-300/40 shadow-[0_0_12px_rgba(203,213,225,0.25)] relative group/flag flex-shrink-0 bg-slate-900`}>
-        <img
-          src="/silver-icon.jpg"
-          alt="فضة"
-          className="w-full h-full object-cover scale-110"
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = 'none';
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-tr from-slate-400/20 to-transparent pointer-events-none"></div>
+      <div className={`${className} rounded-full overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-gradient-to-br from-slate-300/20 to-slate-400/5 border border-slate-300/30 text-slate-300 shadow-[0_0_12px_rgba(203,213,225,0.2)]`}>
+        <Coins className="w-3/5 h-3/5 text-slate-300 drop-shadow-[0_0_6px_rgba(203,213,225,0.6)]" />
       </div>
     );
   }

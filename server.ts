@@ -1732,6 +1732,49 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+
+    // ─── In-Memory HTML Cache (Bandwidth Saver) ──────────────────────────────
+    // المشكلة القديمة: كان الخادم يقرأ index.html من القرص ويعيد بناء الـ SEO tags
+    // في كل طلب لكل زائر → هدر ضخم في الحزمة (bandwidth)
+    // الحل: نخزن HTML المبني في الذاكرة، ونُعيد بناءه فقط عند تغير الأسعار فعلياً
+    // ──────────────────────────────────────────────────────────────────
+    interface HtmlCache {
+      html: string;               // نص HTML المبني
+      builtAt: number;            // وقت البناء
+      usdSnapshot: number;       // سعر الدولار وقت البناء → لكشف التغير
+      etag: string;              // ETag لمقارنة المتصفح
+    }
+    let cachedHtmlPage: HtmlCache | null = null;
+    const HTML_CACHE_TTL_MS = 5 * 60 * 1000; // يُعيد البناء بعد 5 دقائق على الأكثر
+
+    /** يبني HTML محقوناً بالـ SEO الديناميكي ويخزنه في الذاكرة */
+    function buildAndCacheHtml(): HtmlCache {
+      let html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
+
+      if (rates?.parallel?.USD) {
+        const usdStr = rates.parallel.USD.toFixed(2);
+        const eurStr = (rates.parallel.EUR || 0).toFixed(2);
+        const dynamicTitle = `💵 دولار: ${usdStr} | 💶 يورو: ${eurStr} | مؤشر الدينار`;
+        const dynamicDesc = `السعر الآن في السوق الموازي: الدولار ${usdStr} د.ل، واليورو ${eurStr} د.ل. تابع أسعار العملات والذهب لحظة بلحظة.`;
+
+        html = html
+          .replace(/<title>.*?<\/title>/i, `<title>${dynamicTitle}</title>`)
+          .replace(/<meta\s+name=["']description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta name="description" content="${dynamicDesc}">`)
+          .replace(/<meta\s+property=["']og:title["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="og:title" content="${dynamicTitle}">`)
+          .replace(/<meta\s+property=["']og:description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="og:description" content="${dynamicDesc}">`)
+          .replace(/<meta\s+property=["']twitter:title["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="twitter:title" content="${dynamicTitle}">`)
+          .replace(/<meta\s+property=["']twitter:description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="twitter:description" content="${dynamicDesc}">`);
+      }
+
+      const etag = `"${Buffer.from(`${rates?.parallel?.USD || 0}-${Date.now()}`).toString('base64').slice(0, 16)}"`;
+      cachedHtmlPage = { html, builtAt: Date.now(), usdSnapshot: rates?.parallel?.USD || 0, etag };
+      console.log('[HtmlCache] ✅ Rebuilt HTML cache. ETag:', etag);
+      return cachedHtmlPage;
+    }
+
+    // بناء نسخة أولية عند بدء التشغيل
+    buildAndCacheHtml();
+
     app.use(express.static(distPath, { 
       index: false,
       maxAge: '7d',
@@ -1749,31 +1792,30 @@ async function startServer() {
       }
     }));
     
-    // Handle SPA fallback, but ignore static file extensions to prevent redirect/html serving for missing static files
+    // Handle SPA fallback with In-Memory Cache + ETag support
     app.get(/^(?!.*\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webmanifest|xml)$).*$/, (req, res, next) => {
 
-      let html = fs.readFileSync(path.join(distPath, "index.html"), 'utf8');
-      
-      // Dynamic SEO Injection
-      if (rates && rates.parallel && rates.parallel.USD) {
-        const usdStr = rates.parallel.USD.toFixed(2);
-        const eurStr = (rates.parallel.EUR || 0).toFixed(2);
-        
-        const dynamicTitle = `💵 دولار: ${usdStr} | 💶 يورو: ${eurStr} | مؤشر الدينار`;
-        const dynamicDesc = `السعر الآن في السوق الموازي: الدولار ${usdStr} د.ل، واليورو ${eurStr} د.ل. تابع أسعار العملات والذهب لحظة بلحظة.`;
-        
-        html = html.replace(/<title>.*?<\/title>/, `<title>${dynamicTitle}</title>`);
-        html = html.replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${dynamicDesc}" />`);
-        html = html.replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${dynamicTitle}" />`);
-        html = html.replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${dynamicDesc}" />`);
-        html = html.replace(/<meta property="twitter:title" content=".*?" \/>/, `<meta property="twitter:title" content="${dynamicTitle}" />`);
-        html = html.replace(/<meta property="twitter:description" content=".*?" \/>/, `<meta property="twitter:description" content="${dynamicDesc}" />`);
-        html = html.replace(/<meta property="og:image" content=".*?" \/>/, `<meta property="og:image" content="https://dollar-price-qp14.onrender.com/dinar-preview.png?v=3" />`);
-        html = html.replace(/<meta property="og:image:secure_url" content=".*?" \/>/, `<meta property="og:image:secure_url" content="https://dollar-price-qp14.onrender.com/dinar-preview.png?v=3" />`);
-        html = html.replace(/<meta property="twitter:image" content=".*?" \/>/, `<meta property="twitter:image" content="https://dollar-price-qp14.onrender.com/dinar-preview.png?v=3" />`);
+      // تحديد ما إذا كان يجب إعادة بناء الكاش:
+      // 1. انتهى وقت صلاحيته (5 دقائق)
+      // 2. تغيّر سعر الدولار
+      const now = Date.now();
+      const cacheExpired = !cachedHtmlPage || (now - cachedHtmlPage.builtAt) >= HTML_CACHE_TTL_MS;
+      const rateChanged = cachedHtmlPage && cachedHtmlPage.usdSnapshot !== (rates?.parallel?.USD || 0);
+
+      const cache = (cacheExpired || rateChanged) ? buildAndCacheHtml() : cachedHtmlPage!;
+
+      // ✅ ETag: إذا طلب المتصفح نفس النسخة لا نرسل شيئاً (304 Not Modified) = توفير كبير في الحزمة
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && clientEtag === cache.etag) {
+        res.status(304).end();
+        return;
       }
-      
-      res.send(html);
+
+      // Cache-Control: يخبر المتصفح بالاحتفاظ بالصفحة 5 دقائق، ثم يعيد التحقق في الخلفية بدون تقطيع العرض
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+      res.setHeader('ETag', cache.etag);
+      res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+      res.send(cache.html);
     });
   }
 

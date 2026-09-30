@@ -459,16 +459,15 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
         channelStatusTracker[ch].status = 'stale';
       });
       
-      const nowTime = new Date();
-      const libyaTime = new Date(nowTime.getTime() + (2 * 60 * 60 * 1000));
-      const startOfTodayLibya = new Date(Date.UTC(
-        libyaTime.getUTCFullYear(),
-        libyaTime.getUTCMonth(),
-        libyaTime.getUTCDate(),
-        0, 0, 0, 0
-      )).getTime() - (2 * 60 * 60 * 1000);
+      // ─── حساب بداية اليوم الحالي بتوقيت ليبيا (Africa/Tripoli = UTC+2) ────────
+      // نستخدم Intl لتحويل الوقت الحالي إلى التاريخ الليبي الصحيح
+      // ثم نحسب منتصف الليل الليبي كـ UTC timestamp
+      const _nowForLibya = new Date();
+      const libyaDateStr = _nowForLibya.toLocaleDateString('en-CA', { timeZone: 'Africa/Tripoli' }); // 'YYYY-MM-DD'
+      const startOfTodayLibya = new Date(`${libyaDateStr}T00:00:00+02:00`).getTime();
+      // ─────────────────────────────────────────────────────────────────────────────
       
-      console.log(`[Scraper] Filtering messages sent after: ${new Date(startOfTodayLibya).toISOString()} (Start of today in Libya)`);
+      console.log(`[Scraper] Filtering messages sent after: ${new Date(startOfTodayLibya).toISOString()} (Start of today in Libya time: ${libyaDateStr})`);
 
       const mgr = getOrInitTelegramManager();
       if (mgr) {
@@ -757,7 +756,10 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
     return await Promise.race([scraperPromise, timeoutPromise]);
   } catch (err) {
     console.error(`[Scraper] ${err instanceof Error ? err.message : String(err)}`);
-    isScraping = false;
+    // ← BUG FIX: We removed `isScraping = false;` here.
+    // If the timeout is reached, the underlying scraperPromise is still running.
+    // Releasing the lock here causes a race condition where a new scrape could start concurrently.
+    // The finally block of scraperPromise will release the lock when it actually finishes.
     return null;
   }
 }
@@ -773,14 +775,12 @@ export async function processWhatsAppMessage(
 ): Promise<{ processed: boolean; extractedCount: number; rates?: { code: string; value: number }[] }> {
   try {
     // 1. Time boundary check: message must be from today in Libya (GMT+2)
-    const nowTime = new Date();
-    const libyaTime = new Date(nowTime.getTime() + (2 * 60 * 60 * 1000));
-    const startOfTodayLibya = new Date(Date.UTC(
-      libyaTime.getUTCFullYear(),
-      libyaTime.getUTCMonth(),
-      libyaTime.getUTCDate(),
-      0, 0, 0, 0
-    )).getTime() - (2 * 60 * 60 * 1000);
+    // ─── حساب بداية اليوم الحالي بتوقيت ليبيا (Africa/Tripoli = UTC+2) ────────
+    // نستخدم نفس منهجية Telegram: Intl لتحديد التاريخ الليبي بدقة
+    const _nowForWhatsApp = new Date();
+    const libyaDateStrWA = _nowForWhatsApp.toLocaleDateString('en-CA', { timeZone: 'Africa/Tripoli' }); // 'YYYY-MM-DD'
+    const startOfTodayLibya = new Date(`${libyaDateStrWA}T00:00:00+02:00`).getTime();
+    // ─────────────────────────────────────────────────────────────────────────────
 
     if (msgTime < startOfTodayLibya) {
       return { processed: false, extractedCount: 0 };
@@ -789,9 +789,12 @@ export async function processWhatsAppMessage(
     // 2. Extract rates using regex rules (Gold is handled manually by Admin)
     let extracted = extractRatesFromText(rawText).filter(r => !r.code.startsWith('GOLD_') && r.code !== 'GOLD');
 
-    // 3. Fallback to AI extraction if currency keywords exist and text is suitable
+    // 3. Fallback to AI extraction ONLY if regex found nothing AND currency keywords exist
+    // ← BUG FIX: previously AI was called even when regex succeeded, wasting resources
+    //   and potentially overwriting accurate regex results with less-accurate AI ones.
+    //   Now matches Telegram scraper logic exactly (scraper.service.ts line 518).
     const hasCurrencyKeywords = /(?:يورو|دولار|باوند|دينار|EUR|USD|GBP|TND|TRY|EGP|صك|صكوك|شيك)/i.test(rawText);
-    if (hasCurrencyKeywords && rawText.length > 10 && rawText.length < 800) {
+    if (extracted.length === 0 && hasCurrencyKeywords && rawText.length > 10 && rawText.length < 800) {
       try {
         const aiExtracted = await extractRatesWithAI(rawText, `واتساب - ${chatName}`);
         if (aiExtracted.length > 0) {
@@ -909,7 +912,10 @@ export async function processWhatsAppMessage(
     if (anyChanged) {
       rates.lastUpdated = new Date().toISOString();
       lastSuccessfulFetchTime = Date.now();
-      await saveToSupabase();
+      // ← BUG FIX: was saveToSupabase() with no argument → defaults to 'both' which
+      //   also writes official rates and metal rates unnecessarily from WhatsApp messages.
+      //   WhatsApp only updates parallel rates so we explicitly pass 'parallel'.
+      await saveToSupabase('parallel');
 
       // Check if USD changed and sync bank checks accordingly
       const usdUpdate = collectedUpdates.find(u => u.id === 'USD');
@@ -918,7 +924,8 @@ export async function processWhatsAppMessage(
           const synced = await syncCheckRates('WhatsApp Scraper', usdUpdate.newVal);
           if (synced) {
             const checkPrice = rates.parallel['USD_CHECKS'];
-            if (checkPrice > 0) {
+            const alreadyHasChecks = collectedUpdates.some(u => u.id === 'USD_CHECKS');
+            if (checkPrice > 0 && !alreadyHasChecks) {
               collectedUpdates.push({
                 id: 'USD_CHECKS',
                 name: 'دولار أمريكي (صكوك)',

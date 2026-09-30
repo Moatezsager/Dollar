@@ -246,6 +246,14 @@ class WhatsAppManager {
   }
 
   public async initClient(): Promise<void> {
+    // ← BUG FIX: Always clear the reconnectTimer at the very beginning
+    // before any early returns, to ensure we don't have rogue timers firing
+    // after a successful manual connect or while already initializing.
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     if (this.isInitializing) {
       console.log('[WhatsApp] Client is already initializing, skipping duplicate call.');
       return;
@@ -254,11 +262,6 @@ class WhatsAppManager {
     if (this.sock && this.status === 'connected') {
       console.log('[WhatsApp] Already actively connected.');
       return;
-    }
-
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
     }
 
     this.isInitializing = true;

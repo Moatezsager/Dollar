@@ -407,46 +407,71 @@ function startRetryEngine(): void {
 // ─── Pending Queue Watchdog ─────────────────────────────────────────────────
 /**
  * يُضيف تحديثات مرفوضة (بسبب حد الساعة) إلى قائمة الانتظار.
- * Watchdog يتحقق كل 5 دقائق وينشر فوراً عند تحرر فتحة.
+ *
+ * ✅ الإصلاح الجوهري:
+ * الكود القديم كان يُضيف كل عملة كـ batch منفصل ← يتسبب في إرسال منشور لكل عملة على حدة.
+ * الكود الجديد يجمع دائماً كل التحديثات في batch واحد يتراكم ويُحدَّث بدلاً من التكرار.
+ * بهذا يُرسل الـ watchdog منشوراً واحداً يحتوي على جميع العملات المعلقة.
  */
 function addToPendingQueue(
   updates: { id?: string; name: string; oldVal: number; newVal: number; flag: string }[],
   target: 'all' | 'telegram' | 'facebook'
 ): void {
-  // تجميع مع التحديثات الموجودة في القائمة (نفس العملة → نحتفظ بآخر قيمة)
-  for (const u of updates) {
-    const key = u.id || u.name;
-    const existingIdx = pendingBroadcastQueue.findIndex(p =>
-      p.updates.some(pu => (pu.id || pu.name) === key)
-    );
-    if (existingIdx >= 0) {
-      const existing = pendingBroadcastQueue[existingIdx];
-      const uIdx = existing.updates.findIndex(pu => (pu.id || pu.name) === key);
-      if (uIdx >= 0) {
-        existing.updates[uIdx] = { ...u, oldVal: existing.updates[uIdx].oldVal }; // احتفظ بالقيمة القديمة الأصلية
+  if (updates.length === 0) return;
+
+  if (pendingBroadcastQueue.length === 0) {
+    // لا يوجد batch معلق بعد → أنشئ واحداً جديداً بكل التحديثات
+    pendingBroadcastQueue.push({ updates: [...updates], target, addedAt: Date.now() });
+  } else {
+    // يوجد batch معلق → ادمج التحديثات الجديدة فيه
+    // القاعدة: نفس العملة → نحتفظ بالـ oldVal الأصلي ونأخذ آخر newVal
+    const batch = pendingBroadcastQueue[pendingBroadcastQueue.length - 1];
+    for (const u of updates) {
+      const key = u.id || u.name;
+      const existingIdx = batch.updates.findIndex(pu => (pu.id || pu.name) === key);
+      if (existingIdx >= 0) {
+        // تحديث موجود → حدّث القيمة الجديدة فقط، احتفظ بالقيمة القديمة الأصلية
+        batch.updates[existingIdx] = { ...u, oldVal: batch.updates[existingIdx].oldVal };
+      } else {
+        // عملة جديدة → أضفها للـ batch نفسه
+        batch.updates.push({ ...u });
       }
-    } else {
-      pendingBroadcastQueue.push({ updates: [u], target, addedAt: Date.now() });
+    }
+    // حدّث الـ target للأشمل في حال اختلف
+    if (batch.target !== target && target === 'all') {
+      batch.target = 'all';
     }
   }
-  console.log(`[PendingQueue] 📥 Added ${updates.map(u => u.id || u.name).join(', ')} to pending queue (size: ${pendingBroadcastQueue.length})`);
+
+  console.log(
+    `[PendingQueue] 📥 Merged ${updates.map(u => u.id || u.name).join(', ')} into pending batch ` +
+    `(batch size: ${pendingBroadcastQueue[0]?.updates.length ?? 0} currencies)`
+  );
   startPendingWatchdog();
 }
 
 /**
  * يُشغّل الـ watchdog إذا لم يكن يعمل بالفعل.
+ *
+ * ✅ الإصلاح الجوهري:
+ * الكود القديم يأخذ shift() عنصراً واحداً فقط في كل دورة → إرسال منشور منفرد لكل عملة.
+ * الكود الجديد يستنزف كل العناصر المعلقة ويدمجها في منشور واحد شامل عند تحرر الفتحة.
+ * كما تم تقليل الفترة من 5 دقائق إلى 90 ثانية للاستجابة الأسرع.
  */
 function startPendingWatchdog(): void {
   if (pendingWatchdogTimer !== null) return;
   pendingWatchdogTimer = setInterval(async () => {
     const now = Date.now();
-    // حذف التحديثات المنتهية الصلاحية (أكثر من 3 ساعات)
-    const expired = pendingBroadcastQueue.filter(p => now - p.addedAt > MAX_PENDING_AGE_MS);
-    expired.forEach(p => {
-      const idx = pendingBroadcastQueue.indexOf(p);
-      if (idx >= 0) pendingBroadcastQueue.splice(idx, 1);
-      console.warn(`[PendingQueue] 🗑 Expired pending update: [${p.updates.map(u => u.id || u.name).join(', ')}]`);
+
+    // حذف التحديثات منتهية الصلاحية (أكثر من 3 ساعات)
+    const expiredIdxs: number[] = [];
+    pendingBroadcastQueue.forEach((p, i) => {
+      if (now - p.addedAt > MAX_PENDING_AGE_MS) expiredIdxs.push(i);
     });
+    for (let i = expiredIdxs.length - 1; i >= 0; i--) {
+      const [expired] = pendingBroadcastQueue.splice(expiredIdxs[i], 1);
+      console.warn(`[PendingQueue] 🗑 Expired pending update: [${expired.updates.map(u => u.id || u.name).join(', ')}]`);
+    }
 
     if (pendingBroadcastQueue.length === 0) {
       clearInterval(pendingWatchdogTimer!);
@@ -456,14 +481,37 @@ function startPendingWatchdog(): void {
 
     if (!canBroadcastNow()) return; // لا تزال الفتحة ممتلئة
 
-    // خذ أول دفعة من القائمة وانشرها
-    const batch = pendingBroadcastQueue.shift()!;
-    console.log(`[PendingQueue] 🚀 Processing pending batch: [${batch.updates.map(u => u.id || u.name).join(', ')}]`);
-    // إعادة تشغيل دورة executeBroadcast بدون فلاتر (لأنها اجتازتها مسبقاً)
-    executeBroadcast(batch.updates, false, batch.target, true).catch(e =>
+    // ✅ اجمع كل العناصر في القائمة في منشور واحد بدلاً من أخذ عنصر واحد فقط
+    // هذا يضمن: إذا تراكمت عملات متعددة في الـ pending، تُرسل جميعها في رسالة واحدة
+    const allPending = pendingBroadcastQueue.splice(0, pendingBroadcastQueue.length);
+    const mergedTarget = allPending.some(p => p.target === 'all') ? 'all' 
+      : allPending.some(p => p.target === 'telegram') ? 'telegram' : 'facebook';
+
+    // دمج جميع التحديثات مع معالجة التكرار (نفس العملة → نحتفظ بآخر سعر وأقدم oldVal)
+    const mergedMap = new Map<string, { id?: string; name: string; oldVal: number; newVal: number; flag: string }>();
+    for (const batch of allPending) {
+      for (const u of batch.updates) {
+        const key = u.id || u.name;
+        const existing = mergedMap.get(key);
+        if (existing) {
+          mergedMap.set(key, { ...u, oldVal: existing.oldVal }); // احتفظ بأقدم oldVal
+        } else {
+          mergedMap.set(key, { ...u });
+        }
+      }
+    }
+    const mergedUpdates = Array.from(mergedMap.values());
+
+    console.log(
+      `[PendingQueue] 🚀 Dispatching merged pending batch: [${mergedUpdates.map(u => u.id || u.name).join(', ')}] ` +
+      `(${mergedUpdates.length} currencies in 1 post)`
+    );
+
+    // إرسال الـ batch المدمج بدون فلاتر (لأنها اجتازتها مسبقاً)
+    executeBroadcast(mergedUpdates, false, mergedTarget, true).catch(e =>
       console.error('[PendingQueue] ❌ Failed to process pending batch:', e)
     );
-  }, 5 * 60 * 1000); // كل 5 دقائق
+  }, 90 * 1000); // فحص كل 90 ثانية (تقليل من 5 دقائق للاستجابة الأسرع)
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -928,7 +976,9 @@ export async function broadcastRateChanges(
   target: 'all' | 'telegram' | 'facebook' = 'all',
   isManual: boolean = false
 ) {
-  updates = sanitizeBroadcastUpdates(updates);
+  // NOTE: sanitizeBroadcastUpdates is intentionally NOT called here.
+  // executeBroadcast() (the single final dispatch point) handles sanitization
+  // to avoid double-processing regardless of the call path (direct / pending queue / retry engine).
   if (!isTest && !isManual && !appConfig.telegramAutoPost && !appConfig.facebookAutoPost) {
     return;
   }
@@ -1083,7 +1133,25 @@ export async function executeBroadcast(
   skipFilters: boolean = false,
   isManual: boolean = false
 ) {
+  // ← BUG FIX: sanitizeBroadcastUpdates was called here AND in broadcastRateChanges(),
+  //   causing double-processing on every automated scraper broadcast.
+  //   It is only needed here for direct callers (pendingWatchdog, retryEngine, manual routes)
+  //   that bypass broadcastRateChanges(). Safe to keep here as the single source of truth.
   updates = sanitizeBroadcastUpdates(updates);
+
+  // 🛡️ Ultimate Deduplication: Guarantee absolutely no duplicate currencies in the same broadcast.
+  const uniqueUpdatesMap = new Map<string, typeof updates[0]>();
+  for (const u of updates) {
+    const key = u.id || u.name;
+    const existing = uniqueUpdatesMap.get(key);
+    if (existing) {
+      uniqueUpdatesMap.set(key, { ...u, oldVal: existing.oldVal }); // Keep the oldest oldVal
+    } else {
+      uniqueUpdatesMap.set(key, { ...u });
+    }
+  }
+  updates = Array.from(uniqueUpdatesMap.values());
+
   if (updates.length === 0) return;
 
   // ─── Smart Broadcast Filters (للوضع الحي التلقائي فقط، يتم استثناؤها تماماً في التحديث اليدوي والاختبار) ─────
@@ -1094,8 +1162,11 @@ export async function executeBroadcast(
       console.log('[SmartBroadcast] ⏭ All updates filtered out. No broadcast needed.');
       return;
     }
-    // الشرط 3: حد الساعة (2 منشورات/ساعة)
-    if (!canBroadcastNow()) {
+    // الشرط 3: حد الساعة المنشورات/ساعة
+    // ← BUG FIX: Check if pending queue is NOT empty. If there are pending items, 
+    // we must queue this new update too to maintain order and avoid bypassing the queue
+    // which could result in double-posting concurrently.
+    if (pendingBroadcastQueue.length > 0 || !canBroadcastNow()) {
       addToPendingQueue(eligible, target);
       return;
     }

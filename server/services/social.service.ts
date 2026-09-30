@@ -37,6 +37,54 @@ const BROADCAST_HOURLY_LIMIT = 6;
 /** مصفوفة تحتفظ بطوابع زمنية لآخر {BROADCAST_HOURLY_LIMIT} منشورات */
 const recentBroadcastTimestamps: number[] = [];
 
+export async function loadRecentBroadcastTimestamps(): Promise<void> {
+  try {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+    // محاولة Supabase أولاً
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('broadcast_log')
+        .select('created_at')
+        .eq('status', 'success')
+        .gte('created_at', new Date(oneHourAgo).toISOString())
+        .order('created_at', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        recentBroadcastTimestamps.length = 0;
+        for (const row of data) {
+          recentBroadcastTimestamps.push(new Date(row.created_at).getTime());
+        }
+        console.log(
+          `[SmartBroadcast] Loaded ${recentBroadcastTimestamps.length} recent broadcasts from Supabase`
+        );
+        return;
+      }
+    }
+
+    // Fallback: SQLite
+    if (db) {
+      const rows = db
+        .prepare(
+          `SELECT created_at FROM broadcast_log
+           WHERE status = 'success' AND created_at >= ?
+           ORDER BY created_at ASC`
+        )
+        .all(new Date(oneHourAgo).toISOString()) as { created_at: string }[];
+
+      recentBroadcastTimestamps.length = 0;
+      for (const row of rows) {
+        recentBroadcastTimestamps.push(new Date(row.created_at).getTime());
+      }
+      console.log(
+        `[SmartBroadcast] Loaded ${recentBroadcastTimestamps.length} recent broadcasts from SQLite`
+      );
+    }
+  } catch (err) {
+    console.warn('[SmartBroadcast] Could not load recent broadcast timestamps:', err);
+  }
+}
+
 /** حالة آخر بث منشور لكل عملة (السعر ووقت النشر) - محفوظة في SQLite و Supabase وتُحمّل عند الإقلاع */
 export let lastBroadcastState: Record<string, { price: number; time: number }> = {};
 

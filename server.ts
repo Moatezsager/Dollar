@@ -55,7 +55,8 @@ import {
   lastSocialBroadcastTime,
   lastBroadcastState,
   getOrInitTelegramManager,
-  forwardVisitorMessageToTelegram
+  forwardVisitorMessageToTelegram,
+  loadRecentBroadcastTimestamps
 } from './server/services/social.service';
 import {
   dailyStats,
@@ -1807,11 +1808,10 @@ async function startServer() {
     const mem = process.memoryUsage();
     if (mem.heapUsed > MEMORY_THRESHOLD) {
       console.warn(`[MemoryMonitor] High memory usage: ${Math.round(mem.heapUsed / 1024 / 1024)}MB. Cleaning...`);
-      clearLiveFeed(); // Clear queue
+      clearLiveFeed();
       if (global.gc) {
         global.gc();
       }
-      await fetchParallelRatesFromTelegram();
     }
   }, 60000); // Check every minute
 
@@ -1823,6 +1823,7 @@ async function startServer() {
       try {
         // 1. Load latest rates from Supabase immediately to ensure we have the latest prices
         await loadLatestRatesFromSupabase();
+        await loadRecentBroadcastTimestamps();
         for (const key in rates.parallel) {
           if (rates.parallel[key] > 0) {
             initStatsIfEmpty(key, rates.parallel[key]);

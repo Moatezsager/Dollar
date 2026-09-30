@@ -2926,7 +2926,7 @@ export default function App() {
 
           {/* Unified 24-Hour Movement & Analytics Card */}
           <div className="bg-[#0c1322] border border-slate-800/80 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
-            {/* Header: Title + Pair + Current Price & 24h Change */}
+            {/* Header: Title + Pair */}
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.06]">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 shadow border border-white/10 flex items-center justify-center bg-slate-900">
@@ -2934,27 +2934,10 @@ export default function App() {
                 </div>
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm sm:text-base font-bold text-white tracking-wide">مخطط حركة وأداء الدولار (24 ساعة)</span>
+                    <span className="text-sm sm:text-base font-bold text-white tracking-wide">حركة الدولار (24 ساعة)</span>
                     <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/5">USD/LYD</span>
                   </div>
                   <span className="text-xs text-slate-400 font-medium">سوق النقد الموازي · تحديث فوري</span>
-                </div>
-              </div>
-
-              <div className="flex flex-col items-end">
-                <div className="flex items-baseline gap-1">
-                  <span className={`text-xl sm:text-2xl font-black font-mono tracking-tight tabular-nums ${usdRate >= prevUsdRate ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {usdRate > 0 ? usdRate.toFixed(2) : '9.55'}
-                  </span>
-                  <span className="text-xs text-slate-400 font-bold">د.ل</span>
-                </div>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className={`text-[11px] font-mono font-bold flex items-center gap-0.5 ${
-                    usd24hStats.changePercent >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                    {usd24hStats.changePercent >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                    <span dir="ltr">{usd24hStats.changePercent >= 0 ? '+' : ''}{usd24hStats.changePercent.toFixed(2)}%</span>
-                  </span>
                 </div>
               </div>
             </div>

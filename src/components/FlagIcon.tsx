@@ -6,48 +6,73 @@ interface FlagIconProps {
   name: string;
   className?: string;
   fallbackType?: 'coins' | 'building' | 'send';
+  rounded?: 'xl' | '2xl' | 'full' | 'lg';
 }
 
 /**
- * Modern FlagIcon with intelligent alignment to ensure the "hoist" (left) side 
- * is visible for flags like UAE, USA, etc., while staying perfectly circular.
+ * Ultra-refined Flag & Metal Token Icon with luxury minted borders,
+ * dimensional metallic bezel, and smart alignment.
  */
-export function FlagIcon({ flagCode, name, className = "w-5 h-5", fallbackType = 'coins' }: FlagIconProps) {
+export function FlagIcon({ 
+  flagCode, 
+  name, 
+  className = "w-5 h-5", 
+  fallbackType = 'coins',
+  rounded = 'xl'
+}: FlagIconProps) {
   const [error, setError] = useState(false);
   const isValidFlag = flagCode && flagCode.trim() !== "" && flagCode !== "undefined" && flagCode !== "null";
 
   const isGold = flagCode?.toLowerCase() === 'gold' || name.includes('ذهب');
   const isSilver = flagCode?.toLowerCase() === 'silver' || name.includes('فضة');
 
+  const isFull = className.includes('rounded-full') || rounded === 'full';
+  const radiusClass = isFull ? 'rounded-full' : rounded === '2xl' ? 'rounded-2xl' : rounded === 'lg' ? 'rounded-lg' : 'rounded-xl';
+
   if (isGold) {
     return (
-      <div className={`${className} rounded-full overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-gradient-to-br from-amber-500/20 to-amber-500/5 border border-amber-500/30 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)]`}>
-        <Coins className="w-3/5 h-3/5 text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+      <div 
+        className={`${className} ${radiusClass} overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-gradient-to-br from-amber-300/35 via-amber-500/20 to-amber-950/70 border border-amber-400/60 shadow-[0_2px_12px_rgba(245,158,11,0.3),inset_0_1px_2px_rgba(255,255,255,0.4)] ring-1 ring-amber-300/30 transition-transform duration-200`}
+      >
+        {/* Minted Coin Gloss Arc */}
+        <div className={`absolute inset-0 bg-gradient-to-b from-white/30 via-transparent to-black/20 opacity-80 pointer-events-none ${radiusClass}`} />
+        <div className="absolute inset-0.5 rounded-[inherit] border border-amber-300/20 pointer-events-none" />
+        <Coins className="w-[54%] h-[54%] text-amber-300 drop-shadow-[0_2px_6px_rgba(217,119,6,0.85)] relative z-10" />
       </div>
     );
   }
 
   if (isSilver) {
     return (
-      <div className={`${className} rounded-full overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-gradient-to-br from-slate-300/20 to-slate-400/5 border border-slate-300/30 text-slate-300 shadow-[0_0_12px_rgba(203,213,225,0.2)]`}>
-        <Coins className="w-3/5 h-3/5 text-slate-300 drop-shadow-[0_0_6px_rgba(203,213,225,0.6)]" />
+      <div 
+        className={`${className} ${radiusClass} overflow-hidden flex items-center justify-center relative group/flag flex-shrink-0 bg-gradient-to-br from-slate-100/35 via-slate-300/20 to-slate-900/80 border border-slate-300/60 shadow-[0_2px_12px_rgba(203,213,225,0.25),inset_0_1px_2px_rgba(255,255,255,0.5)] ring-1 ring-white/30 transition-transform duration-200`}
+      >
+        {/* Silver Ingot Gloss Arc */}
+        <div className={`absolute inset-0 bg-gradient-to-b from-white/35 via-transparent to-black/20 opacity-80 pointer-events-none ${radiusClass}`} />
+        <div className="absolute inset-0.5 rounded-[inherit] border border-white/25 pointer-events-none" />
+        <Coins className="w-[54%] h-[54%] text-slate-100 drop-shadow-[0_2px_6px_rgba(148,163,184,0.8)] relative z-10" />
       </div>
     );
   }
 
   if (!isValidFlag || error) {
     const FallbackIcon = fallbackType === 'building' ? Building2 : fallbackType === 'send' ? Send : Coins;
-    const bgClass = fallbackType === 'building' ? 'bg-blue-500/10 text-blue-400' : fallbackType === 'send' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-emerald-500/10 text-emerald-400';
+    const bgClass = fallbackType === 'building' 
+      ? 'bg-gradient-to-br from-cyan-400/25 via-blue-600/15 to-slate-900/80 border border-cyan-400/40 text-cyan-300 shadow-[0_2px_12px_rgba(6,182,212,0.25),inset_0_1px_2px_rgba(255,255,255,0.3)] ring-1 ring-cyan-400/25' 
+      : fallbackType === 'send' 
+      ? 'bg-gradient-to-br from-purple-400/25 via-indigo-600/15 to-slate-900/80 border border-purple-400/40 text-purple-300 shadow-[0_2px_12px_rgba(168,85,247,0.25),inset_0_1px_2px_rgba(255,255,255,0.3)] ring-1 ring-purple-400/25' 
+      : 'bg-gradient-to-br from-emerald-400/25 via-emerald-600/15 to-slate-900/80 border border-emerald-400/40 text-emerald-300 shadow-[0_2px_12px_rgba(16,185,129,0.25),inset_0_1px_2px_rgba(255,255,255,0.3)] ring-1 ring-emerald-400/25';
     
     return (
-      <div className={`${className} rounded-full ${bgClass} flex items-center justify-center overflow-hidden`}>
-        <FallbackIcon className="w-2/3 h-2/3 opacity-80" />
+      <div className={`${className} ${radiusClass} ${bgClass} flex items-center justify-center overflow-hidden relative group/flag flex-shrink-0 transition-transform duration-200`}>
+        <div className={`absolute inset-0 bg-gradient-to-b from-white/25 via-transparent to-transparent opacity-70 pointer-events-none ${radiusClass}`} />
+        <div className="absolute inset-0.5 rounded-[inherit] border border-white/15 pointer-events-none" />
+        <FallbackIcon className="w-[52%] h-[52%] relative z-10 drop-shadow-sm" />
       </div>
     );
   }
 
   // Determine the best alignment based on the flag code
-  // Flags with important content on the left (hoist side) like AE, US, JO, PS
   const code = flagCode.trim().toLowerCase();
   let objectPosition = "center";
   if (["ae", "us", "jo", "ps", "dz", "kw", "om", "qa"].includes(code)) {
@@ -57,29 +82,19 @@ export function FlagIcon({ flagCode, name, className = "w-5 h-5", fallbackType =
   }
 
   return (
-    <div className={`${className} rounded-full overflow-hidden border border-white/20 shadow-xl relative group/flag bg-zinc-950 flex-shrink-0 ring-1 ring-white/10`}>
-      {/* 
-        PREMIUM CIRCULAR LOGIC:
-        1. object-cover fills the circle.
-        2. scale-105 provides a very "low zoom" to avoid excessive cropping.
-        3. Smart object-position ensures significant parts (like UAE red bar) are visible.
-      */}
+    <div className={`${className} ${radiusClass} overflow-hidden border border-white/25 shadow-[0_2px_10px_rgba(0,0,0,0.55),inset_0_1px_1.5px_rgba(255,255,255,0.35)] relative group/flag bg-slate-950 flex-shrink-0 ring-1 ring-white/15 transition-transform duration-200`}>
       <img 
         src={`https://flagcdn.com/w160/${code}.png`} 
         alt={name} 
-        className="w-full h-full object-cover transition-all duration-500 group-hover/flag:scale-115"
+        className="w-full h-full object-cover transition-all duration-300 group-hover/flag:scale-110"
         style={{ objectPosition }}
         onError={() => setError(true)}
       />
       
-      {/* 
-        3D Premium Overlay:
-        - Inner shadow for depth.
-        - Subtle shine for high-end look.
-        - Outer subtle ring.
-      */}
-      <div className="absolute inset-0 rounded-full shadow-[inset_0_2px_6px_rgba(255,255,255,0.15),inset_0_-2px_6px_rgba(0,0,0,0.5)] pointer-events-none"></div>
-      <div className="absolute inset-0 bg-gradient-to-tr from-black/20 via-transparent to-white/10 opacity-30 pointer-events-none rounded-full"></div>
+      {/* Precision Minted Glass Reflection & Depth */}
+      <div className={`absolute inset-0 shadow-[inset_0_1.5px_2px_rgba(255,255,255,0.3),inset_0_-1.5px_3px_rgba(0,0,0,0.6)] pointer-events-none ${radiusClass}`} />
+      <div className={`absolute inset-0 bg-gradient-to-tr from-black/30 via-transparent to-white/20 opacity-50 pointer-events-none ${radiusClass}`} />
+      <div className="absolute inset-0.5 rounded-[inherit] border border-white/10 pointer-events-none" />
     </div>
   );
 }

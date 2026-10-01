@@ -122,8 +122,9 @@ export function addBroadcastLog(params: AddBroadcastLogParams): void {
       .then((res: any) => {
         const error = res?.error;
         if (error) {
-          if (!error.message.includes('relation "broadcast_log" does not exist')) {
-            console.error("[BroadcastLog] Supabase mirror sync error:", error.message);
+          const msg = error.message || '';
+          if (!msg.includes('relation "broadcast_log" does not exist') && !msg.includes('schema cache') && !msg.includes('Could not find the table')) {
+            console.error("[BroadcastLog] Supabase mirror sync error:", msg);
           }
         }
       })

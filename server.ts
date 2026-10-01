@@ -644,11 +644,59 @@ async function startServer() {
     legacyHeaders: false,
   });
 
+  // Helper functions for Cron & Refresh Authorization
+  function extractProvidedCronKey(req: express.Request): string | undefined {
+    if (typeof req.query.key === 'string') return req.query.key;
+    if (typeof req.headers['x-cron-key'] === 'string') return req.headers['x-cron-key'];
+    const auth = req.headers['authorization'];
+    if (typeof auth === 'string' && auth.startsWith('Bearer ')) return auth.substring(7);
+    return undefined;
+  }
+
+  function isValidCronSecret(providedKey: unknown): boolean {
+    if (typeof providedKey !== 'string' || !providedKey) {
+      return false;
+    }
+    const cleanProvided = providedKey.trim();
+    const knownKeys = [
+      '706c8ab7-05af-4aa2-a80e-58d5ecf9a39e',
+      process.env.CRON_SECRET
+    ].filter(Boolean) as string[];
+
+    for (const validKey of knownKeys) {
+      if (cleanProvided === validKey) {
+        return true;
+      }
+      // Tolerant check for trailing character typo (e.g. 706c8ab7-05af-4aa2-a80e-58d5ecf9a39ee)
+      if (cleanProvided.startsWith(validKey) && cleanProvided.length <= validKey.length + 2) {
+        return true;
+      }
+      try {
+        const expectedBuffer = Buffer.from(validKey, 'utf8');
+        const providedBuffer = Buffer.from(cleanProvided, 'utf8');
+        if (expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
+          return true;
+        }
+      } catch (e) {}
+    }
+
+    return false;
+  }
+
   const apiLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: 100,
+    max: 120,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      // Don't throttle health checks, ping endpoints, version, or authorized cron keep-alive calls
+      if (req.path === '/health' || req.path === '/ping' || req.path === '/version') return true;
+      if (req.path.startsWith('/refresh-') || req.path === '/cleanup-db') {
+        const key = extractProvidedCronKey(req);
+        return isValidCronSecret(key);
+      }
+      return false;
+    }
   });
 
   app.use("/api/", apiLimiter);
@@ -1311,43 +1359,18 @@ async function startServer() {
     }
   });
 
-  // --- Secure Key Verification for Cron Endpoints ---
-  function isValidCronSecret(providedKey: unknown): boolean {
-    if (typeof providedKey !== 'string' || !providedKey) {
-      return false;
-    }
-    const cleanProvided = providedKey.trim();
-    const knownKeys = [
-      '706c8ab7-05af-4aa2-a80e-58d5ecf9a39e',
-      process.env.CRON_SECRET
-    ].filter(Boolean) as string[];
-
-    for (const validKey of knownKeys) {
-      if (cleanProvided === validKey) {
-        return true;
-      }
-      // Tolerant check for trailing character typo (e.g. 706c8ab7-05af-4aa2-a80e-58d5ecf9a39ee)
-      if (cleanProvided.startsWith(validKey) && cleanProvided.length <= validKey.length + 2) {
-        return true;
-      }
-      try {
-        const expectedBuffer = Buffer.from(validKey, 'utf8');
-        const providedBuffer = Buffer.from(cleanProvided, 'utf8');
-        if (expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
-          return true;
-        }
-      } catch (e) {}
-    }
-
-    return false;
-  }
-
   // --- Rate Limiters for Cron Endpoints ---
+  // When an authorized secret key is provided (or for server keep-alive checks),
+  // rate limiting is skipped so automated cron jobs, ping monitors, and tests never hit 429 errors.
   const cronParallelLimiter = rateLimit({
-    windowMs: 2 * 60 * 1000, // 2 minutes
-    max: 1, // max 1 request per 2 minutes per IP
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 60, // allow up to 60 requests per minute
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      const key = extractProvidedCronKey(req);
+      return isValidCronSecret(key);
+    },
     handler: (req: express.Request, res: express.Response) => {
       const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
       console.warn(`[Cron-RateLimit] Rate limit exceeded for /api/refresh-parallel from IP: ${ip}`);
@@ -1356,10 +1379,14 @@ async function startServer() {
   });
 
   const cronOfficialLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5, // max 5 requests per hour per IP
+    windowMs: 1 * 60 * 1000,
+    max: 30,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      const key = extractProvidedCronKey(req);
+      return isValidCronSecret(key);
+    },
     handler: (req: express.Request, res: express.Response) => {
       const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
       console.warn(`[Cron-RateLimit] Rate limit exceeded for /api/refresh-official from IP: ${ip}`);
@@ -1368,10 +1395,14 @@ async function startServer() {
   });
 
   const cronCleanupLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5, // max 5 requests per hour per IP
+    windowMs: 1 * 60 * 1000,
+    max: 30,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      const key = extractProvidedCronKey(req);
+      return isValidCronSecret(key);
+    },
     handler: (req: express.Request, res: express.Response) => {
       const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
       console.warn(`[Cron-RateLimit] Rate limit exceeded for /api/cleanup-db from IP: ${ip}`);
@@ -1390,7 +1421,7 @@ async function startServer() {
 
     const userAgent = req.headers['user-agent'] || 'Unknown';
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const providedKey = req.query.key;
+    const providedKey = extractProvidedCronKey(req);
     
     if (!isValidCronSecret(providedKey)) {
       console.warn(`[Cron-Job] Unauthorized refresh attempt from IP: ${ip}`);
@@ -1421,7 +1452,11 @@ async function startServer() {
       
       res.status(200).json({ 
         success: true, 
-        message: parallelUpdate !== null ? "Parallel data updated and synced with database" : "Scraper busy, no update performed",
+        message: parallelUpdate === true 
+          ? "Parallel data updated and synced with database" 
+          : parallelUpdate === false 
+            ? "Server active & alive. No changes detected." 
+            : "Server active & alive. Scraper executed recently, prices are up to date.",
         details: {
           duration_ms: duration,
           parallel_usd: newUsd,
@@ -1446,7 +1481,7 @@ async function startServer() {
     res.setHeader('X-Accel-Buffering', 'no');
 
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const providedKey = req.query.key;
+    const providedKey = extractProvidedCronKey(req);
     
     if (!isValidCronSecret(providedKey)) {
       console.warn(`[Cron-Job-Official] Unauthorized refresh attempt from IP: ${ip}`);
@@ -1493,7 +1528,7 @@ async function startServer() {
 
   app.get("/api/cleanup-db", cronCleanupLimiter, async (req: express.Request, res: express.Response) => {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-    const providedKey = req.query.key;
+    const providedKey = extractProvidedCronKey(req);
     
     if (!isValidCronSecret(providedKey)) {
       console.warn(`[Maintenance] Unauthorized cleanup attempt from IP: ${ip}`);
@@ -1602,6 +1637,17 @@ async function startServer() {
       version: buildSignature,
       serverTime: Date.now(),
       startTime: serverStartTime.getTime()
+    });
+  });
+
+  // Dedicated ultra-lightweight ping endpoint for Render / Uptime monitors keep-alive
+  app.get(["/api/ping", "/ping"], (req: express.Request, res: express.Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.status(200).json({
+      status: "pong",
+      alive: true,
+      uptime: Math.round((Date.now() - serverStartTime.getTime()) / 1000),
+      timestamp: new Date().toISOString()
     });
   });
 

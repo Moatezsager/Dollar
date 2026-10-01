@@ -270,7 +270,6 @@ export async function saveToSupabase(type: 'parallel' | 'official' | 'both' = 'b
         rates_parallel: rates.parallel,
         rates_official: rates.official,
         previous_parallel: rates.previousParallel,
-        previous_official: rates.previousOfficial,
         last_changed: rates.lastChanged,
         recorded_at: rates.lastUpdated || now
       };

@@ -131,7 +131,25 @@ export async function restoreAuthFromStorage(): Promise<boolean> {
       return true;
     }
 
-    // 2. Second Priority: Direct fetch from Supabase cloud app_config
+    // 2. Second Priority: Existing files on local disk (NO bandwidth cost)
+    if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+      console.log('[WhatsApp] Found local auth files. Using them directly (no Supabase download needed).');
+      return true;
+    }
+
+    // 3. Third Priority: Local SQLite fallback (NO bandwidth cost)
+    try {
+      const rows = db.prepare('SELECT filename, content FROM whatsapp_auth').all() as { filename: string; content: string }[];
+      if (rows && rows.length > 0 && rows.some(r => r.filename === 'creds.json')) {
+        console.log(`[WhatsApp] Restoring ${rows.length} session files from SQLite database.`);
+        for (const row of rows) {
+          fs.writeFileSync(path.join(AUTH_DIR, row.filename), row.content, 'utf8');
+        }
+        return true;
+      }
+    } catch (e) {}
+
+    // 4. Last Resort: Supabase cloud (only when local files are missing)
     if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
       try {
         const { data, error } = await supabase
@@ -143,7 +161,7 @@ export async function restoreAuthFromStorage(): Promise<boolean> {
         if (data?.config?.whatsappAuth && data.config.whatsappAuth['creds.json']) {
           const bundle = data.config.whatsappAuth as Record<string, string>;
           const keys = Object.keys(bundle);
-          console.log(`[WhatsApp] Restoring ${keys.length} session auth files directly from Supabase cloud...`);
+          console.log(`[WhatsApp] Restoring ${keys.length} session auth files from Supabase cloud (local files missing).`);
           for (const key of keys) {
             fs.writeFileSync(path.join(AUTH_DIR, key), bundle[key], 'utf8');
           }
@@ -151,28 +169,9 @@ export async function restoreAuthFromStorage(): Promise<boolean> {
           return true;
         }
       } catch (sbErr) {
-        console.warn('[WhatsApp] Supabase direct restore check warning:', sbErr);
+        console.warn('[WhatsApp] Supabase restore warning:', sbErr);
       }
     }
-
-    // 3. Third Priority: Existing files on local disk
-    if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
-      backupAuthToStorage().catch(() => {});
-      return true;
-    }
-
-    // 4. Fourth Priority: Local SQLite fallback
-    try {
-      const rows = db.prepare('SELECT filename, content FROM whatsapp_auth').all() as { filename: string; content: string }[];
-      if (rows && rows.length > 0 && rows.some(r => r.filename === 'creds.json')) {
-        console.log(`[WhatsApp] Restoring ${rows.length} session files from SQLite database...`);
-        for (const row of rows) {
-          fs.writeFileSync(path.join(AUTH_DIR, row.filename), row.content, 'utf8');
-        }
-        backupAuthToStorage().catch(() => {});
-        return true;
-      }
-    } catch (e) {}
 
     return false;
   } catch (err) {
@@ -193,6 +192,8 @@ export function hasSavedSession(): boolean {
   } catch (e) {}
   return false;
 }
+
+let cachedBaileysVersion: [number, number, number] | null = null;
 
 class WhatsAppManager {
   private sock: WASocket | null = null;
@@ -275,12 +276,15 @@ class WhatsAppManager {
       await restoreAuthFromStorage();
 
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-      const { version, isLatest } = await fetchLatestBaileysVersion().catch(() => ({
-        version: [2, 3000, 1015901307] as [number, number, number],
-        isLatest: true
-      }));
-
-      console.log(`[WhatsApp] Using Baileys version: ${version.join('.')} (isLatest: ${isLatest})`);
+      if (!cachedBaileysVersion) {
+        const result = await fetchLatestBaileysVersion().catch(() => ({
+          version: [2, 3000, 1015901307] as [number, number, number],
+          isLatest: true
+        }));
+        cachedBaileysVersion = result.version;
+        console.log(`[WhatsApp] Fetched Baileys version: ${cachedBaileysVersion.join('.')} (cached for session)`);
+      }
+      const version = cachedBaileysVersion;
 
       const logger = pino({ level: 'silent' });
 
@@ -350,11 +354,19 @@ class WhatsAppManager {
           this.qrCodeUrl = null;
 
           // Never delete auth files on disconnect!
-          // Auto-reconnect with exponential backoff
-          const delay = Math.min(3000 * Math.max(1, this.reconnectAttempts + 1), 30000);
+          // Stop reconnecting after max attempts to prevent bandwidth drain
+          if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error(`[WhatsApp] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Stopping auto-reconnect to prevent bandwidth abuse. Restart from admin panel.`);
+            this.status = 'error';
+            this.lastError = `فشل الاتصال بعد ${this.maxReconnectAttempts} محاولة. أعد الاتصال يدوياً من لوحة التحكم.`;
+            return;
+          }
+
+          // Exponential backoff: 10s, 20s, 40s, 80s, 160s, 300s max
+          const delay = Math.min(10000 * Math.pow(2, this.reconnectAttempts), 300000);
           this.reconnectAttempts++;
-          console.log(`[WhatsApp] Will attempt stealth reconnection in ${delay / 1000}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-          
+          console.log(`[WhatsApp] Reconnecting in ${Math.round(delay / 1000)}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+
           this.reconnectTimer = setTimeout(() => {
             this.isInitializing = false;
             this.initClient().catch(console.error);

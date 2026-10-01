@@ -2067,8 +2067,8 @@ async function startMonitoring() {
        // WhatsApp stealth reconnect check
        if (hasSavedSession()) {
          const waStatus = whatsappManager.getStatus();
-         if (waStatus.status !== 'connected' && waStatus.status !== 'connecting') {
-           console.log("[Reconnector] WhatsApp session saved but not connected, attempting reconnect...");
+         if (waStatus.status === 'disconnected') {
+           console.log("[Reconnector] WhatsApp session saved and disconnected, attempting reconnect...");
            whatsappManager.initClient().catch(() => {});
          }
        }

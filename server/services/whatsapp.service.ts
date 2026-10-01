@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { db, supabase, supabaseAnonKey } from '../db';
 import { appConfig } from '../config';
 import { processWhatsAppMessage } from './scraper.service';
@@ -42,14 +43,51 @@ export interface WhatsAppChatSummary {
 
 const AUTH_DIR = path.resolve(process.cwd(), 'whatsapp_auth');
 let backupDebounceTimer: NodeJS.Timeout | null = null;
+let lastSavedAuthHash: string | null = null;
+let lastSavedAuthTime = 0;
 
 /**
- * Backs up all session authentication files from disk directly to Supabase cloud (app_config table)
- * so that session credentials survive any container redeploy, update, or server restart.
+ * Prunes obsolete pre-key files, retaining only the 50 newest.
+ * Prevents the auth folder from accumulating 1,000+ files and consuming megabytes of network bandwidth.
+ */
+function cleanupOldPrekeys(): void {
+  try {
+    if (!fs.existsSync(AUTH_DIR)) return;
+    const allFiles = fs.readdirSync(AUTH_DIR);
+    const preKeyFiles = allFiles
+      .filter(f => f.startsWith('pre-key-') && f.endsWith('.json'))
+      .map(f => ({
+        name: f,
+        num: parseInt(f.replace('pre-key-', '').replace('.json', ''), 10)
+      }))
+      .filter(f => !isNaN(f.num))
+      .sort((a, b) => b.num - a.num);
+
+    if (preKeyFiles.length > 50) {
+      const toDelete = preKeyFiles.slice(50);
+      for (const item of toDelete) {
+        try {
+          fs.unlinkSync(path.join(AUTH_DIR, item.name));
+        } catch (e) {}
+      }
+      console.log(`[WhatsApp] Pruned ${toDelete.length} obsolete pre-key files (bandwidth optimization).`);
+    }
+  } catch (err) {
+    console.warn('[WhatsApp] Pre-key cleanup warning:', err);
+  }
+}
+
+/**
+ * Backs up all session authentication files from disk to local SQLite and Supabase cloud.
+ * Includes SHA-256 deduplication and change verification so identical files are NEVER re-uploaded.
  */
 export async function backupAuthToStorage(): Promise<void> {
   try {
     if (!fs.existsSync(AUTH_DIR)) return;
+
+    // Prune obsolete pre-keys before reading directory
+    cleanupOldPrekeys();
+
     const files = fs.readdirSync(AUTH_DIR);
     if (files.length === 0) return;
 
@@ -66,26 +104,15 @@ export async function backupAuthToStorage(): Promise<void> {
     // Only backup if valid credentials exist
     if (!bundle['creds.json']) return;
 
+    // Check SHA-256 hash of creds.json to avoid uploading duplicate data to Supabase
+    const currentHash = crypto.createHash('sha256').update(bundle['creds.json']).digest('hex');
+    const now = Date.now();
+    const isUnchanged = (currentHash === lastSavedAuthHash) && (now - lastSavedAuthTime < 60 * 60 * 1000);
+
     // 1. Update in-memory appConfig
     appConfig.whatsappAuth = bundle;
 
-    // 2. Direct Sync to Supabase cloud app_config table
-    if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-      try {
-        const { error } = await supabase
-          .from('app_config')
-          .upsert({ id: 1, config: appConfig });
-        if (error) {
-          console.error('[WhatsApp] Failed to save session into Supabase app_config:', error.message);
-        } else {
-          console.log(`[WhatsApp] Successfully saved ${Object.keys(bundle).length} auth files directly to Supabase cloud!`);
-        }
-      } catch (sbErr) {
-        console.error('[WhatsApp] Supabase save exception:', sbErr);
-      }
-    }
-
-    // 3. Local SQLite fallback (for offline or local runs)
+    // 2. Local SQLite fallback (instant, zero network bandwidth)
     try {
       const upsertStmt = db.prepare('INSERT OR REPLACE INTO whatsapp_auth (filename, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
       db.transaction(() => {
@@ -95,6 +122,29 @@ export async function backupAuthToStorage(): Promise<void> {
         db.prepare('INSERT OR REPLACE INTO server_config (key, value) VALUES (?, ?)').run('whatsapp_session_backup', JSON.stringify(bundle));
       })();
     } catch (dbErr) {}
+
+    // 3. Skip Supabase upload if credentials have not changed (saves gigabytes of bandwidth!)
+    if (isUnchanged) {
+      return;
+    }
+
+    // 4. Direct Sync to Supabase cloud app_config table ONLY on real change
+    if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
+      try {
+        const { error } = await supabase
+          .from('app_config')
+          .upsert({ id: 1, config: appConfig });
+        if (error) {
+          console.error('[WhatsApp] Failed to save session into Supabase app_config:', error.message);
+        } else {
+          lastSavedAuthHash = currentHash;
+          lastSavedAuthTime = now;
+          console.log(`[WhatsApp] Successfully saved ${Object.keys(bundle).length} auth files to Supabase cloud (new credentials saved).`);
+        }
+      } catch (sbErr) {
+        console.error('[WhatsApp] Supabase save exception:', sbErr);
+      }
+    }
 
   } catch (err) {
     console.error('[WhatsApp] Error in backupAuthToStorage:', err);
@@ -108,7 +158,7 @@ export function queueAuthBackup(): void {
   if (backupDebounceTimer) clearTimeout(backupDebounceTimer);
   backupDebounceTimer = setTimeout(() => {
     backupAuthToStorage().catch(console.error);
-  }, 1200);
+  }, 30000); // 30 seconds debounce
 }
 
 /**
@@ -128,11 +178,13 @@ export async function restoreAuthFromStorage(): Promise<boolean> {
       for (const key of keys) {
         fs.writeFileSync(path.join(AUTH_DIR, key), bundle[key], 'utf8');
       }
+      cleanupOldPrekeys();
       return true;
     }
 
     // 2. Second Priority: Existing files on local disk (NO bandwidth cost)
     if (fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+      cleanupOldPrekeys();
       console.log('[WhatsApp] Found local auth files. Using them directly (no Supabase download needed).');
       return true;
     }
@@ -145,6 +197,7 @@ export async function restoreAuthFromStorage(): Promise<boolean> {
         for (const row of rows) {
           fs.writeFileSync(path.join(AUTH_DIR, row.filename), row.content, 'utf8');
         }
+        cleanupOldPrekeys();
         return true;
       }
     } catch (e) {}
@@ -165,6 +218,7 @@ export async function restoreAuthFromStorage(): Promise<boolean> {
           for (const key of keys) {
             fs.writeFileSync(path.join(AUTH_DIR, key), bundle[key], 'utf8');
           }
+          cleanupOldPrekeys();
           appConfig.whatsappAuth = bundle;
           return true;
         }
@@ -214,6 +268,7 @@ class WhatsAppManager {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private stableTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     if (!fs.existsSync(AUTH_DIR)) {
@@ -345,16 +400,34 @@ class WhatsAppManager {
 
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          console.log(`[WhatsApp] Connection closed. Status code: ${statusCode}. Preserving session in Supabase cloud...`);
+          console.log(`[WhatsApp] Connection closed. Status code: ${statusCode}.`);
 
-          // Back up latest state before handling reconnect
-          queueAuthBackup();
+          if (this.stableTimer) {
+            clearTimeout(this.stableTimer);
+            this.stableTimer = null;
+          }
 
           this.status = 'disconnected';
           this.qrCodeUrl = null;
 
           // Never delete auth files on disconnect!
-          // Stop reconnecting after max attempts to prevent bandwidth drain
+          // 1. Handle 440: Connection Replaced (another device or session connected to WhatsApp)
+          if (statusCode === 440 || statusCode === DisconnectReason.connectionReplaced) {
+            console.warn('[WhatsApp] Disconnect reason 440 (connectionReplaced): Another device or session connected with this WhatsApp number. Stopping auto-reconnect to prevent bandwidth abuse and number banning.');
+            this.status = 'error';
+            this.lastError = 'تم تسجيل الدخول إلى هذا الرقم من جهاز أو متصفح آخر (رمز 440). تم إيقاف إعادة الاتصال تلقائياً لمنع استهلاك الباندويث وحظر الرقم. يمكنك إعادة الاتصال من لوحة التحكم عند الحاجة.';
+            return;
+          }
+
+          // 2. Handle 401: Logged Out
+          if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+            console.warn('[WhatsApp] Disconnect reason 401 (loggedOut): Session was logged out. Halting auto-reconnect.');
+            this.status = 'disconnected';
+            this.lastError = 'تم تسجيل الخروج من جلسة واتساب. يرجى مسح رمز الاستجابة السريعة (QR) من جديد.';
+            return;
+          }
+
+          // 3. Stop reconnecting after max attempts to prevent bandwidth drain
           if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error(`[WhatsApp] Max reconnect attempts (${this.maxReconnectAttempts}) reached. Stopping auto-reconnect to prevent bandwidth abuse. Restart from admin panel.`);
             this.status = 'error';
@@ -362,8 +435,8 @@ class WhatsAppManager {
             return;
           }
 
-          // Exponential backoff: 10s, 20s, 40s, 80s, 160s, 300s max
-          const delay = Math.min(10000 * Math.pow(2, this.reconnectAttempts), 300000);
+          // Exponential backoff: 15s, 30s, 60s, 120s, 240s, 300s max
+          const delay = Math.min(15000 * Math.pow(2, this.reconnectAttempts), 300000);
           this.reconnectAttempts++;
           console.log(`[WhatsApp] Reconnecting in ${Math.round(delay / 1000)}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
 
@@ -377,7 +450,6 @@ class WhatsAppManager {
           this.qrCodeUrl = null;
           this.connectedAt = new Date().toISOString();
           this.lastError = null;
-          this.reconnectAttempts = 0;
 
           if (this.sock?.user) {
             this.phoneNumber = this.sock.user.id ? this.sock.user.id.split(':')[0] : null;
@@ -385,8 +457,15 @@ class WhatsAppManager {
             console.log(`[WhatsApp] Connected permanently as: ${this.userName || 'Bot'} (${this.phoneNumber})`);
           }
 
-          // Immediately sync all session keys to Supabase cloud!
-          await backupAuthToStorage();
+          // Reset reconnect attempts ONLY after 5 minutes of continuous stable connection
+          // This prevents rapid disconnect-reconnect flapping from resetting the counter
+          if (this.stableTimer) clearTimeout(this.stableTimer);
+          this.stableTimer = setTimeout(() => {
+            if (this.status === 'connected') {
+              this.reconnectAttempts = 0;
+              console.log('[WhatsApp] Connection has remained stable for 5 minutes. Reconnect attempts counter reset.');
+            }
+          }, 5 * 60 * 1000);
         }
       });
 
@@ -523,6 +602,10 @@ class WhatsAppManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.stableTimer) {
+      clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+    }
     if (this.sock) {
       try {
         console.log('[WhatsApp] Gracefully closing socket for server shutdown (preserving Supabase session)...');
@@ -533,6 +616,14 @@ class WhatsAppManager {
   }
 
   public async disconnect(): Promise<void> {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.stableTimer) {
+      clearTimeout(this.stableTimer);
+      this.stableTimer = null;
+    }
     try {
       if (this.sock) {
         console.log('[WhatsApp] Disconnecting socket upon explicit admin request...');
@@ -544,6 +635,7 @@ class WhatsAppManager {
       console.warn('[WhatsApp] Error during socket logout:', e);
     } finally {
       await this.clearAuthFromSupabaseAndDisk();
+      lastSavedAuthHash = null;
       this.status = 'disconnected';
       this.qrCodeUrl = null;
       this.phoneNumber = null;

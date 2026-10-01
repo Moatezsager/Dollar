@@ -78,6 +78,8 @@ import AppInstallUninstall from "./components/AppInstallUninstall";
 import PushNotificationPrompt from "./components/PushNotificationPrompt";
 import { safeStorage, safeSessionStorage } from "./utils/storage";
 import { searchRates, SearchableItem } from "./utils/smartSearch";
+import { purgeAllCachesAndReload, checkForAppUpdate, processIncomingVersion, manualCachePurgeAndReload } from "./utils/autoUpdater";
+import { AutoUpdateBanner } from "./components/AutoUpdateBanner";
 
 
 interface Rates {
@@ -1092,6 +1094,12 @@ export default function App() {
           }
         });
 
+        socket.on('app_version', (data: any) => {
+          if (data?.version) {
+            processIncomingVersion(data.version);
+          }
+        });
+
         socket.on('connect_error', (err: any) => {
           console.warn('Socket.io connection notice (polling fallback active):', err?.message || err);
         });
@@ -2013,6 +2021,7 @@ export default function App() {
 
         <InstallPrompt />
         <PushNotificationPrompt />
+        <AutoUpdateBanner />
         {/* No more Splash Screen - Skeletons show the structure immediately */}
 
       <Joyride
@@ -3853,6 +3862,23 @@ export default function App() {
             عن المنصة
           </button>
         </div>
+        
+        <div className="flex items-center gap-3 mb-8">
+          <button 
+            onClick={async () => {
+              triggerHaptic(10);
+              addToast('تحديث الواجهة', 'جاري تفريغ الذاكرة المؤقتة وتحديث المتصفح...', 'info');
+              setTimeout(() => {
+                manualCachePurgeAndReload();
+              }, 300);
+            }} 
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white border border-slate-700/50 text-xs font-bold transition-all active:scale-95 shadow-sm"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+            <span>التحقق من التحديثات وتفريغ الكاش</span>
+          </button>
+        </div>
+
         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-blue-500/20 flex items-center justify-center border border-slate-700/50">
             <img src="/logo.png" alt="Logo" className="w-6 h-6 rounded-full" />
@@ -4113,20 +4139,24 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* Clear Cache */}
-                    <div className="pt-4 border-t border-slate-800/60">
+                    {/* Clear Cache & Auto-Update */}
+                    <div className="pt-4 border-t border-slate-800/60 flex flex-col gap-2">
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           triggerHaptic(10);
-                          safeStorage.removeItem('lyd_rates');
-                          safeStorage.removeItem('lyd_history');
-                          fetchData(true);
-                          addToast('تم بنجاح', 'تم مسح الذاكرة المؤقتة وتحديث البيانات', 'info');
+                          addToast('جاري التحديث', 'يتم الآن مسح الذاكرة المؤقتة وتحديث التطبيق...', 'info');
+                          setTimeout(() => {
+                            purgeAllCachesAndReload();
+                          }, 300);
                         }}
-                        className="w-full py-3 text-sm font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors"
+                        className="w-full py-3 text-sm font-bold text-rose-400 hover:text-rose-300 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/20 rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                       >
-                        مسح الذاكرة المؤقتة وتحديث البيانات
+                        <RefreshCw className="w-4 h-4" />
+                        <span>مسح الذاكرة المؤقتة وتحديث الواجهة بالكامل</span>
                       </button>
+                      <p className="text-[11px] text-slate-500 text-center">
+                        يقوم بحذف الكاش القديم وجلب أحدث كود ونسخة واجهة معتمدة فورياً.
+                      </p>
                     </div>
                   </div>
                 )}

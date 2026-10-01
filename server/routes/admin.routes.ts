@@ -18,7 +18,10 @@ import {
   lastSuccessfulScrape,
   channelStatusTracker,
   lastOfficialFetchDate,
-  lastSuccessfulFetchTime
+  lastSuccessfulFetchTime,
+  isCblFetchEnabled,
+  setCblFetchEnabled,
+  getCblStatusInfo
 } from '../services/scraper.service';
 import {
   cleanupOldData,
@@ -478,25 +481,53 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
     }
   });
 
-  // Manual Official Rates Refresh (Admin Auth)
+  // Manual Official Rates Refresh (Admin Auth) - Forces instant fetch bypassing 9-11 AM window & today lock
   router.post('/refresh-official', async (req: express.Request, res: express.Response) => {
     try {
-      console.log(`[Admin] Manual official rates refresh triggered`);
-      const officialUpdate = await fetchOfficialRates();
-      if (officialUpdate) {
-        await saveToSupabase('official');
-        deps.broadcastRatesUpdate(rates);
-      }
+      console.log(`[Admin] Manual official rates refresh triggered with force=true`);
+      const officialUpdate = await fetchOfficialRates(true);
+      await saveToSupabase('official');
+      deps.broadcastRatesUpdate(rates);
+      const status = getCblStatusInfo();
       res.json({ 
         success: true, 
-        message: "تم تحديث السعر الرسمي بنجاح", 
-        updated: officialUpdate 
+        message: "تم تحديث أسعار المصرف المركزي بنجاح", 
+        updated: officialUpdate,
+        status
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Manual official refresh failed:", err);
       if (!res.headersSent) {
-        res.status(500).json({ success: false, message: "فشل التحديث اليدوي للسعر الرسمي" });
+        res.status(500).json({ success: false, message: "فشل التحديث اليدوي للسعر الرسمي: " + (err?.message || err) });
       }
+    }
+  });
+
+  // Get Central Bank Scraper Status
+  router.get('/cbl-status', (req: express.Request, res: express.Response) => {
+    try {
+      const status = getCblStatusInfo();
+      res.json({ success: true, status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Toggle Central Bank Scraper Enabled / Disabled
+  router.post('/cbl-toggle', (req: express.Request, res: express.Response) => {
+    try {
+      const { enabled } = req.body;
+      const nextEnabled = typeof enabled === 'boolean' ? enabled : !isCblFetchEnabled;
+      setCblFetchEnabled(nextEnabled);
+      const status = getCblStatusInfo();
+      res.json({ 
+        success: true, 
+        message: nextEnabled ? "تم تنشيط دالة جلب أسعار المصرف المركزي" : "تم إيقاف تنشيط دالة جلب أسعار المصرف المركزي", 
+        enabled: nextEnabled,
+        status 
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 

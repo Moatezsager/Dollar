@@ -10,8 +10,31 @@ import { isSignificantChange, isProbablyDateOrTime } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
 export let lastOfficialFetchDate = "";
+export let isCblFetchEnabled = true;
 
-// Load lastOfficialFetchDate from SQLite + Supabase on startup
+export function setCblFetchEnabled(enabled: boolean) {
+  isCblFetchEnabled = enabled;
+  console.log(`[Official] CBL auto-fetch enabled set to: ${enabled}`);
+  try {
+    if (db) {
+      db.prepare(`
+        INSERT INTO server_config (key, value) VALUES ('cbl_fetch_enabled', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(enabled ? 'true' : 'false');
+    }
+    if (supabase) {
+      supabase.from('server_config').upsert({
+        key: 'cbl_fetch_enabled',
+        value: enabled ? 'true' : 'false',
+        updated_at: new Date().toISOString()
+      }).then(() => {}, (err) => console.error('[Official] Error saving cbl_fetch_enabled to Supabase:', err));
+    }
+  } catch (e) {
+    console.error('[Official] Error persisting cbl_fetch_enabled:', e);
+  }
+}
+
+// Load lastOfficialFetchDate and isCblFetchEnabled from SQLite + Supabase on startup
 (async () => {
   try {
     if (db) {
@@ -22,20 +45,40 @@ export let lastOfficialFetchDate = "";
         lastOfficialFetchDate = row.value;
         console.log(`[Official] Loaded lastOfficialFetchDate from SQLite: ${row.value}`);
       }
+
+      const enabledRow = db.prepare(
+        'SELECT value FROM server_config WHERE key = ?'
+      ).get('cbl_fetch_enabled') as { value: string } | undefined;
+      if (enabledRow?.value !== undefined) {
+        isCblFetchEnabled = enabledRow.value === 'true';
+        console.log(`[Official] Loaded isCblFetchEnabled from SQLite: ${isCblFetchEnabled}`);
+      }
     }
-    if (!lastOfficialFetchDate && supabase) {
-      const { data } = await supabase
+    if (supabase) {
+      if (!lastOfficialFetchDate) {
+        const { data } = await supabase
+          .from('server_config')
+          .select('value')
+          .eq('key', 'last_official_fetch_date')
+          .single();
+        if (data?.value) {
+          lastOfficialFetchDate = data.value;
+          console.log(`[Official] Loaded lastOfficialFetchDate from Supabase: ${data.value}`);
+        }
+      }
+
+      const { data: enabledData } = await supabase
         .from('server_config')
         .select('value')
-        .eq('key', 'last_official_fetch_date')
+        .eq('key', 'cbl_fetch_enabled')
         .single();
-      if (data?.value) {
-        lastOfficialFetchDate = data.value;
-        console.log(`[Official] Loaded lastOfficialFetchDate from Supabase: ${data.value}`);
+      if (enabledData?.value !== undefined) {
+        isCblFetchEnabled = enabledData.value === 'true';
+        console.log(`[Official] Loaded isCblFetchEnabled from Supabase: ${isCblFetchEnabled}`);
       }
     }
   } catch (e) {
-    console.warn('[Official] Could not load lastOfficialFetchDate on startup:', e);
+    console.warn('[Official] Could not load CBL settings on startup:', e);
   }
 })();
 
@@ -142,8 +185,41 @@ export async function fetchFromCBL(): Promise<{ cblDate: string, rates: RateMap 
   }
 }
 
-export async function fetchOfficialRates(): Promise<boolean> {
-  console.log("[Official] Starting official rates fetch cycle...");
+export function getCblStatusInfo() {
+  const now = new Date();
+  const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
+  const dayIndex = libyaDateObj.getDay();
+  const currentLibyaHour = libyaDateObj.getHours();
+  const currentLibyaMinute = libyaDateObj.getMinutes();
+
+  const yyyy = libyaDateObj.getFullYear();
+  const mm = String(libyaDateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(libyaDateObj.getDate()).padStart(2, '0');
+  const currentLibyaDate = `${yyyy}-${mm}-${dd}`;
+
+  const isWeekend = (dayIndex === 5 || dayIndex === 6);
+  const isInActiveWindow = !isWeekend && (currentLibyaHour >= 9 && currentLibyaHour < 11);
+  const isTodayFetched = (lastOfficialFetchDate === currentLibyaDate);
+
+  const timeFormatted = `${String(currentLibyaHour).padStart(2, '0')}:${String(currentLibyaMinute).padStart(2, '0')}`;
+
+  return {
+    enabled: isCblFetchEnabled,
+    lastOfficialFetchDate,
+    lastOfficialBroadcastDate,
+    isTodayFetched,
+    isInActiveWindow,
+    isWeekend,
+    currentLibyaDate,
+    currentLibyaTime: timeFormatted,
+    currentLibyaHour,
+    lastSuccessfulFetchTime,
+    rates: rates.official
+  };
+}
+
+export async function fetchOfficialRates(force: boolean = false): Promise<boolean> {
+  console.log(`[Official] Starting official rates fetch cycle (force: ${force})...`);
 
   const now = new Date();
   const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
@@ -155,21 +231,30 @@ export async function fetchOfficialRates(): Promise<boolean> {
   const dd = String(libyaDateObj.getDate()).padStart(2, '0');
   const currentLibyaDate = `${yyyy}-${mm}-${dd}`;
 
-  // 1. تحقق: أيام العمل فقط (الأحد=0 إلى الخميس=4)
-  if (dayIndex === 5 || dayIndex === 6) {
-    console.log("[Official] Skipping fetch. CBL is closed on Friday and Saturday.");
-    return false;
-  }
+  if (!force) {
+    // 0. تحقق: خيار تنشيط/إيقاف الدالة من لوحة تحكم الأدمن
+    if (!isCblFetchEnabled) {
+      console.log("[Official] Skipping fetch. CBL auto-fetch function is disabled in Admin settings.");
+      return false;
+    }
 
-  // 2. تحقق: نافذة الوقت 9 ص - 11 ص بتوقيت ليبيا فقط
-  if (currentLibyaHour < 9 || currentLibyaHour >= 11) {
-    console.log(`[Official] Outside fetch window (current Libya hour: ${currentLibyaHour}). Skipping.`);
-    return false;
-  }
+    // 1. تحقق: أيام العمل فقط (الأحد=0 إلى الخميس=4)
+    if (dayIndex === 5 || dayIndex === 6) {
+      console.log("[Official] Skipping fetch. CBL is closed on Friday and Saturday.");
+      return false;
+    }
 
-  if (lastOfficialFetchDate === currentLibyaDate) {
-    console.log(`[Official] Already successfully updated rates for today (${currentLibyaDate}). Skipping.`);
-    return false;
+    // 2. تحقق: نافذة الوقت 9 ص - 11 ص بتوقيت ليبيا فقط وباقي اليوم تكون الدالة غير نشطة
+    if (currentLibyaHour < 9 || currentLibyaHour >= 11) {
+      console.log(`[Official] Outside active fetch window (9:00 - 11:00 AM). Current Libya hour: ${currentLibyaHour}:00. Function is inactive.`);
+      return false;
+    }
+
+    // 3. تحقق: إذا تم جلب نشرة اليوم الرسمية تقف الدالة عن الجلب أو النشر التلقائي لباقي اليوم
+    if (lastOfficialFetchDate === currentLibyaDate) {
+      console.log(`[Official] Today's official rates (${currentLibyaDate}) have already been successfully fetched. Inactive for remainder of today.`);
+      return false;
+    }
   }
 
   // 1. Try CBL Website First (Most Accurate for Libya)
@@ -206,19 +291,15 @@ export async function fetchOfficialRates(): Promise<boolean> {
     }
 
     // Daily official bulletin broadcast condition:
-    // If today's bulletin has not yet been posted to followers and CBL rates are ready for today,
-    // broadcast today's official bulletin!
+    // Only broadcast if today's bulletin has not yet been broadcasted
     const isAlreadyBroadcastedToday = (lastOfficialBroadcastDate === currentLibyaDate);
-    if (!isAlreadyBroadcastedToday && (cblDate === currentLibyaDate || anyChanged)) {
+    if (!isAlreadyBroadcastedToday && (cblDate === currentLibyaDate || force || anyChanged)) {
       console.log(`[Official] Broadcasting daily official bulletin for today (${currentLibyaDate})...`);
       broadcastOfficialRates(false).catch(console.error);
-    } else if (anyChanged) {
-      console.log(`[Official] Rates changed during the day, broadcasting official update...`);
-      broadcastOfficialRates(false).catch(console.error);
     }
-    
-    if (cblDate === currentLibyaDate) {
-      console.log(`[Official] CBL published rates for today (${cblDate}). Locking updates until tomorrow.`);
+
+    if (cblDate === currentLibyaDate || force) {
+      console.log(`[Official] CBL published rates for today (${currentLibyaDate}). Locking updates until tomorrow.`);
       lastOfficialFetchDate = currentLibyaDate;
       try {
         if (db) {
@@ -243,7 +324,7 @@ export async function fetchOfficialRates(): Promise<boolean> {
       }
     }
     
-    return anyChanged;
+    return anyChanged || force;
   }
   
   console.warn("[Official] Failed to fetch from CBL. Retaining previous official rates as they are fixed daily.");

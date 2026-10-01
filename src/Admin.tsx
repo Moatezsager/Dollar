@@ -188,6 +188,7 @@ const RegexEditor = ({ regex, onChange }: { regex: string, onChange: (val: strin
 };
 
 import { TelegramDetailedStatus } from "./components/TelegramDetailedStatus";
+import { AdminCentralBank } from "./components/AdminCentralBank";
 
 export default function Admin() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -202,7 +203,7 @@ export default function Admin() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'weekly-harvest'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'cbl' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'weekly-harvest'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAuthorizedDevice, setIsAuthorizedDevice] = useState(true);
 
@@ -266,6 +267,7 @@ export default function Admin() {
       group: 'الرئيسية',
       items: [
         { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
+        { id: 'cbl', label: 'مصرف ليبيا المركزي', icon: Building2 },
         { id: 'config', label: 'إعدادات العملات', icon: Settings },
       ]
     },
@@ -1147,6 +1149,10 @@ export default function Admin() {
                 </div>
               </section>
             </motion.div>
+          )}
+
+          {activeTab === 'cbl' && (
+            <AdminCentralBank token={token} onError={setError} onSuccess={setSuccess} />
           )}
 
           {activeTab === 'weekly-harvest' && (

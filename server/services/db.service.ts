@@ -2,7 +2,7 @@ import { db, supabase, supabaseAnonKey } from '../db';
 import { rates, history } from '../state';
 import { appConfig } from '../config';
 import { HistoryPoint, PriceChangeLog, RateMap, AppConfig } from '../types';
-import { isSignificantChange } from '../utils/helpers';
+import { isSignificantChange, METAL_IDS } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
 export let lastRatesFetchTime = 0;
@@ -19,19 +19,6 @@ export function clearDbCache() {
   lastHistoryFetchTime = 0;
   lastRatesFetchTime = 0;
 }
-
-const METAL_IDS = [
-  "GOLD", 
-  "GOLD_EXT_18", 
-  "GOLD_EXT_21", 
-  "GOLD_SCRAP_18", 
-  "GOLD_SCRAP_21", 
-  "GOLD_CAST_18", 
-  "GOLD_CAST_24", 
-  "GOLD_LIRA_8G", 
-  "GOLD_MUJARA_14G", 
-  "SILVER_CAST_1000"
-];
 
 export async function logErrorArabic(message: string, context = "النظام", stack?: string, url?: string) {
   if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {

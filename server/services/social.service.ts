@@ -3,6 +3,7 @@ import { appConfig, telegramManager, setTelegramManager } from '../config';
 import { rates } from '../state';
 import { db, supabase, supabaseAnonKey } from '../db';
 import { addBroadcastLog } from './broadcastLog.service';
+import { delay } from '../utils/helpers';
 
 interface FacebookApiResponse {
   error?: {
@@ -519,9 +520,6 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
 
   const manager = getOrInitTelegramManager();
 
-  // Helper for small pause between retries
-  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
   // Telegram
   const shouldPostTg = (target === 'telegram' || target === 'all') && (isManual || (!isTest && appConfig.telegramAutoPost) || isTest);
   if (shouldPostTg) {
@@ -818,16 +816,16 @@ const OFFICIAL_CURRENCIES_INFO: Record<string, { name: string; flag: string; ran
 export async function broadcastOfficialRates(
   isTest: boolean = false, 
   target: 'all' | 'telegram' | 'facebook' = (appConfig.facebookAutoPost ? 'all' : 'telegram')
-) {
+): Promise<boolean> {
   const manager = getOrInitTelegramManager();
   if (!appConfig.telegramPostChannel || !manager) {
     console.warn("[Official Broadcast] Aborting broadcast: channel or telegram manager not ready.");
-    return;
+    return false;
   }
 
   if (!isTest && !appConfig.telegramAutoPost) {
     console.log("[Official Broadcast] Aborting official broadcast because telegramAutoPost is disabled in settings.");
-    return;
+    return true; // Not an error condition; auto-post is disabled by choice
   }
 
   const now = new Date();
@@ -841,7 +839,7 @@ export async function broadcastOfficialRates(
   
   if (!isTest && (lastOfficialBroadcastDate === todayLibyaKey || lastOfficialBroadcastDate === dateStr)) {
     console.log(`[Official Broadcast] Already broadcasted for today (${todayLibyaKey}). Skipping duplicate post.`);
-    return;
+    return true;
   }
 
   const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -865,7 +863,7 @@ export async function broadcastOfficialRates(
 
   if (officialEntries.length === 0) {
     console.warn("[Official Broadcast] No official rates available to publish.");
-    return;
+    return false;
   }
 
   for (const [code, val] of officialEntries) {
@@ -908,8 +906,10 @@ export async function broadcastOfficialRates(
       }
     }
     console.log(`[Official Broadcast] Successfully posted daily official bulletin for ${todayLibyaKey}!`);
+    return true;
   } catch(e) {
     console.error("[Official Broadcast] Failed to broadcast official rates:", e);
+    return false;
   }
 }
 

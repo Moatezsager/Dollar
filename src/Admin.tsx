@@ -309,11 +309,14 @@ export default function Admin() {
     const connect = () => {
       try {
         socket = io('/', {
+          query: { role: 'admin' },
           transports: ['polling', 'websocket'],
           reconnectionAttempts: 10,
           reconnectionDelay: 2000,
           timeout: 15000
         });
+
+        socket.emit('join_admin');
 
         socket.on('online_count', (data: any) => {
           setStats(prev => prev ? { ...prev, onlineUsers: data.count } : null);

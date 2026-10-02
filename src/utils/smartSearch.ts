@@ -357,11 +357,13 @@ export function scoreSearchMatch(query: string, item: SearchableItem): { score: 
 }
 
 // 8. Execute Smart Search over dataset
+export type SearchResult = { item: SearchableItem; score: number; matchedBy?: string };
+
 export function searchRates(
   query: string,
   items: SearchableItem[],
   threshold = 40
-): { item: SearchableItem; score: number; matchedBy?: string }[] {
+): SearchResult[] {
   if (!query || !query.trim()) return [];
 
   const results: { item: SearchableItem; score: number; matchedBy?: string }[] = [];

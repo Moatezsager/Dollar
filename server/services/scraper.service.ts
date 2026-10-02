@@ -638,7 +638,8 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
         const gramJsResults: Array<{ status: 'fulfilled'; value: { channel: string; messages: { text: string; date: number }[] } } | { status: 'rejected'; reason: { channel: string; error: any } }> = [];
         for (const channel of channels) {
           try {
-            const messages = await mgr.fetchMessages(channel, 20);
+            // Optimized limit of 6 messages (more than enough for daily rates, reduces network payload by 70%)
+            const messages = await mgr.fetchMessages(channel, 6);
             gramJsResults.push({ status: 'fulfilled', value: { channel, messages } });
             // Small pause between channels to keep MTProto connection calm and avoid flood wait
             await new Promise(r => setTimeout(r, 250));
@@ -657,7 +658,6 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
           if (result.status === 'fulfilled') {
             const { channel, messages } = result.value;
             if (messages.length > 0) {
-              console.log(`[Scraper-GramJS] Fetched ${messages.length} messages from ${channel}`);
               successfulChannels++;
               totalMessagesProcessed += messages.length;
               channelStatusTracker[channel].status = 'active';
@@ -665,9 +665,10 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
               const latestMsgDate = Math.max(...messages.map((m: any) => m.date));
               if (latestMsgDate > channelStatusTracker[channel].last_post_time) channelStatusTracker[channel].last_post_time = latestMsgDate;
               
+              let skippedOldCount = 0;
               for (const msg of messages) {
                 if (msg.date < startOfTodayLibya) {
-                  console.log(`[Scraper-GramJS] Skipping old message from ${channel} (Date: ${new Date(msg.date).toISOString()})`);
+                  skippedOldCount++;
                   continue;
                 }
 

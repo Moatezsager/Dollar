@@ -6,6 +6,41 @@
 import crypto from 'crypto';
 
 /**
+ * Standard asynchronous delay / sleep helper
+ */
+export const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Common Metal / Gold & Silver identifier set
+ */
+export const METAL_IDS = [
+  "GOLD",
+  "GOLD_CAST_18",
+  "GOLD_CAST_24",
+  "GOLD_EXT_18",
+  "GOLD_EXT_21",
+  "GOLD_SCRAP_18",
+  "GOLD_SCRAP_21",
+  "GOLD_LIRA_8G",
+  "GOLD_LIRA_14G",
+  "GOLD_MUJARA_14G",
+  "SILVER_CAST_1000"
+];
+
+export const ALLOWED_GOLD_IDS = [
+  "GOLD_CAST_18",
+  "GOLD_EXT_18",
+  "GOLD_EXT_21",
+  "GOLD_SCRAP_18",
+  "GOLD_SCRAP_21",
+  "GOLD_CAST_24",
+  "GOLD_LIRA_8G",
+  "GOLD_LIRA_14G",
+  "GOLD_MUJARA_14G",
+  "SILVER_CAST_1000"
+];
+
+/**
  * Generates an HMAC-SHA256 signature for payload verification
  */
 export function generateHmacSignature(payload: string | object, secret?: string): { signature: string; timestamp: number } {
@@ -56,12 +91,57 @@ export const obfuscateData = <T>(data: T): T => {
   return data;
 };
 
-// Helper to detect significant price changes (ignores tiny floating point noise)
-export function isSignificantChange(val1: number, val2: number, threshold = 0.0001) {
+/**
+ * Helper to detect significant price changes (ignores tiny floating point noise)
+ */
+export function isSignificantChange(val1: number, val2: number, threshold = 0.0001): boolean {
   return Math.abs((val1 || 0) - (val2 || 0)) > threshold;
 }
 
-// Helper to detect if a number is likely part of a date or time (e.g. 2024, 21-03, 12/05, 15:48)
+/**
+ * Strips Arabic diacritics (tashkeel) and tatweel from strings
+ */
+export function stripArabicDiacritics(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let result = text.replace(/[\u064B-\u065F\u0670]/g, '');
+  result = result.replace(/\u0640/g, '');
+  return result;
+}
+
+/**
+ * Returns current Date & Time breakdown in Tripoli/Libya timezone (UTC+2)
+ */
+export function getLibyaTimeInfo(now: Date = new Date()) {
+  const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
+  const yyyy = libyaDateObj.getFullYear();
+  const mm = String(libyaDateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(libyaDateObj.getDate()).padStart(2, '0');
+  const dateStr = `${yyyy}-${mm}-${dd}`;
+  const dayIndex = libyaDateObj.getDay();
+  const hour = libyaDateObj.getHours();
+  const minute = libyaDateObj.getMinutes();
+  const timeFormatted = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+  return {
+    dateObj: libyaDateObj,
+    dateStr,
+    dayIndex,
+    hour,
+    minute,
+    timeFormatted
+  };
+}
+
+/**
+ * Returns standard YYYY-MM-DD date string in Libya timezone
+ */
+export function getLibyaDateString(now: Date = new Date()): string {
+  return getLibyaTimeInfo(now).dateStr;
+}
+
+/**
+ * Helper to detect if a number is likely part of a date or time (e.g. 2024, 21-03, 12/05, 15:48)
+ */
 export function isProbablyDateOrTime(text: string, matchIndex: number, matchValue: string): boolean {
   const contextBefore = text.substring(Math.max(0, matchIndex - 10), matchIndex);
   const contextAfter = text.substring(matchIndex + matchValue.length, Math.min(text.length, matchIndex + matchValue.length + 10));

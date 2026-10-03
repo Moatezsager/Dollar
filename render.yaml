@@ -10,3 +10,9 @@ services:
         value: production
       - key: PORT
         value: 3000
+      # Worker Server integration — set these in Render dashboard
+      - key: WORKER_URL
+        sync: false   # Set manually: URL of the Worker Server (e.g. https://lyd-index-worker.onrender.com)
+      - key: WORKER_INTERNAL_SECRET
+        sync: false   # Set manually: must match WORKER_INTERNAL_SECRET in the Worker Server
+

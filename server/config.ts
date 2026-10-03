@@ -89,7 +89,7 @@ export function applyLoadedConfig(loadedConfig: AppConfig, source: string) {
     const defaultTerm = appConfig.terms.find(t => t.id === dbTerm.id);
     const isMetal = (defaultTerm && (defaultTerm.flag === "gold" || defaultTerm.flag === "silver")) ||
       dbTerm.id.startsWith("GOLD_") || dbTerm.id.startsWith("SILVER_");
-    const isOutdatedOrNarrow = !dbTerm.regex || isMetal ||
+    const isOutdatedOrNarrow = !dbTerm.regex || isMetal || 
       ["USD", "EUR", "GBP", "USD_CHECKS", "USD_JBANK", "USD_BCD", "USD_NCB", "USD_AB", "USD_WB"].includes(dbTerm.id) ||
       (dbTerm.id === "TND" && (dbTerm.max > 3.8 || dbTerm.min < 2.5)) ||
       (dbTerm.id === "EGP" && (dbTerm.max > 0.28 || dbTerm.min < 0.13));
@@ -164,7 +164,7 @@ export async function loadConfigFromSupabase() {
       .select('config')
       .eq('id', 1)
       .single();
-
+      
     if (error) {
       if (error.code === 'PGRST116') {
         await supabase.from('app_config').insert([{ id: 1, config: appConfig }]);
@@ -189,7 +189,7 @@ export async function loadConfigFromSupabase() {
           console.error("[Config] Error unpacking WhatsApp auth from Supabase:", waErr);
         }
       }
-
+      
       try {
         db.prepare(`
           INSERT INTO server_config (key, value) VALUES ('app_config', ?)
@@ -222,7 +222,7 @@ export async function saveConfigToSupabase(newConfig: AppConfig) {
     const { error } = await supabase
       .from('app_config')
       .upsert({ id: 1, config: newConfig });
-
+      
     if (error) {
       console.error("Error saving config to Supabase:", error);
       return false;

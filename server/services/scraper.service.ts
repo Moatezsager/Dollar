@@ -10,8 +10,31 @@ import { isSignificantChange, isProbablyDateOrTime } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
 export let lastOfficialFetchDate = "";
+export let isCblFetchEnabled = true;
 
-// Load lastOfficialFetchDate from SQLite + Supabase on startup
+export function setCblFetchEnabled(enabled: boolean) {
+  isCblFetchEnabled = enabled;
+  console.log(`[Official] CBL auto-fetch enabled set to: ${enabled}`);
+  try {
+    if (db) {
+      db.prepare(`
+        INSERT INTO server_config (key, value) VALUES ('cbl_fetch_enabled', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(enabled ? 'true' : 'false');
+    }
+    if (supabase) {
+      supabase.from('server_config').upsert({
+        key: 'cbl_fetch_enabled',
+        value: enabled ? 'true' : 'false',
+        updated_at: new Date().toISOString()
+      }).then(() => {}, (err) => console.error('[Official] Error saving cbl_fetch_enabled to Supabase:', err));
+    }
+  } catch (e) {
+    console.error('[Official] Error persisting cbl_fetch_enabled:', e);
+  }
+}
+
+// Load lastOfficialFetchDate and isCblFetchEnabled from SQLite + Supabase on startup
 (async () => {
   try {
     if (db) {
@@ -22,20 +45,40 @@ export let lastOfficialFetchDate = "";
         lastOfficialFetchDate = row.value;
         console.log(`[Official] Loaded lastOfficialFetchDate from SQLite: ${row.value}`);
       }
+
+      const enabledRow = db.prepare(
+        'SELECT value FROM server_config WHERE key = ?'
+      ).get('cbl_fetch_enabled') as { value: string } | undefined;
+      if (enabledRow?.value !== undefined) {
+        isCblFetchEnabled = enabledRow.value === 'true';
+        console.log(`[Official] Loaded isCblFetchEnabled from SQLite: ${isCblFetchEnabled}`);
+      }
     }
-    if (!lastOfficialFetchDate && supabase) {
-      const { data } = await supabase
+    if (supabase) {
+      if (!lastOfficialFetchDate) {
+        const { data } = await supabase
+          .from('server_config')
+          .select('value')
+          .eq('key', 'last_official_fetch_date')
+          .single();
+        if (data?.value) {
+          lastOfficialFetchDate = data.value;
+          console.log(`[Official] Loaded lastOfficialFetchDate from Supabase: ${data.value}`);
+        }
+      }
+
+      const { data: enabledData } = await supabase
         .from('server_config')
         .select('value')
-        .eq('key', 'last_official_fetch_date')
+        .eq('key', 'cbl_fetch_enabled')
         .single();
-      if (data?.value) {
-        lastOfficialFetchDate = data.value;
-        console.log(`[Official] Loaded lastOfficialFetchDate from Supabase: ${data.value}`);
+      if (enabledData?.value !== undefined) {
+        isCblFetchEnabled = enabledData.value === 'true';
+        console.log(`[Official] Loaded isCblFetchEnabled from Supabase: ${isCblFetchEnabled}`);
       }
     }
   } catch (e) {
-    console.warn('[Official] Could not load lastOfficialFetchDate on startup:', e);
+    console.warn('[Official] Could not load CBL settings on startup:', e);
   }
 })();
 
@@ -58,92 +101,172 @@ export function setLastSuccessfulFetchTime(time: number) {
   lastSuccessfulFetchTime = time;
 }
 
-// Fetch official rates from Central Bank of Libya website
-export async function fetchFromCBL(): Promise<{ cblDate: string, rates: RateMap } | null> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    const response = await fetch('https://cbl.gov.ly/currency-exchange-rates/', { 
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) return null;
-    const html = await response.text();
-    
-    const results: RateMap = {};
-    let cblDateStr = "";
-    
-    // Split by rows to ensure we only match numbers within the correct row
-    const rows = html.split(/<tr[^>]*>/i);
-    
-    for (const row of rows) {
-      if (!row.includes("<td>") && !row.includes("<td ")) continue;
-      
-      const tds = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
-      if (tds && tds.length >= 6) {
-        const dateHtml = tds[0];
-        const dateMatch = dateHtml.match(/\d{4}-\d{2}-\d{2}/);
-        if (dateMatch && !cblDateStr) {
-          cblDateStr = dateMatch[0];
-        }
-        
-        const currencyHtml = tds[1];
-        let currencyId = null;
-        
-        if (currencyHtml.includes("الدولار الأمريكي") || currencyHtml.includes("USD")) currencyId = "USD";
-        else if (currencyHtml.includes("اليورو") || currencyHtml.includes("EUR")) currencyId = "EUR";
-        else if (currencyHtml.includes("الجنيه الاسترليني") || currencyHtml.includes("الجنيه الإسترليني") || currencyHtml.includes("GBP")) currencyId = "GBP";
-        else if (currencyHtml.includes("الدينار التونسي") || currencyHtml.includes("TND")) currencyId = "TND";
-        else if (currencyHtml.includes("الليرة التركية") || currencyHtml.includes("TRY")) currencyId = "TRY";
-        else if (currencyHtml.includes("الريال السعودي") || currencyHtml.includes("SAR")) currencyId = "SAR";
-        else if (currencyHtml.includes("الدرهم الإماراتي") || currencyHtml.includes("الدرهم الاماراتي") || currencyHtml.includes("AED")) currencyId = "AED";
-        else if (currencyHtml.includes("اليوان الصيني") || currencyHtml.includes("الايوان الصيني") || currencyHtml.includes("CNY")) currencyId = "CNY";
-        else if (currencyHtml.includes("الدولار الكندي") || currencyHtml.includes("CAD")) currencyId = "CAD";
-        else if (currencyHtml.includes("الدولار الاسترالي") || currencyHtml.includes("الدولار الأسترالي") || currencyHtml.includes("AUD")) currencyId = "AUD";
-        else if (currencyHtml.includes("الفرنك السويسري") || currencyHtml.includes("CHF")) currencyId = "CHF";
-        else if (currencyHtml.includes("الكرونر السويدي") || currencyHtml.includes("الكرونة السويدية") || currencyHtml.includes("SEK")) currencyId = "SEK";
-        else if (currencyHtml.includes("الكرونر النرويجي") || currencyHtml.includes("الكرونة النرويجية") || currencyHtml.includes("NOK")) currencyId = "NOK";
-        else if (currencyHtml.includes("الكرونر الدنمركي") || currencyHtml.includes("الكرونة الدنماركية") || currencyHtml.includes("DKK")) currencyId = "DKK";
-        else if (currencyHtml.includes("الين الياباني") || currencyHtml.includes("JPY")) currencyId = "JPY";
+// Configurable list of official Libyan holidays (format: 'YYYY-MM-DD' or 'MM-DD')
+export const OFFICIAL_LIBYA_HOLIDAYS: string[] = [
+  // Examples for future additions without rewriting service:
+  // '02-17', // ثورة 17 فبراير
+  // '05-01', // عيد العمال
+  // '09-16', // يوم الشهيد
+  // '10-23', // عيد التحرير
+  // '12-24', // عيد الاستقلال
+];
 
-        if (currencyId) {
-          // Index 4 is strictly the 'Selling' (بيع) column on the CBL website
-          const sellHtml = tds[4];
-          const match = sellHtml.match(/[\d.]+/);
-          if (match) {
-            let val = parseFloat(match[0]);
-            if (!isNaN(val) && val > 0 && val < 20) {
-              if (currencyId === 'JPY') {
-                val = parseFloat((val / 100).toFixed(4));
-              }
-              results[currencyId] = val;
+export function isLibyanHoliday(dateStr: string, dayIndex: number): boolean {
+  // Friday (5) and Saturday (6) are weekly non-working days
+  if (dayIndex === 5 || dayIndex === 6) return true;
+  const mmDd = dateStr.slice(5);
+  return OFFICIAL_LIBYA_HOLIDAYS.includes(dateStr) || OFFICIAL_LIBYA_HOLIDAYS.includes(mmDd);
+}
+
+// Fetch official rates from Central Bank of Libya website with retry and exponential backoff
+export async function fetchFromCBL(maxRetries: number = 3): Promise<{ cblDate: string, rates: RateMap } | null> {
+  let attempt = 0;
+  
+  while (attempt < maxRetries) {
+    attempt++;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const response = await fetch('https://cbl.gov.ly/currency-exchange-rates/', { 
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        console.warn(`[CBL Scraper] Attempt ${attempt}/${maxRetries} failed with HTTP status ${response.status}`);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, attempt * 2000));
+          continue;
+        }
+        return null;
+      }
+      
+      const html = await response.text();
+      return parseCBLHtml(html);
+    } catch (err: any) {
+      console.warn(`[CBL Scraper] Attempt ${attempt}/${maxRetries} failed with error:`, err?.message || err);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      } else {
+        await logErrorArabic("خطأ تقني أثناء كشط موقع المصرف المركزي بعد استنفاد المحاولات", "مصرف ليبيا المركزي", String(err));
+        return null;
+      }
+    }
+  }
+  
+  return null;
+}
+
+export function parseCBLHtml(html: string): { cblDate: string, rates: RateMap } | null {
+  if (!html || typeof html !== 'string') return null;
+
+  const results: RateMap = {};
+  let cblDateStr = "";
+  
+  // Split by rows to ensure we only match numbers within the correct row
+  const rows = html.split(/<tr[^>]*>/i);
+  
+  for (const row of rows) {
+    if (!row.includes("<td>") && !row.includes("<td ")) continue;
+    
+    const tds = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
+    if (tds && tds.length >= 6) {
+      const dateHtml = tds[0];
+      const dateMatch = dateHtml.match(/\d{4}-\d{2}-\d{2}/);
+      if (dateMatch && !cblDateStr) {
+        cblDateStr = dateMatch[0];
+      }
+      
+      const currencyHtml = tds[1];
+      let currencyId: string | null = null;
+      
+      if (currencyHtml.includes("الدولار الأمريكي") || currencyHtml.includes("USD")) currencyId = "USD";
+      else if (currencyHtml.includes("اليورو") || currencyHtml.includes("EUR")) currencyId = "EUR";
+      else if (currencyHtml.includes("الجنيه الاسترليني") || currencyHtml.includes("الجنيه الإسترليني") || currencyHtml.includes("GBP")) currencyId = "GBP";
+      else if (currencyHtml.includes("الدينار التونسي") || currencyHtml.includes("TND")) currencyId = "TND";
+      else if (currencyHtml.includes("الليرة التركية") || currencyHtml.includes("TRY")) currencyId = "TRY";
+      else if (currencyHtml.includes("الريال السعودي") || currencyHtml.includes("SAR")) currencyId = "SAR";
+      else if (currencyHtml.includes("الدرهم الإماراتي") || currencyHtml.includes("الدرهم الاماراتي") || currencyHtml.includes("AED")) currencyId = "AED";
+      else if (currencyHtml.includes("اليوان الصيني") || currencyHtml.includes("الايوان الصيني") || currencyHtml.includes("CNY")) currencyId = "CNY";
+      else if (currencyHtml.includes("الدولار الكندي") || currencyHtml.includes("CAD")) currencyId = "CAD";
+      else if (currencyHtml.includes("الدولار الاسترالي") || currencyHtml.includes("الدولار الأسترالي") || currencyHtml.includes("AUD")) currencyId = "AUD";
+      else if (currencyHtml.includes("الفرنك السويسري") || currencyHtml.includes("CHF")) currencyId = "CHF";
+      else if (currencyHtml.includes("الكرونر السويدي") || currencyHtml.includes("الكرونة السويدية") || currencyHtml.includes("SEK")) currencyId = "SEK";
+      else if (currencyHtml.includes("الكرونر النرويجي") || currencyHtml.includes("الكرونة النرويجية") || currencyHtml.includes("NOK")) currencyId = "NOK";
+      else if (currencyHtml.includes("الكرونر الدنمركي") || currencyHtml.includes("الكرونة الدنماركية") || currencyHtml.includes("DKK")) currencyId = "DKK";
+      else if (currencyHtml.includes("الين الياباني") || currencyHtml.includes("JPY")) currencyId = "JPY";
+
+      if (currencyId) {
+        // Index 4 is strictly the 'Selling' (بيع) column on the CBL website
+        const sellHtml = tds[4];
+        const match = sellHtml.match(/[\d.]+/);
+        if (match) {
+          let val = parseFloat(match[0]);
+          if (!isNaN(val) && val > 0 && val < 20) {
+            if (currencyId === 'JPY') {
+              val = parseFloat((val / 100).toFixed(4));
             }
+            results[currencyId] = val;
           }
         }
       }
     }
+  }
 
-    if (results.USD && results.USD > 4.0 && results.USD < 8.0) {
-      console.log(`[CBL Scraper] Successfully extracted ${Object.keys(results).length} rates from CBL website (USD: ${results.USD})`);
-      return { cblDate: cblDateStr || new Date().toISOString().split('T')[0], rates: results };
-    }
-    
-    console.warn("[CBL Scraper] Could not find valid USD rate in the HTML. Results:", results);
-    await logErrorArabic(`فشل استخراج الدولار من موقع المصرف المركزي - النتائج المستخرجة: ${JSON.stringify(results)}`, "مصرف ليبيا المركزي");
-    return null;
-  } catch (err) {
-    console.error("[CBL Scraper] Error scraping CBL website:", err);
-    await logErrorArabic("خطأ تقني أثناء كشط موقع المصرف المركزي", "مصرف ليبيا المركزي", String(err));
+  // If no date was found in the HTML table, strictly reject the dataset
+  if (!cblDateStr) {
+    console.warn("[CBL Scraper] Failed to extract valid bulletin date from CBL HTML.");
     return null;
   }
+
+  // Validate USD rate strictly
+  if (results.USD && results.USD > 4.0 && results.USD < 8.0) {
+    console.log(`[CBL Scraper] Successfully extracted ${Object.keys(results).length} rates from CBL website (USD: ${results.USD}, Date: ${cblDateStr})`);
+    return { cblDate: cblDateStr, rates: results };
+  }
+  
+  console.warn("[CBL Scraper] Could not find valid USD rate in the HTML. Results:", results);
+  return null;
 }
 
-export async function fetchOfficialRates(): Promise<boolean> {
-  console.log("[Official] Starting official rates fetch cycle...");
+export function getCblStatusInfo() {
+  const now = new Date();
+  const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
+  const dayIndex = libyaDateObj.getDay();
+  const currentLibyaHour = libyaDateObj.getHours();
+  const currentLibyaMinute = libyaDateObj.getMinutes();
+
+  const yyyy = libyaDateObj.getFullYear();
+  const mm = String(libyaDateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(libyaDateObj.getDate()).padStart(2, '0');
+  const currentLibyaDate = `${yyyy}-${mm}-${dd}`;
+
+  const isWeekend = isLibyanHoliday(currentLibyaDate, dayIndex);
+  const isInActiveWindow = !isWeekend && (currentLibyaHour >= 9);
+  const isTodayFetched = (lastOfficialFetchDate === currentLibyaDate);
+
+  const timeFormatted = `${String(currentLibyaHour).padStart(2, '0')}:${String(currentLibyaMinute).padStart(2, '0')}`;
+
+  return {
+    enabled: isCblFetchEnabled,
+    lastOfficialFetchDate,
+    lastOfficialBroadcastDate,
+    isTodayFetched,
+    isInActiveWindow,
+    isWeekend,
+    currentLibyaDate,
+    currentLibyaTime: timeFormatted,
+    currentLibyaHour,
+    lastSuccessfulFetchTime,
+    rates: rates.official
+  };
+}
+
+export async function fetchOfficialRates(force: boolean = false, isManualAdmin: boolean = false): Promise<boolean> {
+  console.log(`[CBL] fetch started`);
 
   const now = new Date();
   const libyaDateObj = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Tripoli' }));
@@ -155,99 +278,138 @@ export async function fetchOfficialRates(): Promise<boolean> {
   const dd = String(libyaDateObj.getDate()).padStart(2, '0');
   const currentLibyaDate = `${yyyy}-${mm}-${dd}`;
 
-  // 1. تحقق: أيام العمل فقط (الأحد=0 إلى الخميس=4)
-  if (dayIndex === 5 || dayIndex === 6) {
-    console.log("[Official] Skipping fetch. CBL is closed on Friday and Saturday.");
-    return false;
+  console.log(`[CBL] today = ${currentLibyaDate}`);
+
+  // When not manual admin force, enforce business hours and holiday rules
+  if (!force && !isManualAdmin) {
+    // 0. Check if CBL auto-fetch is enabled
+    if (!isCblFetchEnabled) {
+      console.log("[CBL] Skipping fetch. CBL auto-fetch function is disabled in Admin settings.");
+      return false;
+    }
+
+    // 1. Check holidays & weekends (Friday & Saturday + official holidays)
+    if (isLibyanHoliday(currentLibyaDate, dayIndex)) {
+      console.log("[CBL] Skipping fetch. CBL is closed today (Weekend or Official Holiday).");
+      return false;
+    }
+
+    // 2. Check work start time: Do not fetch before 09:00 AM Libya time
+    if (currentLibyaHour < 9) {
+      console.log(`[CBL] Before work start time (09:00 AM Libya time). Current hour: ${currentLibyaHour}:00. Skipping automatic fetch.`);
+      return false;
+    }
+
+    // 3. Check if today's official rates have already been successfully fetched and completed
+    if (lastOfficialFetchDate === currentLibyaDate) {
+      console.log(`[CBL] Today's official bulletin (${currentLibyaDate}) has already been successfully fetched. Skipping duplicate fetch.`);
+      return false;
+    }
   }
 
-  // 2. تحقق: نافذة الوقت 9 ص - 11 ص بتوقيت ليبيا فقط
-  if (currentLibyaHour < 9 || currentLibyaHour >= 11) {
-    console.log(`[Official] Outside fetch window (current Libya hour: ${currentLibyaHour}). Skipping.`);
-    return false;
-  }
-
-  if (lastOfficialFetchDate === currentLibyaDate) {
-    console.log(`[Official] Already successfully updated rates for today (${currentLibyaDate}). Skipping.`);
-    return false;
-  }
-
-  // 1. Try CBL Website First (Most Accurate for Libya)
+  // 1. Fetch from CBL website
   const cblResult = await fetchFromCBL();
-  if (cblResult) {
-    const { cblDate, rates: cblRates } = cblResult;
-    let anyChanged = false;
-    Object.entries(cblRates).forEach(([key, val]) => {
-      if (isSignificantChange(rates.official[key], val)) {
-        rates.previousOfficial[key] = rates.official[key];
-        rates.lastChanged.official[key] = new Date().toISOString();
-        anyChanged = true;
-      }
+  if (!cblResult) {
+    console.log(`[CBL] fetch failed`);
+    return false;
+  }
+
+  const { cblDate, rates: cblRates } = cblResult;
+  console.log(`[CBL] source date = ${cblDate}`);
+
+  // In automatic mode, verify that CBL data is strictly for today
+  if (!isManualAdmin && !force && cblDate !== currentLibyaDate) {
+    console.log(`[CBL] stale data rejected`);
+    console.log(`[CBL] Source date (${cblDate}) does not match Libya current date (${currentLibyaDate}). Automatic publishing rejected.`);
+    return false;
+  }
+
+  // Rates are validated for today (or manual admin force)
+  console.log(`[CBL] rates validated`);
+
+  let anyChanged = false;
+  Object.entries(cblRates).forEach(([key, val]) => {
+    if (isSignificantChange(rates.official[key], val)) {
+      rates.previousOfficial[key] = rates.official[key];
+      rates.lastChanged.official[key] = new Date().toISOString();
+      anyChanged = true;
+    }
+  });
+
+  rates.official = { ...rates.official, ...cblRates };
+  if (rates.official.USD) {
+    rates.parallel.OFFICIAL_USD = rates.official.USD;
+    rates.lastChanged.parallel.OFFICIAL_USD = new Date().toISOString();
+  }
+
+  if (anyChanged) {
+    console.log(`[Official] Rates updated via CBL Scraper (USD: ${rates.official.USD})`);
+    history.push({
+      time: new Date().toISOString(),
+      usdParallel: rates.parallel.USD,
+      usdOfficial: rates.official.USD,
+      ratesParallel: { ...rates.parallel },
+      ratesOfficial: { ...rates.official }
     });
-
-    rates.official = { ...rates.official, ...cblRates };
-    if (rates.official.USD) {
-      rates.parallel.OFFICIAL_USD = rates.official.USD;
-      rates.lastChanged.parallel.OFFICIAL_USD = new Date().toISOString();
+    if (history.length > 500) {
+      history.shift();
     }
+  }
 
-    if (anyChanged) {
-      console.log(`[Official] Rates updated via CBL Scraper (USD: ${rates.official.USD})`);
-      history.push({
-        time: new Date().toISOString(),
-        usdParallel: rates.parallel.USD,
-        usdOfficial: rates.official.USD,
-        ratesParallel: { ...rates.parallel },
-        ratesOfficial: { ...rates.official }
-      });
-      if (history.length > 500) {
-        history.shift();
+  // 2. Database Persistence
+  try {
+    await saveToSupabase('official');
+    console.log(`[CBL] rates persisted`);
+  } catch (dbErr) {
+    console.error("[CBL] Failed to persist official rates to database:", dbErr);
+    return false; // Do not mark day as successful if database persistence fails
+  }
+
+  // 3. Social Broadcast
+  const isAlreadyBroadcastedToday = (lastOfficialBroadcastDate === currentLibyaDate);
+  if (!isAlreadyBroadcastedToday) {
+    console.log(`[Official] Broadcasting daily official bulletin for (${cblDate})...`);
+    const broadcastSuccess = await broadcastOfficialRates(false);
+    if (broadcastSuccess) {
+      console.log(`[CBL] broadcast completed`);
+    } else {
+      console.warn(`[CBL] Broadcast did not complete successfully.`);
+      if (!isManualAdmin) {
+        return false;
       }
     }
+  } else {
+    console.log(`[CBL] broadcast completed (already broadcasted today)`);
+  }
 
-    // Daily official bulletin broadcast condition:
-    // If today's bulletin has not yet been posted to followers and CBL rates are ready for today,
-    // broadcast today's official bulletin!
-    const isAlreadyBroadcastedToday = (lastOfficialBroadcastDate === currentLibyaDate);
-    if (!isAlreadyBroadcastedToday && (cblDate === currentLibyaDate || anyChanged)) {
-      console.log(`[Official] Broadcasting daily official bulletin for today (${currentLibyaDate})...`);
-      broadcastOfficialRates(false).catch(console.error);
-    } else if (anyChanged) {
-      console.log(`[Official] Rates changed during the day, broadcasting official update...`);
-      broadcastOfficialRates(false).catch(console.error);
+  // 4. Mark today's fetch as fully successful
+  lastOfficialFetchDate = currentLibyaDate;
+  setLastSuccessfulFetchTime(Date.now());
+
+  try {
+    if (db) {
+      db.prepare(`
+        INSERT INTO server_config (key, value) VALUES ('last_official_fetch_date', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(currentLibyaDate);
     }
-    
-    if (cblDate === currentLibyaDate) {
-      console.log(`[Official] CBL published rates for today (${cblDate}). Locking updates until tomorrow.`);
-      lastOfficialFetchDate = currentLibyaDate;
-      try {
-        if (db) {
-          db.prepare(`
-            INSERT INTO server_config (key, value) VALUES ('last_official_fetch_date', ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-          `).run(currentLibyaDate);
-        }
-      } catch (dbErr) {
-        console.error("[Official] Failed to persist lastOfficialFetchDate to SQLite:", dbErr);
-      }
-      if (supabase) {
-        supabase.from('server_config').upsert({
-          key: 'last_official_fetch_date',
-          value: currentLibyaDate,
-          updated_at: new Date().toISOString()
-        }).then(({ error }) => {
-          if (error) console.error("[Official] Failed to persist lastOfficialFetchDate to Supabase:", error);
-        }, err => {
-          console.error("[Official] Supabase error:", err);
-        });
-      }
-    }
-    
-    return anyChanged;
+  } catch (dbErr) {
+    console.error("[Official] Failed to persist lastOfficialFetchDate to SQLite:", dbErr);
   }
   
-  console.warn("[Official] Failed to fetch from CBL. Retaining previous official rates as they are fixed daily.");
-  return false;
+  if (supabase) {
+    supabase.from('server_config').upsert({
+      key: 'last_official_fetch_date',
+      value: currentLibyaDate,
+      updated_at: new Date().toISOString()
+    }).then(({ error }) => {
+      if (error) console.error("[Official] Failed to persist lastOfficialFetchDate to Supabase:", error);
+    }, err => {
+      console.error("[Official] Supabase error:", err);
+    });
+  }
+
+  return true;
 }
 
 export function stripArabicDiacritics(text: string): string {
@@ -476,7 +638,8 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
         const gramJsResults: Array<{ status: 'fulfilled'; value: { channel: string; messages: { text: string; date: number }[] } } | { status: 'rejected'; reason: { channel: string; error: any } }> = [];
         for (const channel of channels) {
           try {
-            const messages = await mgr.fetchMessages(channel, 20);
+            // Optimized limit of 6 messages (more than enough for daily rates, reduces network payload by 70%)
+            const messages = await mgr.fetchMessages(channel, 6);
             gramJsResults.push({ status: 'fulfilled', value: { channel, messages } });
             // Small pause between channels to keep MTProto connection calm and avoid flood wait
             await new Promise(r => setTimeout(r, 250));
@@ -495,7 +658,6 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
           if (result.status === 'fulfilled') {
             const { channel, messages } = result.value;
             if (messages.length > 0) {
-              console.log(`[Scraper-GramJS] Fetched ${messages.length} messages from ${channel}`);
               successfulChannels++;
               totalMessagesProcessed += messages.length;
               channelStatusTracker[channel].status = 'active';
@@ -503,9 +665,10 @@ export async function fetchParallelRatesFromTelegram(): Promise<boolean | null> 
               const latestMsgDate = Math.max(...messages.map((m: any) => m.date));
               if (latestMsgDate > channelStatusTracker[channel].last_post_time) channelStatusTracker[channel].last_post_time = latestMsgDate;
               
+              let skippedOldCount = 0;
               for (const msg of messages) {
                 if (msg.date < startOfTodayLibya) {
-                  console.log(`[Scraper-GramJS] Skipping old message from ${channel} (Date: ${new Date(msg.date).toISOString()})`);
+                  skippedOldCount++;
                   continue;
                 }
 
@@ -912,33 +1075,7 @@ export async function processWhatsAppMessage(
     if (anyChanged) {
       rates.lastUpdated = new Date().toISOString();
       lastSuccessfulFetchTime = Date.now();
-      // ← BUG FIX: was saveToSupabase() with no argument → defaults to 'both' which
-      //   also writes official rates and metal rates unnecessarily from WhatsApp messages.
-      //   WhatsApp only updates parallel rates so we explicitly pass 'parallel'.
       await saveToSupabase('parallel');
-
-      // Check if USD changed and sync bank checks accordingly
-      const usdUpdate = collectedUpdates.find(u => u.id === 'USD');
-      if (usdUpdate) {
-        try {
-          const synced = await syncCheckRates('WhatsApp Scraper', usdUpdate.newVal);
-          if (synced) {
-            const checkPrice = rates.parallel['USD_CHECKS'];
-            const alreadyHasChecks = collectedUpdates.some(u => u.id === 'USD_CHECKS');
-            if (checkPrice > 0 && !alreadyHasChecks) {
-              collectedUpdates.push({
-                id: 'USD_CHECKS',
-                name: 'دولار أمريكي (صكوك)',
-                oldVal: rates.previousParallel['USD_CHECKS'] ?? checkPrice,
-                newVal: checkPrice,
-                flag: 'us'
-              });
-            }
-          }
-        } catch (syncErr) {
-          console.error('[WhatsApp Scraper] Error syncing check rates:', syncErr);
-        }
-      }
 
       // Broadcast changes across channels if needed
       if (collectedUpdates.length > 0) {

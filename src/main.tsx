@@ -8,6 +8,8 @@ import './index.css';
 
 import { logErrorToServer } from './utils/logger';
 
+import { initAutoUpdater, purgeAllCachesAndReload } from './utils/autoUpdater';
+
 // Global error handlers
 window.addEventListener('error', (event) => {
   logErrorToServer(event.error || event.message, 'Global Error Handler');
@@ -17,6 +19,9 @@ window.addEventListener('unhandledrejection', (event) => {
   logErrorToServer(event.reason, 'Unhandled Promise Rejection');
 });
 
+// Initialize background auto-updater & stale bundle repair
+initAutoUpdater();
+
 // Register unified Service Worker (Caching + Push)
 // Avoid registering inside in-app WebViews (Facebook, Instagram) where module SWs can cause blank screens
 try {
@@ -25,6 +30,19 @@ try {
     navigator.serviceWorker.register('/push-sw.js', { scope: '/' })
       .then(reg => {
         console.log('[SW] Unified Service Worker Registered. Scope:', reg.scope);
+        
+        // Listen for new worker updates
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[SW] New ServiceWorker installed, activating immediately...');
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          }
+        });
       })
       .catch(err => {
         console.warn('[SW] Service Worker registration notice:', err?.message || err);

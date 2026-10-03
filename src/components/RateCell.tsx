@@ -97,15 +97,11 @@ export const RateCell = ({
       {/* Top Bar: Icon + Name & Sublabel + Change Badge */}
       <div className="flex items-start justify-between gap-2.5">
         <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
-          <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl overflow-hidden shrink-0 shadow-md border flex items-center justify-center transition-transform group-hover:scale-105 duration-200 ${
-            isGoldOrSilver 
-              ? 'bg-amber-500/10 border-amber-500/30' 
-              : 'bg-slate-900 border-white/10'
-          }`}>
-            <FlagIcon flagCode={term.flag || term.id} name={term.name} fallbackType={fallbackType} className="w-full h-full object-cover" />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 flex items-center justify-center transition-transform group-hover:scale-105 duration-200">
+            <FlagIcon flagCode={term.flag || term.id} name={term.name} fallbackType={fallbackType} className="w-full h-full" />
           </div>
           <div className="flex flex-col min-w-0 flex-1 justify-center">
-            <span className="text-sm sm:text-base font-black text-white tracking-tight leading-snug break-words">
+            <span className="text-sm sm:text-base font-black text-white tracking-tight leading-snug break-normal">
               {term.name}
             </span>
             <span className="text-xs text-slate-400 font-semibold leading-tight mt-0.5 truncate">

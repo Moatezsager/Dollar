@@ -2,7 +2,7 @@ import { db, supabase, supabaseAnonKey } from '../db';
 import { rates, history } from '../state';
 import { appConfig } from '../config';
 import { HistoryPoint, PriceChangeLog, RateMap, AppConfig } from '../types';
-import { isSignificantChange } from '../utils/helpers';
+import { isSignificantChange, METAL_IDS } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
 export let lastRatesFetchTime = 0;
@@ -19,19 +19,6 @@ export function clearDbCache() {
   lastHistoryFetchTime = 0;
   lastRatesFetchTime = 0;
 }
-
-const METAL_IDS = [
-  "GOLD", 
-  "GOLD_EXT_18", 
-  "GOLD_EXT_21", 
-  "GOLD_SCRAP_18", 
-  "GOLD_SCRAP_21", 
-  "GOLD_CAST_18", 
-  "GOLD_CAST_24", 
-  "GOLD_LIRA_8G", 
-  "GOLD_MUJARA_14G", 
-  "SILVER_CAST_1000"
-];
 
 export async function logErrorArabic(message: string, context = "النظام", stack?: string, url?: string) {
   if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
@@ -269,8 +256,6 @@ export async function saveToSupabase(type: 'parallel' | 'official' | 'both' = 'b
         usd_official: rates.official.USD,
         rates_parallel: rates.parallel,
         rates_official: rates.official,
-        previous_parallel: rates.previousParallel,
-        previous_official: rates.previousOfficial,
         last_changed: rates.lastChanged,
         recorded_at: rates.lastUpdated || now
       };
@@ -448,6 +433,14 @@ export async function syncCheckRates(source: string = "تزامن تلقائي",
         }
       }
     }
+  }
+
+  // 🛡️ حماية صارمة: سعر الصكوك في السوق الليبي يختلف جذرياً عن سعر الكاش
+  // لا يجوز إطلاقاً مزامنة الصكوك إذا كان السعر المستهدف مطابقاً لسعر الدولار كاش
+  const usdCash = rates.parallel['USD'] || 0;
+  if (targetPrice > 0 && usdCash > 0 && Math.abs(targetPrice - usdCash) < 0.05) {
+    console.warn(`[Sync] ⚠️ تم رفض مزامنة الصكوك: السعر المستهدف (${targetPrice}) مطابق لسعر الدولار كاش (${usdCash}). الصكوك والكاش منفصلان تماماً.`);
+    return false;
   }
 
   if (targetPrice > 0) {

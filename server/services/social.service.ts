@@ -3,6 +3,7 @@ import { appConfig, telegramManager, setTelegramManager } from '../config';
 import { rates } from '../state';
 import { db, supabase, supabaseAnonKey } from '../db';
 import { addBroadcastLog } from './broadcastLog.service';
+import { delay } from '../utils/helpers';
 
 interface FacebookApiResponse {
   error?: {
@@ -519,9 +520,6 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
 
   const manager = getOrInitTelegramManager();
 
-  // Helper for small pause between retries
-  const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
   // Telegram
   const shouldPostTg = (target === 'telegram' || target === 'all') && (isManual || (!isTest && appConfig.telegramAutoPost) || isTest);
   if (shouldPostTg) {
@@ -818,16 +816,16 @@ const OFFICIAL_CURRENCIES_INFO: Record<string, { name: string; flag: string; ran
 export async function broadcastOfficialRates(
   isTest: boolean = false, 
   target: 'all' | 'telegram' | 'facebook' = (appConfig.facebookAutoPost ? 'all' : 'telegram')
-) {
+): Promise<boolean> {
   const manager = getOrInitTelegramManager();
   if (!appConfig.telegramPostChannel || !manager) {
     console.warn("[Official Broadcast] Aborting broadcast: channel or telegram manager not ready.");
-    return;
+    return false;
   }
 
   if (!isTest && !appConfig.telegramAutoPost) {
     console.log("[Official Broadcast] Aborting official broadcast because telegramAutoPost is disabled in settings.");
-    return;
+    return true; // Not an error condition; auto-post is disabled by choice
   }
 
   const now = new Date();
@@ -841,7 +839,7 @@ export async function broadcastOfficialRates(
   
   if (!isTest && (lastOfficialBroadcastDate === todayLibyaKey || lastOfficialBroadcastDate === dateStr)) {
     console.log(`[Official Broadcast] Already broadcasted for today (${todayLibyaKey}). Skipping duplicate post.`);
-    return;
+    return true;
   }
 
   const dayNames = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
@@ -865,7 +863,7 @@ export async function broadcastOfficialRates(
 
   if (officialEntries.length === 0) {
     console.warn("[Official Broadcast] No official rates available to publish.");
-    return;
+    return false;
   }
 
   for (const [code, val] of officialEntries) {
@@ -908,8 +906,10 @@ export async function broadcastOfficialRates(
       }
     }
     console.log(`[Official Broadcast] Successfully posted daily official bulletin for ${todayLibyaKey}!`);
+    return true;
   } catch(e) {
     console.error("[Official Broadcast] Failed to broadcast official rates:", e);
+    return false;
   }
 }
 
@@ -924,10 +924,20 @@ export function sanitizeBroadcastUpdates(
 ): { id?: string; name: string; oldVal: number; newVal: number; flag: string }[] {
   const result: { id?: string; name: string; oldVal: number; newVal: number; flag: string }[] = [];
   let checkUpdate: { id: string; name: string; oldVal: number; newVal: number; flag: string } | null = null;
+  let cashUsdUpdate: { id?: string; name: string; oldVal: number; newVal: number; flag: string } | null = null;
 
   for (const u of updates) {
     const id = (u.id || '').toUpperCase();
     const name = u.name || '';
+
+    if (id === 'USD') {
+      cashUsdUpdate = u;
+      result.push({
+        ...u,
+        name: 'دولار أمريكي (كاش)'
+      });
+      continue;
+    }
 
     // التحقق إذا كان التحديث يخص الصكوك
     const isBankCheck = 
@@ -949,7 +959,7 @@ export function sanitizeBroadcastUpdates(
       if (!checkUpdate) {
         checkUpdate = {
           id: 'USD_CHECKS',
-          name: 'دولار أمريكي (صكوك)',
+          name: 'دولار أمريكي (صكوك مصرفية)',
           oldVal: u.oldVal,
           newVal: u.newVal,
           flag: 'us'
@@ -964,7 +974,13 @@ export function sanitizeBroadcastUpdates(
   }
 
   if (checkUpdate) {
-    result.push(checkUpdate);
+    // 🛡️ فحص أمان صارم: التأكد من أن سعر الصكوك ليس مطابقاً بالخطأ لسعر الكاش
+    const cashPrice = cashUsdUpdate?.newVal || rates?.parallel?.['USD'] || 0;
+    if (cashPrice > 0 && Math.abs(checkUpdate.newVal - cashPrice) < 0.05) {
+      console.warn(`[SanitizeBroadcast] ⚠️ تم استبعاد دولار الصكوك من المنشور لأن سعره (${checkUpdate.newVal}) مطابق لسعر الدولار كاش (${cashPrice}).`);
+    } else {
+      result.push(checkUpdate);
+    }
   }
 
   return result;
@@ -1212,14 +1228,23 @@ export async function executeBroadcast(
     const isDown = u.newVal < u.oldVal;
     const diff = Math.abs(u.newVal - u.oldVal);
     let fe = flagMap[u.flag] || '💰';
+    if (u.id === 'USD') fe = '💵';
+    if (u.id === 'USD_CHECKS') fe = '🏦';
     if (u.id?.startsWith('GOLD')) fe = '✨';
     if (u.id?.startsWith('SILVER')) fe = '🪙';
     
+    let displayName = u.name;
+    if (u.id === 'USD' && !displayName.includes('كاش')) {
+      displayName = 'دولار أمريكي (كاش)';
+    } else if (u.id === 'USD_CHECKS' && !displayName.includes('صكوك')) {
+      displayName = 'دولار أمريكي (صكوك مصرفية)';
+    }
+
     let changeText = '➖ استقرار';
     if (isUp) changeText = `🔺 ارتفاع بمقدار ${diff.toFixed(3)}`;
     if (isDown) changeText = `🔻 انخفاض بمقدار ${diff.toFixed(3)}`;
 
-    message += `${fe} *${u.name}*\n`;
+    message += `${fe} *${displayName}*\n`;
     message += `💵 السعر: *${u.newVal.toFixed(3)} د.ل*\n`;
     if (isUp || isDown) {
       message += `📊 التغير: ${changeText} (كان ${u.oldVal.toFixed(3)})\n\n`;

@@ -12,13 +12,11 @@ import {
 import { 
   initializeRatesFromDB, 
   loadLatestRatesFromSupabase, 
-  saveToSupabase,
   logErrorArabic 
 } from "./server/services/db.service";
 import { loadConfigFromSupabase } from "./server/config";
 import { loadRecentBroadcastTimestamps } from "./server/services/social.service";
 import { initStatsIfEmpty } from "./server/services/reporting.service";
-import { fetchOfficialRates, fetchParallelRatesFromTelegram } from "./server/services/scraper.service";
 import { whatsappManager, hasSavedSession } from "./server/services/whatsapp.service";
 import { activeClient } from "./telegramClient";
 import { rates } from "./server/state";
@@ -109,28 +107,11 @@ async function startServer() {
           }
         }
 
-        console.log("[Startup] Waiting 30s for system to settle and old sessions to clear...");
-        await new Promise((resolve) => setTimeout(resolve, 30000));
-
-        const libyaFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "Africa/Tripoli", hour: "numeric", hourCycle: "h23" });
-        const currentLibyaHour = parseInt(libyaFormatter.format(new Date()), 10);
-
-        if (currentLibyaHour >= 1 && currentLibyaHour < 7) {
-          console.log(`[Startup] Skipping initial update during quiet hours (Hour ${currentLibyaHour} Libya Time). Market is sleeping.`);
-        } else {
-          console.log("[Startup] Triggering initial rates update...");
-          const officialChanged = await fetchOfficialRates();
-          const parallelChanged = await fetchParallelRatesFromTelegram();
-
-          if (officialChanged || parallelChanged) {
-            console.log("[Startup] Initial changes detected! Saving to database...");
-            const saveType = (officialChanged && parallelChanged) ? "both" : (officialChanged ? "official" : "parallel");
-            await saveToSupabase(saveType);
-            broadcastRatesUpdate(rates);
-          }
-        }
+        console.log("[Startup] Initializing rates synchronization from database...");
+        await loadLatestRatesFromSupabase();
+        broadcastRatesUpdate(rates);
       } catch (err) {
-        console.error("[Startup] Error during initial update:", err);
+        console.error("[Startup] Error during initial database sync:", err);
       }
     })();
 

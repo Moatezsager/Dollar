@@ -4,6 +4,7 @@ import { appConfig } from '../config';
 import { HistoryPoint, PriceChangeLog, RateMap, AppConfig } from '../types';
 import { isSignificantChange, METAL_IDS } from '../utils/helpers';
 import { updateStats } from './reporting.service';
+import { broadcastRatesUpdate } from '../socket/socket.service';
 
 export let lastRatesFetchTime = 0;
 export const RATES_CACHE_TTL = 30 * 1000; // 30 seconds
@@ -42,40 +43,129 @@ export async function logErrorArabic(message: string, context = "النظام", 
 }
 
 export async function loadLatestRatesFromSupabase() {
-  if (!supabase) return;
-  
+  return await syncLatestRatesFromDB("بدء تشغيل السيرفر");
+}
+
+/**
+ * Synchronizes the in-memory rates with the latest rates stored in Supabase.
+ * Returns true if new or changed rates were detected and loaded.
+ */
+export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<boolean> {
+  if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
+    return false;
+  }
+
   try {
-    console.log("[Startup] Loading latest rates from Supabase to ensure latest prices...");
-    
-    // Load parallel rates
-    const { data: parallelData, error: parallelError } = await supabase
-      .from('parallel_rates')
-      .select('usd, rates, recorded_at')
-      .order('recorded_at', { ascending: false })
-      .limit(1);
-      
-    if (parallelData && parallelData.length > 0) {
-      const latest = parallelData[0];
-      rates.parallel = { ...rates.parallel, ...latest.rates, USD: latest.usd };
-      rates.lastUpdated = latest.recorded_at;
-      console.log("[Startup] Successfully loaded latest parallel rates from", latest.recorded_at);
-      await syncCheckRates("بدء تشغيل السيرفر");
+    const [parallelRes, officialRes, metalRes] = await Promise.all([
+      supabase
+        .from('parallel_rates')
+        .select('usd, rates, last_changed, recorded_at')
+        .order('recorded_at', { ascending: false })
+        .limit(2),
+      supabase
+        .from('official_rates')
+        .select('usd, rates, recorded_at')
+        .order('recorded_at', { ascending: false })
+        .limit(2),
+      supabase
+        .from('metal_rates')
+        .select('rates, last_changed, recorded_at')
+        .order('recorded_at', { ascending: false })
+        .limit(2)
+    ]);
+
+    let changed = false;
+
+    // Handle parallel rates
+    if (parallelRes.data && parallelRes.data.length > 0) {
+      const latestParallel = parallelRes.data[0];
+      const prevParallel = parallelRes.data[1];
+
+      // Check if USD changed
+      if (latestParallel.usd && isSignificantChange(latestParallel.usd, rates.parallel.USD)) {
+        rates.previousParallel.USD = rates.parallel.USD || (prevParallel ? prevParallel.usd : latestParallel.usd);
+        rates.parallel.USD = latestParallel.usd;
+        changed = true;
+      }
+
+      // Check currencies in rates object
+      if (latestParallel.rates && typeof latestParallel.rates === 'object') {
+        for (const [code, val] of Object.entries(latestParallel.rates)) {
+          if (typeof val === 'number' && isSignificantChange(val, rates.parallel[code])) {
+            rates.previousParallel[code] = rates.parallel[code] || (prevParallel?.rates?.[code] ?? val);
+            rates.parallel[code] = val;
+            changed = true;
+          }
+        }
+      }
+
+      if (latestParallel.last_changed && typeof latestParallel.last_changed === 'object') {
+        rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latestParallel.last_changed };
+      }
+
+      if (latestParallel.recorded_at) {
+        if (!rates.lastUpdated || new Date(latestParallel.recorded_at).getTime() > new Date(rates.lastUpdated).getTime()) {
+          rates.lastUpdated = latestParallel.recorded_at;
+          changed = true;
+        }
+      }
     }
-    
-    // Load official rates
-    const { data: officialData, error: officialError } = await supabase
-      .from('official_rates')
-      .select('usd, rates, recorded_at')
-      .order('recorded_at', { ascending: false })
-      .limit(1);
-      
-    if (officialData && officialData.length > 0) {
-      const latest = officialData[0];
-      rates.official = { ...rates.official, ...latest.rates, USD: latest.usd };
-      console.log("[Startup] Successfully loaded latest official rates from", latest.recorded_at);
+
+    // Handle official rates
+    if (officialRes.data && officialRes.data.length > 0) {
+      const latestOfficial = officialRes.data[0];
+      const prevOfficial = officialRes.data[1];
+
+      if (latestOfficial.usd && isSignificantChange(latestOfficial.usd, rates.official.USD)) {
+        rates.previousOfficial.USD = rates.official.USD || (prevOfficial ? prevOfficial.usd : latestOfficial.usd);
+        rates.official.USD = latestOfficial.usd;
+        changed = true;
+      }
+
+      if (latestOfficial.rates && typeof latestOfficial.rates === 'object') {
+        for (const [code, val] of Object.entries(latestOfficial.rates)) {
+          if (typeof val === 'number' && isSignificantChange(val, rates.official[code])) {
+            rates.previousOfficial[code] = rates.official[code] || (prevOfficial?.rates?.[code] ?? val);
+            rates.official[code] = val;
+            changed = true;
+          }
+        }
+      }
+
+      if (latestOfficial.recorded_at) {
+        if (!rates.lastUpdated || new Date(latestOfficial.recorded_at).getTime() > new Date(rates.lastUpdated).getTime()) {
+          rates.lastUpdated = latestOfficial.recorded_at;
+        }
+      }
     }
+
+    // Handle metal rates
+    if (metalRes.data && metalRes.data.length > 0) {
+      const latestMetal = metalRes.data[0];
+      if (latestMetal.rates && typeof latestMetal.rates === 'object') {
+        for (const [code, val] of Object.entries(latestMetal.rates)) {
+          if (typeof val === 'number' && isSignificantChange(val, rates.parallel[code])) {
+            rates.previousParallel[code] = rates.parallel[code] || val;
+            rates.parallel[code] = val;
+            changed = true;
+          }
+        }
+      }
+      if (latestMetal.last_changed && typeof latestMetal.last_changed === 'object') {
+        rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latestMetal.last_changed };
+      }
+    }
+
+    if (changed) {
+      clearDbCache();
+      broadcastRatesUpdate(rates);
+      console.log(`[DB-Sync] (${triggerSource}) New rates detected & synchronized (Parallel USD: ${rates.parallel.USD}, Official USD: ${rates.official.USD})`);
+    }
+
+    return changed;
   } catch (err) {
-    console.error("[Startup] Failed to load latest rates from Supabase:", err);
+    console.error(`[DB-Sync] Failed to sync rates from DB:`, err);
+    return false;
   }
 }
 

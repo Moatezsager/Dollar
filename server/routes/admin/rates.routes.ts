@@ -3,8 +3,6 @@ import { rates } from '../../state';
 import { appConfig } from '../../config';
 import { Rates } from '../../types';
 import { 
-  fetchOfficialRates, 
-  fetchParallelRatesFromTelegram, 
   extractRatesFromText,
   liveFeed,
   clearLiveFeed,
@@ -15,7 +13,8 @@ import {
 import { 
   saveToSupabase, 
   logPriceChange, 
-  syncCheckRates 
+  syncCheckRates,
+  syncLatestRatesFromDB
 } from '../../services/db.service';
 import { broadcastRateChanges } from '../../services/social.service';
 import { updateStats } from '../../services/reporting.service';
@@ -28,54 +27,49 @@ export interface AdminRatesDeps {
 export function createAdminRatesRouter(deps: AdminRatesDeps): express.Router {
   const router = express.Router();
 
-  // Manual Refresh
+  // Manual Refresh directly from Database
   router.post('/refresh', async (req: express.Request, res: express.Response) => {
     try {
-      console.log(`[Admin] Manual refresh triggered`);
-      const officialUpdate = await fetchOfficialRates(false, true);
-      const parallelTally = await fetchParallelRatesFromTelegram();
-      
-      if (officialUpdate || parallelTally) {
-        console.log("[Admin] Changes detected! Saving to database...");
-        const saveType = (officialUpdate && parallelTally) ? 'both' : (officialUpdate ? 'official' : 'parallel');
-        await saveToSupabase(saveType);
-        deps.broadcastRatesUpdate(rates);
-      }
+      console.log(`[Admin] Manual rates sync from database triggered`);
+      const hasChanges = await syncLatestRatesFromDB("Admin Manual Sync");
       
       res.json({ 
         success: true, 
-        message: "تم تشغيل عملية التحديث بنجاح",
+        message: hasChanges 
+          ? "تمت مزامنة وتحديث الأسعار من قاعدة البيانات بنجاح" 
+          : "الأسعار في السيرفر متطابقة ومحدثة مع قاعدة البيانات",
         details: {
-          official: officialUpdate ? "تم التحديث" : "لا يوجد تغيير",
-          parallel: parallelTally ? "تم التحديث" : "لا يوجد تغيير"
+          parallel_usd: rates.parallel.USD,
+          official_usd: rates.official.USD,
+          lastUpdated: rates.lastUpdated
         }
       });
     } catch (err) {
-      console.error("Manual refresh failed:", err);
+      console.error("Manual DB sync failed:", err);
       if (!res.headersSent) {
-        res.status(500).json({ success: false, message: "فشل التحديث اليدوي" });
+        res.status(500).json({ success: false, message: "فشلت المزامنة مع قاعدة البيانات" });
       }
     }
   });
 
-  // Manual Official Rates Refresh (Admin Auth) - Forces instant fetch bypassing 9-11 AM window & today lock
+  // Manual Official Rates Refresh directly from Database
   router.post('/refresh-official', async (req: express.Request, res: express.Response) => {
     try {
-      console.log(`[Admin] Manual official rates refresh triggered with force=true`);
-      const officialUpdate = await fetchOfficialRates(true, true);
-      await saveToSupabase('official');
-      deps.broadcastRatesUpdate(rates);
+      console.log(`[Admin] Manual official rates sync from database triggered`);
+      const hasChanges = await syncLatestRatesFromDB("Admin Official Sync");
       const status = getCblStatusInfo();
       res.json({ 
         success: true, 
-        message: "تم تحديث أسعار المصرف المركزي بنجاح", 
-        updated: officialUpdate,
+        message: hasChanges 
+          ? "تمت مزامنة السعر الرسمي من قاعدة البيانات بنجاح" 
+          : "السعر الرسمي محدث مع قاعدة البيانات", 
+        updated: hasChanges,
         status
       });
     } catch (err: any) {
-      console.error("Manual official refresh failed:", err);
+      console.error("Manual official sync failed:", err);
       if (!res.headersSent) {
-        res.status(500).json({ success: false, message: "فشل التحديث اليدوي للسعر الرسمي: " + (err?.message || err) });
+        res.status(500).json({ success: false, message: "فشلت المزامنة الرسمية من قاعدة البيانات: " + (err?.message || err) });
       }
     }
   });

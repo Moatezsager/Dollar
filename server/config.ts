@@ -8,6 +8,7 @@ export let appConfig: AppConfig = {
   channels: ["dollarr_ly", "musheermarket", "lydollar", "suqalmushir"],
   telegramPostChannel: "lydollar",
   telegramAutoPost: false,
+  facebookAutoPost: false,
   telegramTemplateStyle: "classic",
   enableHttpScraper: true,
   enableUserTracking: true,

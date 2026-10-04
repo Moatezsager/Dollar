@@ -1,8 +1,7 @@
 import express from "express";
 import { rates } from "../state";
 import { supabase, supabaseAnonKey } from "../db";
-import { fetchParallelRatesFromTelegram, fetchOfficialRates } from "../services/scraper.service";
-import { saveToSupabase } from "../services/db.service";
+import { syncLatestRatesFromDB } from "../services/db.service";
 import { broadcastRatesUpdate } from "../socket/socket.service";
 import { 
   extractProvidedCronKey, 
@@ -31,43 +30,30 @@ router.get("/refresh-parallel", cronParallelLimiter, async (req: express.Request
     return res.status(403).json({ success: false, error: "Forbidden: Invalid security key" });
   }
   
-  console.log(`\n[Cron-Job] Refresh request received!`);
+  console.log(`\n[Cron-Job] Rates sync request received!`);
   
   try {
     const startTime = Date.now();
-    const oldUsd = rates.parallel.USD;
 
-    // 1. Fetch data from Telegram
-    const parallelUpdate = await fetchParallelRatesFromTelegram();
-    
-    if (parallelUpdate === true) {
-      console.log(`[Cron-Job] Fetch completed (Changes: ${parallelUpdate}). Syncing with database...`);
-      await saveToSupabase('parallel');
-      broadcastRatesUpdate(rates);
-    } else if (parallelUpdate === false) {
-      console.log("[Cron-Job] No changes detected. Database sync skipped.");
-    } else {
-      console.log("[Cron-Job] Scraper was busy or too recent. Skipping DB sync.");
-    }
+    // Sync latest rates directly from Supabase
+    const hasChanges = await syncLatestRatesFromDB("Cron-Job Parallel Sync");
     
     const duration = Date.now() - startTime;
-    const newUsd = rates.parallel.USD;
+    const currentUsd = rates.parallel.USD;
     
     res.status(200).json({ 
       success: true, 
-      message: parallelUpdate === true 
-        ? "Parallel data updated and synced with database" 
-        : parallelUpdate === false 
-          ? "Server active & alive. No changes detected." 
-          : "Server active & alive. Scraper executed recently, prices are up to date.",
+      message: hasChanges 
+        ? "Latest rates successfully synchronized from database" 
+        : "Rates are already up to date with database",
       details: {
         duration_ms: duration,
-        parallel_usd: newUsd,
+        parallel_usd: currentUsd,
         last_sync: new Date().toISOString()
       }
     });
   } catch (err) {
-    console.error("[Cron-Job] Parallel refresh failed:", err);
+    console.error("[Cron-Job] Rates DB sync failed:", err);
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: "Internal server error during refresh" });
     }
@@ -91,37 +77,30 @@ router.get("/refresh-official", cronOfficialLimiter, async (req: express.Request
     return res.status(403).json({ success: false, error: "Forbidden: Invalid security key" });
   }
   
-  console.log(`\n[Cron-Job-Official] Official refresh request received!`);
+  console.log(`\n[Cron-Job-Official] Official rates sync request received!`);
   
   try {
     const startTime = Date.now();
-    const oldOfficial = rates.official.USD;
 
-    // 1. Fetch official rates (CBL) in automatic mode
-    const officialUpdate = await fetchOfficialRates(false, false);
-    
-    if (officialUpdate === true) {
-      console.log(`[Cron-Job-Official] Fetch completed (Changes: ${officialUpdate}). Syncing with database...`);
-      await saveToSupabase('official');
-      broadcastRatesUpdate(rates);
-    } else {
-      console.log("[Cron-Job-Official] No changes detected. Database sync skipped.");
-    }
+    // Sync official rates from database
+    const hasChanges = await syncLatestRatesFromDB("Cron-Job Official Sync");
     
     const duration = Date.now() - startTime;
-    const newOfficial = rates.official.USD;
+    const currentOfficial = rates.official.USD;
     
     res.status(200).json({ 
       success: true, 
-      message: "Official data updated and synced with database",
+      message: hasChanges 
+        ? "Official data successfully synchronized from database"
+        : "Official rates are already up to date with database",
       details: {
         duration_ms: duration,
-        official_usd: newOfficial,
+        official_usd: currentOfficial,
         last_sync: new Date().toISOString()
       }
     });
   } catch (err) {
-    console.error("[Cron-Job-Official] Official refresh failed:", err);
+    console.error("[Cron-Job-Official] Official DB sync failed:", err);
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: "Internal server error during official refresh", details: err ? String(err) : "Unknown", stack: err && err.stack ? err.stack : "" });
     }

@@ -2,8 +2,7 @@ import express from 'express';
 import { appConfig, updateAppConfig, saveConfigToSupabase } from '../../config';
 import { rates, serverStartTime } from '../../state';
 import { AppConfig, DeviceLogEntry, Rates } from '../../types';
-import { fetchParallelRatesFromTelegram } from '../../services/scraper.service';
-import { saveToSupabase } from '../../services/db.service';
+import { syncLatestRatesFromDB } from '../../services/db.service';
 import { facebookBroadcastStatus, telegramBroadcastStatus } from '../../services/social.service';
 
 export interface AdminConfigDeps {
@@ -62,11 +61,7 @@ export function createAdminConfigRouter(deps: AdminConfigDeps): express.Router {
       updateAppConfig(newConfig);
       const saved = await saveConfigToSupabase(appConfig);
       
-      const parallelTally = await fetchParallelRatesFromTelegram();
-      if (parallelTally) {
-        await saveToSupabase('parallel');
-        deps.broadcastRatesUpdate(rates);
-      }
+      await syncLatestRatesFromDB("Admin Config Update");
       
       deps.broadcastConfigUpdate();
       res.json({ success: true, message: saved ? "تم حفظ الإعدادات بنجاح" : "تم حفظ الإعدادات وتطبيقها بنجاح (وضع الذاكرة المؤقتة)" });

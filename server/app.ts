@@ -4,6 +4,9 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { Server as SocketIOServer } from "socket.io";
+import crypto from 'crypto';
+import { rates } from './state';
+import { broadcastRatesUpdate } from './socket/socket.service';
 
 // Middlewares
 import {
@@ -27,16 +30,14 @@ import systemRouter from "./routes/system.routes";
 import { createAdminRouter } from "./routes/admin.routes";
 
 // State and services
-import { rates } from "./state";
 import { getUserLogs, clearUserLogs } from "./services/maintenance.service";
 import { 
   getOnlineUsers, 
-  broadcastRatesUpdate, 
   broadcastConfigUpdate, 
   broadcastUserLogs 
 } from "./socket/socket.service";
 
-export async function createApp(io: SocketIOServer) {
+export async function createApp(io?: SocketIOServer | null) {
   const app = express();
 
   // Core Express Middlewares
@@ -79,6 +80,41 @@ export async function createApp(io: SocketIOServer) {
   app.get("/push-sw.js", handlePushSwRoute);
   app.get(["/telegram", "/telegram.html"], handleTelegramPageRoute);
   app.get("/telegram-banner.png", handleTelegramBannerRoute);
+
+  // ─── Worker → Web Webhook ───
+  app.post('/api/internal/notify', (req: express.Request, res: express.Response) => {
+    const configuredSecret = (process.env.WORKER_INTERNAL_SECRET || '').trim();
+    const providedSecret = (
+      (req.headers['x-worker-secret'] as string) ||
+      (req.headers['authorization'] as string || '').replace('Bearer ', '')
+    ).trim();
+
+    if (!configuredSecret || !providedSecret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const hashA = crypto.createHash('sha256').update(configuredSecret).digest();
+      const hashB = crypto.createHash('sha256').update(providedSecret).digest();
+      if (!crypto.timingSafeEqual(hashA, hashB)) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    } catch {
+      return res.status(500).json({ error: 'Verification error' });
+    }
+
+    const { ratesParallel, ratesOfficial } = req.body || {};
+    if (ratesParallel && typeof ratesParallel === 'object') {
+      Object.assign(rates.parallel, ratesParallel);
+    }
+    if (ratesOfficial && typeof ratesOfficial === 'object') {
+      Object.assign(rates.official, ratesOfficial);
+    }
+
+    broadcastRatesUpdate(rates);
+    console.log('[WebServer] ✅ Rates from Worker broadcasted via Socket.IO');
+    return res.json({ ok: true, timestamp: new Date().toISOString() });
+  });
 
   // Catch-all 404 for any remaining unmatched /api/* routes
   app.all("/api/*", (req: express.Request, res: express.Response) => {

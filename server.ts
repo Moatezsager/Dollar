@@ -17,8 +17,6 @@ import {
 import { loadConfigFromSupabase } from "./server/config";
 import { loadRecentBroadcastTimestamps } from "./server/services/social.service";
 import { initStatsIfEmpty } from "./server/services/reporting.service";
-import { whatsappManager, hasSavedSession } from "./server/services/whatsapp.service";
-import { activeClient } from "./telegramClient";
 import { rates } from "./server/state";
 
 // ─── Environment Validation on Bootstrap ───
@@ -55,16 +53,7 @@ process.on("uncaughtException", async (error) => {
 
 // ─── Graceful Shutdown ───
 const gracefulShutdown = async () => {
-  console.log("[Server] Shutting down gracefully...");
-  whatsappManager.closeOnly();
-  if (activeClient && activeClient.connected) {
-    try {
-      console.log("[GramJS] Disconnecting Telegram client...");
-      await activeClient.disconnect();
-    } catch (e) {
-      console.error("[GramJS] Error during disconnect:", e);
-    }
-  }
+  console.log("[WebServer] Shutting down gracefully...");
   process.exit(0);
 };
 
@@ -80,13 +69,9 @@ async function startServer() {
 
   // 2. Initialize HTTP server and Socket.IO
   const PORT = 3000;
-  const dummyServer = createServer();
-  const io = initSocketIO(dummyServer);
-  const app = await createApp(io);
+  const app = await createApp(null as any);
   const server = createServer(app);
-
-  // Re-attach socket.io to the actual HTTP server handling requests
-  io.attach(server);
+  const io = initSocketIO(server);
 
   // 3. Initialize background schedulers and cron jobs
   initCronSchedulers();
@@ -112,21 +97,6 @@ async function startServer() {
         broadcastRatesUpdate(rates);
       } catch (err) {
         console.error("[Startup] Error during initial database sync:", err);
-      }
-    })();
-
-    // Auto-reconnect WhatsApp if session exists
-    (async () => {
-      try {
-        await loadConfigFromSupabase();
-        if (hasSavedSession()) {
-          console.log("[WhatsApp] Found permanent session credentials in Supabase cloud. Auto-connecting...");
-          await whatsappManager.initClient();
-        } else {
-          console.log("[WhatsApp] No saved session in Supabase cloud. Awaiting user QR pairing in admin panel.");
-        }
-      } catch (waBootErr) {
-        console.warn("[WhatsApp] Boot check warning:", waBootErr);
       }
     })();
   });

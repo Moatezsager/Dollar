@@ -58,6 +58,13 @@ function cleanLastChangedMap(raw: any): Record<string, string> {
   return result;
 }
 
+function withTimeout<T>(promise: PromiseLike<T>, ms = 8000, fallback: T): Promise<T> {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 /**
  * Synchronizes the in-memory rates with the latest rates stored in Supabase.
  * Returns true if new or changed rates were detected and loaded.
@@ -68,22 +75,35 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
   }
 
   try {
+    const emptyRes = { data: null, error: null } as any;
     const [parallelRes, officialRes, metalRes] = await Promise.all([
-      supabase
-        .from('parallel_rates')
-        .select('usd, rates, last_changed, recorded_at')
-        .order('recorded_at', { ascending: false })
-        .limit(100),
-      supabase
-        .from('official_rates')
-        .select('usd, rates, recorded_at')
-        .order('recorded_at', { ascending: false })
-        .limit(100),
-      supabase
-        .from('metal_rates')
-        .select('rates, last_changed, recorded_at')
-        .order('recorded_at', { ascending: false })
-        .limit(100)
+      withTimeout(
+        supabase
+          .from('parallel_rates')
+          .select('usd, rates, last_changed, recorded_at')
+          .order('recorded_at', { ascending: false })
+          .limit(100),
+        8000,
+        emptyRes
+      ),
+      withTimeout(
+        supabase
+          .from('official_rates')
+          .select('usd, rates, recorded_at')
+          .order('recorded_at', { ascending: false })
+          .limit(100),
+        8000,
+        emptyRes
+      ),
+      withTimeout(
+        supabase
+          .from('metal_rates')
+          .select('rates, last_changed, recorded_at')
+          .order('recorded_at', { ascending: false })
+          .limit(100),
+        8000,
+        emptyRes
+      )
     ]);
 
     const isParallelTableMissing = parallelRes.error && parallelRes.error.message.includes('relation "parallel_rates" does not exist');

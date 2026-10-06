@@ -39,8 +39,12 @@ import {
   broadcastUserLogs 
 } from "./socket/socket.service";
 
+export const PORT = Number(process.env.PORT) || 3000;
+
 export async function createApp(io?: SocketIOServer | null) {
   const app = express();
+  const port = Number(process.env.PORT) || 3000;
+  app.set('port', port);
 
   // Core Express Middlewares
   app.use(compression());

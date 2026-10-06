@@ -62,28 +62,31 @@ process.on("SIGINT", gracefulShutdown);
 
 // ─── Server Startup ───
 async function startServer() {
-  // 1. Initial database and configuration loading
-  await initializeRatesFromDB();
-  await loadConfigFromSupabase();
-  await loadBroadcastStateFromStorageAndSupabase();
+  const PORT = Number(process.env.PORT) || 3000;
 
-  // 2. Initialize HTTP server and Socket.IO
-  const PORT = 3000;
+  // 1. Initialize Express App, HTTP Server and Socket.IO
   const app = await createApp(null as any);
   const server = createServer(app);
   const io = initSocketIO(server);
 
-  // 3. Initialize background schedulers and cron jobs
-  initCronSchedulers();
-  initBackgroundTasks(PORT);
-
-  // 4. Start listening
+  // 2. Start listening IMMEDIATELY so Render and health scanners detect open port without blocking
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[WebServer] ✅ Server running on port ${PORT} (http://0.0.0.0:${PORT})`);
 
-    // Initial startup data check and synchronization
+    // 3. Perform database synchronization and start schedulers in background
     (async () => {
       try {
+        console.log("[Startup] Initializing rates and configurations from Supabase...");
+        await Promise.allSettled([
+          initializeRatesFromDB(),
+          loadConfigFromSupabase(),
+          loadBroadcastStateFromStorageAndSupabase(),
+        ]);
+
+        // Initialize background schedulers and cron jobs
+        initCronSchedulers();
+        initBackgroundTasks(PORT);
+
         await loadLatestRatesFromSupabase();
         await loadRecentBroadcastTimestamps();
         for (const key in rates.parallel) {
@@ -92,11 +95,10 @@ async function startServer() {
           }
         }
 
-        console.log("[Startup] Initializing rates synchronization from database...");
-        await loadLatestRatesFromSupabase();
+        console.log("[Startup] ✅ Rates successfully initialized and synchronized.");
         broadcastRatesUpdate(rates);
       } catch (err) {
-        console.error("[Startup] Error during initial database sync:", err);
+        console.error("[Startup] Error during background database initialization:", err);
       }
     })();
   });

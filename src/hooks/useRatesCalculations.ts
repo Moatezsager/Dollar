@@ -332,7 +332,7 @@ export function useRatesCalculations({
   const usdChecksFlash = usePriceFlash(usdChecksRate);
   const usdChecksChange = Math.abs(usdChecksRate - prevUsdChecksRate);
   const usdChecksSpread = usdChecksRate - usdRate;
-  const usdChecksLastChanged = rates?.lastChanged?.parallel?.["USD_JBANK"] || rates?.lastChanged?.parallel?.["USD_NCB"] || rates?.lastChanged?.parallel?.["USD_CHECKS"] || rates?.lastUpdated;
+  const usdChecksLastChanged = rates?.lastChanged?.parallel?.["USD_CHECKS"] || rates?.lastChanged?.parallel?.["USD_JBANK"] || rates?.lastChanged?.parallel?.["USD_NCB"] || rates?.lastUpdated;
   const usdLastChanged = rates?.lastChanged?.parallel?.["USD"] || rates?.lastUpdated;
 
   const officialUsdRate = rates?.official?.["USD"] || 0;
@@ -482,7 +482,7 @@ export function useRatesCalculations({
         rate,
         prevRate,
         trend: trends24h[term.id]?.parallel,
-        lastChangedDate: rates.lastChanged?.parallel?.[term.id],
+        lastChangedDate: rates?.lastChanged?.parallel?.[term.id] || rates?.lastUpdated,
         decimals: isSilver ? 2 : (isMetal ? 0 : 2)
       });
     });
@@ -503,7 +503,7 @@ export function useRatesCalculations({
         rate,
         prevRate,
         trend: trends24h[curr.code]?.official,
-        lastChangedDate: rates.lastChanged?.official?.[curr.code],
+        lastChangedDate: rates?.lastChanged?.official?.[curr.code] || rates?.lastChanged?.official?.['USD'] || rates?.lastUpdated,
         decimals: 4
       });
     });

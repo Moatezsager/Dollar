@@ -190,7 +190,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
       const currentRates = ratesRef.current;
       
       if (currentRates) {
-        const isNewer = new Date(newRates.lastUpdated).getTime() > new Date(currentRates.lastUpdated).getTime();
+        const isNewer = !currentRates?.lastUpdated || isNaN(new Date(currentRates.lastUpdated).getTime()) || (new Date(newRates.lastUpdated).getTime() > new Date(currentRates.lastUpdated).getTime());
         
         if (isNewer) {
           const currenciesToCheck = Object.keys(newRates.parallel);

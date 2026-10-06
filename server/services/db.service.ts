@@ -46,6 +46,18 @@ export async function loadLatestRatesFromSupabase() {
   return await syncLatestRatesFromDB("بدء تشغيل السيرفر");
 }
 
+function cleanLastChangedMap(raw: any): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [key, val] of Object.entries(raw)) {
+      if (!/^\d+$/.test(key) && typeof val === 'string' && !isNaN(new Date(val).getTime())) {
+        result[key] = val;
+      }
+    }
+  }
+  return result;
+}
+
 /**
  * Synchronizes the in-memory rates with the latest rates stored in Supabase.
  * Returns true if new or changed rates were detected and loaded.
@@ -61,60 +73,168 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
         .from('parallel_rates')
         .select('usd, rates, last_changed, recorded_at')
         .order('recorded_at', { ascending: false })
-        .limit(2),
+        .limit(100),
       supabase
         .from('official_rates')
         .select('usd, rates, recorded_at')
         .order('recorded_at', { ascending: false })
-        .limit(2),
+        .limit(100),
       supabase
         .from('metal_rates')
         .select('rates, last_changed, recorded_at')
         .order('recorded_at', { ascending: false })
-        .limit(2)
+        .limit(100)
     ]);
 
+    const isParallelTableMissing = parallelRes.error && parallelRes.error.message.includes('relation "parallel_rates" does not exist');
+    const isOfficialTableMissing = officialRes.error && officialRes.error.message.includes('relation "official_rates" does not exist');
+
+    if (isParallelTableMissing || isOfficialTableMissing) {
+      console.warn("[DB] Modern rates tables missing, falling back to legacy exchange_rates table");
+      const { data, error } = await supabase
+        .from('exchange_rates')
+        .select('*')
+        .order('recorded_at', { ascending: false })
+        .limit(50);
+
+      if (!error && data && data.length > 0) {
+        const latestRow = data[0];
+        if (latestRow.rates_parallel) rates.parallel = { ...rates.parallel, ...latestRow.rates_parallel };
+        if (latestRow.rates_official) rates.official = { ...rates.official, ...latestRow.rates_official };
+        if (latestRow.last_changed) {
+          rates.lastChanged = {
+            official: { ...rates.lastChanged.official, ...(cleanLastChangedMap(latestRow.last_changed.official) || {}) },
+            parallel: { ...rates.lastChanged.parallel, ...(cleanLastChangedMap(latestRow.last_changed.parallel) || {}) }
+          };
+        }
+        if (latestRow.recorded_at) {
+          rates.lastUpdated = latestRow.recorded_at;
+        }
+        return true;
+      }
+      return false;
+    }
+
     let changed = false;
+    let newestRecordedAt = rates.lastUpdated || '';
 
-    // Handle parallel rates
-    if (parallelRes.data && parallelRes.data.length > 0) {
-      const latestParallel = parallelRes.data[0];
-      const prevParallel = parallelRes.data[1];
+    const parallelData = parallelRes.data || [];
+    const officialData = officialRes.data || [];
+    const metalData = metalRes.data || [];
 
-      // Check if USD changed
+    // 1. Process Parallel Rates
+    if (parallelData.length > 0) {
+      const latestParallel = parallelData[0];
+      const prevParallel = parallelData[1];
+
       if (latestParallel.usd && isSignificantChange(latestParallel.usd, rates.parallel.USD)) {
         rates.previousParallel.USD = rates.parallel.USD || (prevParallel ? prevParallel.usd : latestParallel.usd);
         rates.parallel.USD = latestParallel.usd;
         changed = true;
       }
 
-      // Check currencies in rates object
       if (latestParallel.rates && typeof latestParallel.rates === 'object') {
         for (const [code, val] of Object.entries(latestParallel.rates)) {
-          if (typeof val === 'number' && isSignificantChange(val, rates.parallel[code])) {
-            rates.previousParallel[code] = rates.parallel[code] || (prevParallel?.rates?.[code] ?? val);
-            rates.parallel[code] = val;
-            changed = true;
+          if (typeof val === 'number' && val > 0) {
+            if (isSignificantChange(val, rates.parallel[code])) {
+              rates.previousParallel[code] = rates.parallel[code] || (prevParallel?.rates?.[code] ?? val);
+              rates.parallel[code] = val;
+              changed = true;
+            } else if (rates.parallel[code] === undefined) {
+              rates.parallel[code] = val;
+            }
           }
         }
       }
 
-      if (latestParallel.last_changed && typeof latestParallel.last_changed === 'object') {
-        rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latestParallel.last_changed };
+      // Merge cleaned last_changed from latest record
+      const cleanPChanged = cleanLastChangedMap(latestParallel.last_changed);
+      Object.assign(rates.lastChanged.parallel, cleanPChanged);
+
+      // Clean existing junk numeric keys
+      Object.keys(rates.lastChanged.parallel).forEach(k => {
+        if (/^\d+$/.test(k)) delete rates.lastChanged.parallel[k];
+      });
+
+      // Ensure every currency in rates.parallel has a verified change date
+      for (const code of Object.keys(rates.parallel)) {
+        const existing = rates.lastChanged.parallel[code];
+        const isDateValid = existing && typeof existing === 'string' && !isNaN(new Date(existing).getTime());
+        if (!isDateValid) {
+          const currentVal = rates.parallel[code];
+          const diffIdx = parallelData.findIndex(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], currentVal));
+          if (diffIdx > 0) {
+            rates.lastChanged.parallel[code] = parallelData[diffIdx - 1].recorded_at;
+          } else if (diffIdx === 0) {
+            rates.lastChanged.parallel[code] = latestParallel.recorded_at;
+          } else {
+            rates.lastChanged.parallel[code] = parallelData[parallelData.length - 1]?.recorded_at || latestParallel.recorded_at;
+          }
+        }
+
+        // Previous rate resolution from history
+        if (!rates.previousParallel[code] || rates.previousParallel[code] === rates.parallel[code]) {
+          const diffRow = parallelData.find(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], rates.parallel[code]));
+          if (diffRow && typeof diffRow.rates[code] === 'number') {
+            rates.previousParallel[code] = diffRow.rates[code];
+          }
+        }
       }
 
       if (latestParallel.recorded_at) {
-        if (!rates.lastUpdated || new Date(latestParallel.recorded_at).getTime() > new Date(rates.lastUpdated).getTime()) {
-          rates.lastUpdated = latestParallel.recorded_at;
-          changed = true;
+        if (!newestRecordedAt || new Date(latestParallel.recorded_at).getTime() > new Date(newestRecordedAt).getTime()) {
+          newestRecordedAt = latestParallel.recorded_at;
         }
       }
     }
 
-    // Handle official rates
-    if (officialRes.data && officialRes.data.length > 0) {
-      const latestOfficial = officialRes.data[0];
-      const prevOfficial = officialRes.data[1];
+    // 2. Process Metal Rates
+    if (metalData.length > 0) {
+      const latestMetal = metalData[0];
+      if (latestMetal.rates && typeof latestMetal.rates === 'object') {
+        for (const [code, val] of Object.entries(latestMetal.rates)) {
+          if (typeof val === 'number' && val > 0) {
+            if (isSignificantChange(val, rates.parallel[code])) {
+              rates.previousParallel[code] = rates.parallel[code] || val;
+              rates.parallel[code] = val;
+              changed = true;
+            } else if (rates.parallel[code] === undefined) {
+              rates.parallel[code] = val;
+            }
+          }
+        }
+      }
+
+      const cleanMChanged = cleanLastChangedMap(latestMetal.last_changed);
+      Object.assign(rates.lastChanged.parallel, cleanMChanged);
+
+      for (const id of METAL_IDS) {
+        if (rates.parallel[id]) {
+          const existing = rates.lastChanged.parallel[id];
+          const isDateValid = existing && typeof existing === 'string' && !isNaN(new Date(existing).getTime());
+          if (!isDateValid) {
+            const currentVal = rates.parallel[id];
+            const diffIdx = metalData.findIndex(r => r.rates && typeof r.rates[id] === 'number' && isSignificantChange(r.rates[id], currentVal));
+            if (diffIdx > 0) {
+              rates.lastChanged.parallel[id] = metalData[diffIdx - 1].recorded_at;
+            } else {
+              rates.lastChanged.parallel[id] = metalData[metalData.length - 1]?.recorded_at || latestMetal.recorded_at;
+            }
+          }
+        }
+      }
+
+      if (latestMetal.recorded_at) {
+        if (!newestRecordedAt || new Date(latestMetal.recorded_at).getTime() > new Date(newestRecordedAt).getTime()) {
+          newestRecordedAt = latestMetal.recorded_at;
+        }
+      }
+    }
+
+    // 3. Process Official Rates
+    if (officialData.length > 0) {
+      const latestOfficial = officialData[0];
+      const prevOfficial = officialData[1];
 
       if (latestOfficial.usd && isSignificantChange(latestOfficial.usd, rates.official.USD)) {
         rates.previousOfficial.USD = rates.official.USD || (prevOfficial ? prevOfficial.usd : latestOfficial.usd);
@@ -124,42 +244,63 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
 
       if (latestOfficial.rates && typeof latestOfficial.rates === 'object') {
         for (const [code, val] of Object.entries(latestOfficial.rates)) {
-          if (typeof val === 'number' && isSignificantChange(val, rates.official[code])) {
-            rates.previousOfficial[code] = rates.official[code] || (prevOfficial?.rates?.[code] ?? val);
-            rates.official[code] = val;
-            changed = true;
+          if (typeof val === 'number' && val > 0) {
+            if (isSignificantChange(val, rates.official[code])) {
+              rates.previousOfficial[code] = rates.official[code] || (prevOfficial?.rates?.[code] ?? val);
+              rates.official[code] = val;
+              changed = true;
+            } else if (rates.official[code] === undefined) {
+              rates.official[code] = val;
+            }
           }
         }
+      }
+
+      // Compute lastChanged for each official currency from history
+      for (const code of Object.keys(rates.official)) {
+        const currentVal = rates.official[code];
+        const diffIdx = officialData.findIndex(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], currentVal));
+        if (diffIdx > 0) {
+          rates.lastChanged.official[code] = officialData[diffIdx - 1].recorded_at;
+        } else {
+          rates.lastChanged.official[code] = officialData[officialData.length - 1]?.recorded_at || latestOfficial.recorded_at;
+        }
+
+        if (!rates.previousOfficial[code] || rates.previousOfficial[code] === rates.official[code]) {
+          const diffRow = officialData.find(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], rates.official[code]));
+          if (diffRow && typeof diffRow.rates[code] === 'number') {
+            rates.previousOfficial[code] = diffRow.rates[code];
+          }
+        }
+      }
+
+      // Official USD change date
+      const usdDiffIdx = officialData.findIndex(r => r.usd && isSignificantChange(r.usd, rates.official.USD));
+      if (usdDiffIdx > 0) {
+        rates.lastChanged.official.USD = officialData[usdDiffIdx - 1].recorded_at;
+        rates.previousOfficial.USD = officialData[usdDiffIdx].usd;
+      } else {
+        rates.lastChanged.official.USD = latestOfficial.recorded_at;
       }
 
       if (latestOfficial.recorded_at) {
-        if (!rates.lastUpdated || new Date(latestOfficial.recorded_at).getTime() > new Date(rates.lastUpdated).getTime()) {
-          rates.lastUpdated = latestOfficial.recorded_at;
+        if (!newestRecordedAt || new Date(latestOfficial.recorded_at).getTime() > new Date(newestRecordedAt).getTime()) {
+          newestRecordedAt = latestOfficial.recorded_at;
         }
       }
     }
 
-    // Handle metal rates
-    if (metalRes.data && metalRes.data.length > 0) {
-      const latestMetal = metalRes.data[0];
-      if (latestMetal.rates && typeof latestMetal.rates === 'object') {
-        for (const [code, val] of Object.entries(latestMetal.rates)) {
-          if (typeof val === 'number' && isSignificantChange(val, rates.parallel[code])) {
-            rates.previousParallel[code] = rates.parallel[code] || val;
-            rates.parallel[code] = val;
-            changed = true;
-          }
-        }
-      }
-      if (latestMetal.last_changed && typeof latestMetal.last_changed === 'object') {
-        rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latestMetal.last_changed };
-      }
+    if (newestRecordedAt && rates.lastUpdated !== newestRecordedAt) {
+      rates.lastUpdated = newestRecordedAt;
+      changed = true;
     }
+
+    lastRatesFetchTime = Date.now();
 
     if (changed) {
       clearDbCache();
       broadcastRatesUpdate(rates);
-      console.log(`[DB-Sync] (${triggerSource}) New rates detected & synchronized (Parallel USD: ${rates.parallel.USD}, Official USD: ${rates.official.USD})`);
+      console.log(`[DB-Sync] (${triggerSource}) Rates synchronized (Parallel USD: ${rates.parallel.USD}, Official USD: ${rates.official.USD}, LastUpdated: ${rates.lastUpdated})`);
     }
 
     return changed;
@@ -167,6 +308,15 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
     console.error(`[DB-Sync] Failed to sync rates from DB:`, err);
     return false;
   }
+}
+
+export async function initializeRatesFromDB(force = false) {
+  if (!force && lastRatesFetchTime > 0 && (Date.now() - lastRatesFetchTime < RATES_CACHE_TTL)) {
+    return;
+  }
+
+  console.log(`[DB] Initializing rates from Supabase (force=${force})...`);
+  await syncLatestRatesFromDB(force ? "Manual Refresh" : "Init Rates");
 }
 
 export async function logPriceChange(change: PriceChangeLog) {
@@ -187,101 +337,6 @@ export async function logPriceChange(change: PriceChangeLog) {
     } catch (e) {
       console.error("Failed to insert price change log to Supabase", e);
     }
-  }
-}
-
-
-export async function initializeRatesFromDB(force = false) {
-  if (!force && lastRatesFetchTime > 0 && (Date.now() - lastRatesFetchTime < RATES_CACHE_TTL)) {
-    return; 
-  }
-
-  if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) return;
-  
-  try {
-    console.log(`[DB] Initializing rates from Supabase (force=${force})...`);
-    const { data: parallelData, error: parallelError } = await supabase
-      .from('parallel_rates')
-      .select('*')
-      .order('recorded_at', { ascending: false })
-      .limit(1000);
-
-    const { data: officialData, error: officialError } = await supabase
-      .from('official_rates')
-      .select('*')
-      .order('recorded_at', { ascending: false })
-      .limit(1000);
-
-    const isParallelTableMissing = parallelError && parallelError.message.includes('relation "parallel_rates" does not exist');
-    const isOfficialTableMissing = officialError && officialError.message.includes('relation "official_rates" does not exist');
-
-    if (isParallelTableMissing || isOfficialTableMissing) {
-      console.warn("[DB] New tables missing, falling back to legacy exchange_rates table");
-      const { data, error } = await supabase
-        .from('exchange_rates')
-        .select('*')
-        .order('recorded_at', { ascending: false })
-        .limit(50);
-        
-      if (!error && data && data.length > 0) {
-        const latestRow = data[0];
-        if (latestRow.rates_parallel) rates.parallel = { ...rates.parallel, ...latestRow.rates_parallel };
-        if (latestRow.rates_official) rates.official = { ...rates.official, ...latestRow.rates_official };
-        if (latestRow.last_changed) {
-          rates.lastChanged = {
-            official: { ...rates.lastChanged.official, ...(latestRow.last_changed.official || {}) },
-            parallel: { ...rates.lastChanged.parallel, ...(latestRow.last_changed.parallel || {}) }
-          };
-        }
-        rates.lastUpdated = latestRow.recorded_at || new Date().toISOString();
-        
-        const findPrev = (curr: RateMap, isP: boolean) => {
-          const prev: RateMap = { ...curr };
-          for (const code in curr) {
-            const diff = data.find((row: any) => {
-              const r = isP ? row.rates_parallel : row.rates_official;
-              return r && isSignificantChange(r[code], curr[code]);
-            });
-            if (diff) {
-              const r = isP ? (diff as any).rates_parallel : (diff as any).rates_official;
-              prev[code] = r[code];
-            }
-          }
-          return prev;
-        };
-        rates.previousParallel = findPrev(rates.parallel, true);
-        rates.previousOfficial = findPrev(rates.official, false);
-      }
-    } else {
-      if (parallelData && parallelData.length > 0) {
-        const latest = parallelData[0];
-        if (latest.rates) rates.parallel = { ...rates.parallel, ...latest.rates };
-        if (latest.last_changed) rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latest.last_changed };
-        rates.lastUpdated = latest.recorded_at;
-        
-        for (const code in rates.parallel) {
-          const diff = parallelData.find(r => r.rates && isSignificantChange(r.rates[code], rates.parallel[code]));
-          if (diff) rates.previousParallel[code] = diff.rates[code];
-        }
-      }
-
-      if (officialData && officialData.length > 0) {
-        const latest = officialData[0];
-        if (latest.rates) rates.official = { ...rates.official, ...latest.rates };
-        for (const code in rates.official) {
-          const diff = officialData.find(r => r.rates && isSignificantChange(r.rates[code], rates.official[code]));
-          if (diff) rates.previousOfficial[code] = diff.rates[code];
-        }
-        if (new Date(latest.recorded_at) > new Date(rates.lastUpdated)) {
-           rates.lastUpdated = latest.recorded_at;
-        }
-      }
-    }
-    
-    lastRatesFetchTime = Date.now();
-    console.log(`[DB] Successfully loaded state from separated tables (Parallel USD: ${rates.parallel.USD})`);
-  } catch (err) {
-    console.error("Error initializing rates from DB:", err);
   }
 }
 

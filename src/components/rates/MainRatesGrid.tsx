@@ -79,13 +79,23 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   toggleSection,
   setSelectedRate,
 }) => {
-  const cleanArabicDistance = (rawStr: string) => {
-    if (!rawStr) return 'منذ قليل';
-    let cleaned = rawStr.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
-    if (cleaned && !cleaned.startsWith('منذ')) {
-      cleaned = `منذ ${cleaned}`;
+  const cleanArabicDistance = (dateStr?: string) => {
+    if (!dateStr) return 'منذ قليل';
+    try {
+      const d = new Date(dateStr);
+      const timeMs = d.getTime();
+      if (isNaN(timeMs)) return 'منذ قليل';
+      const now = Date.now();
+      const targetDate = timeMs > now ? new Date(now) : d;
+      const rawDistance = formatDistanceToNow(targetDate, { addSuffix: true, locale: ar });
+      let cleaned = rawDistance.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
+      if (cleaned && !cleaned.startsWith('منذ')) {
+        cleaned = `منذ ${cleaned}`;
+      }
+      return cleaned || 'منذ قليل';
+    } catch {
+      return 'منذ قليل';
     }
-    return cleaned || 'منذ قليل';
   };
 
   const getShortTimeAgo = (dateStr?: string) => {
@@ -126,9 +136,9 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
           </h2>
           <span className="text-white/20 text-xs">|</span>
           <div className="flex items-center gap-1 text-[11px] sm:text-xs text-slate-400 font-medium truncate">
-            <Clock className="w-3 h-3 text-emerald-400/90 shrink-0" />
+            <Clock className="w-3.5 h-3.5 text-emerald-400/90 shrink-0" />
             <span className="text-slate-400">آخر تحديث:</span>
-            <span className="text-slate-200 font-bold">{rates?.lastUpdated ? cleanArabicDistance(formatDistanceToNow(new Date(rates.lastUpdated), { addSuffix: true, locale: ar })) : 'منذ قليل'}</span>
+            <span className="text-slate-200 font-bold">{cleanArabicDistance(rates?.lastUpdated)}</span>
           </div>
         </div>
 
@@ -476,7 +486,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                     rate={rate}
                     prevRate={prevRate}
                     trend={trends24h[term.id]?.parallel}
-                    lastChangedDate={rates?.lastChanged?.parallel[term.id]}
+                    lastChangedDate={rates?.lastChanged?.parallel?.[term.id] || rates?.lastUpdated}
                     onClick={() => setSelectedRate({ code: term.id, name: term.name, market: 'parallel' })}
                   />
                 );
@@ -520,7 +530,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                     rate={rate}
                     prevRate={prevRate}
                     trend={trends24h[term.id]?.parallel}
-                    lastChangedDate={rates?.lastChanged?.parallel[term.id]}
+                    lastChangedDate={rates?.lastChanged?.parallel?.[term.id] || rates?.lastChanged?.parallel?.['USD_CHECKS'] || rates?.lastUpdated}
                     onClick={() => setSelectedRate({ code: term.id, name: term.name, market: 'parallel' })}
                   />
                 );
@@ -562,7 +572,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                     rate={rate}
                     prevRate={prevRate}
                     trend={trends24h[term.id]?.parallel}
-                    lastChangedDate={rates?.lastChanged?.parallel[term.id]}
+                    lastChangedDate={rates?.lastChanged?.parallel?.[term.id] || rates?.lastUpdated}
                     fallbackType="send"
                     onClick={() => setSelectedRate({ code: term.id, name: term.name, market: 'parallel' })}
                   />
@@ -606,7 +616,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                   rate={rate}
                   prevRate={prevRate}
                   trend={trends24h[currency.code]?.official}
-                  lastChangedDate={rates?.lastChanged?.official[currency.code]}
+                  lastChangedDate={rates?.lastChanged?.official?.[currency.code] || rates?.lastChanged?.official?.['USD'] || rates?.lastUpdated}
                   onClick={() => setSelectedRate({ code: currency.code, name: currency.name, market: 'official' })}
                 />
               );

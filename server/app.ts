@@ -7,6 +7,7 @@ import { Server as SocketIOServer } from "socket.io";
 import crypto from 'crypto';
 import { rates } from './state';
 import { broadcastRatesUpdate } from './socket/socket.service';
+import { syncLatestRatesFromDB } from './services/db.service';
 
 // Middlewares
 import {
@@ -103,13 +104,29 @@ export async function createApp(io?: SocketIOServer | null) {
       return res.status(500).json({ error: 'Verification error' });
     }
 
-    const { ratesParallel, ratesOfficial } = req.body || {};
+    const { ratesParallel, ratesOfficial, lastChanged, lastUpdated } = req.body || {};
     if (ratesParallel && typeof ratesParallel === 'object') {
       Object.assign(rates.parallel, ratesParallel);
     }
     if (ratesOfficial && typeof ratesOfficial === 'object') {
       Object.assign(rates.official, ratesOfficial);
     }
+    if (lastChanged && typeof lastChanged === 'object') {
+      if (lastChanged.parallel && typeof lastChanged.parallel === 'object') {
+        Object.assign(rates.lastChanged.parallel, lastChanged.parallel);
+      }
+      if (lastChanged.official && typeof lastChanged.official === 'object') {
+        Object.assign(rates.lastChanged.official, lastChanged.official);
+      }
+    }
+    if (lastUpdated && typeof lastUpdated === 'string') {
+      rates.lastUpdated = lastUpdated;
+    }
+
+    // Trigger complete sync from Supabase database tables to capture full history, previous rates, and metals
+    syncLatestRatesFromDB("Worker Webhook Notification").catch(err => {
+      console.error("[WebServer] Error syncing rates after worker notification:", err);
+    });
 
     broadcastRatesUpdate(rates);
     console.log('[WebServer] ✅ Rates from Worker broadcasted via Socket.IO');

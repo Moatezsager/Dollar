@@ -19,13 +19,25 @@ interface RateCellProps {
   onShare?: (e: React.MouseEvent) => void;
 }
 
-const cleanArabicDistance = (rawStr: string) => {
-  if (!rawStr) return 'منذ قليل';
-  let cleaned = rawStr.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
-  if (cleaned && !cleaned.startsWith('منذ')) {
-    cleaned = `منذ ${cleaned}`;
+const formatArabicRelativeTime = (dateStr?: string) => {
+  if (!dateStr) return 'منذ قليل';
+  try {
+    const d = new Date(dateStr);
+    const timeMs = d.getTime();
+    if (isNaN(timeMs)) return 'منذ قليل';
+    
+    const now = Date.now();
+    const targetDate = timeMs > now ? new Date(now) : d;
+    
+    const rawDistance = formatDistanceToNow(targetDate, { addSuffix: true, locale: ar });
+    let cleaned = rawDistance.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
+    if (cleaned && !cleaned.startsWith('منذ')) {
+      cleaned = `منذ ${cleaned}`;
+    }
+    return cleaned || 'منذ قليل';
+  } catch {
+    return 'منذ قليل';
   }
-  return cleaned || 'منذ قليل';
 };
 
 const getSubLabel = (id: string, name: string) => {
@@ -150,7 +162,7 @@ export const RateCell = ({
         {lastChangedDate && (
           <div className="flex items-center gap-1.5 text-slate-400 font-sans truncate text-[11px] sm:text-xs">
             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">{cleanArabicDistance(formatDistanceToNow(new Date(lastChangedDate), { addSuffix: true, locale: ar }))}</span>
+            <span className="truncate">{formatArabicRelativeTime(lastChangedDate)}</span>
           </div>
         )}
       </div>

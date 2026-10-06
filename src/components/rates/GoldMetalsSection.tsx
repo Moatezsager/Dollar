@@ -64,7 +64,7 @@ export const GoldMetalsSection: React.FC<GoldMetalsSectionProps> = ({
                   rate={rate}
                   prevRate={prevRate}
                   trend={trends24h[term.id]?.parallel}
-                  lastChangedDate={rates?.lastChanged?.parallel[term.id]}
+                  lastChangedDate={rates?.lastChanged?.parallel?.[term.id] || rates?.lastUpdated}
                   decimals={isSilver ? 2 : 0}
                   onClick={() => setSelectedRate({ code: term.id, name: term.name, market: 'parallel' })}
                 />

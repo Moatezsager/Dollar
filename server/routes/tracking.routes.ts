@@ -5,6 +5,7 @@ import fs from "fs";
 import { db, supabase, supabaseAnonKey } from "../db";
 import { messageRateLimiter } from "../middleware/security";
 import { forwardVisitorMessageToTelegram } from "../services/social.service";
+import { injectDynamicMetaTags } from "../services/preview.service";
 
 const router = express.Router();
 
@@ -318,8 +319,16 @@ export function handleTelegramPageRoute(req: express.Request, res: express.Respo
     ? path.join(process.cwd(), "dist", "telegram.html")
     : path.join(process.cwd(), "public", "telegram.html");
   if (fs.existsSync(filePath)) {
-    res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.sendFile(filePath);
+    try {
+      const rawHtml = fs.readFileSync(filePath, "utf8");
+      const dynamicHtml = injectDynamicMetaTags(rawHtml, true);
+      res.setHeader("Content-Type", "text/html; charset=UTF-8");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      return res.send(dynamicHtml);
+    } catch {
+      res.setHeader("Content-Type", "text/html; charset=UTF-8");
+      return res.sendFile(filePath);
+    }
   }
   res.redirect("https://t.me/libya_index_dollar");
 }

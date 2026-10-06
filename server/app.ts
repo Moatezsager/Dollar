@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { rates } from './state';
 import { broadcastRatesUpdate } from './socket/socket.service';
 import { syncLatestRatesFromDB } from './services/db.service';
+import { injectDynamicMetaTags } from './services/preview.service';
 
 // Middlewares
 import {
@@ -145,44 +146,33 @@ export async function createApp(io?: SocketIOServer | null) {
       appType: "spa",
     });
     app.use(vite.middlewares);
+
+    // Dev HTML fallback with dynamic meta-tags
+    app.use("*", async (req, res, next) => {
+      if (req.method !== "GET") return next();
+      const url = req.originalUrl.split("?")[0];
+      if (/\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webmanifest|xml)$/i.test(url)) {
+        return next();
+      }
+      try {
+        const rawIndex = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf8");
+        const transformed = await vite.transformIndexHtml(req.originalUrl, rawIndex);
+        const dynamicHtml = injectDynamicMetaTags(transformed, false);
+        res.setHeader("Content-Type", "text/html; charset=UTF-8");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        return res.status(200).send(dynamicHtml);
+      } catch (e) {
+        return next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
-
-    interface HtmlCache {
-      html: string;
-      builtAt: number;
-      usdSnapshot: number;
-      etag: string;
+    let rawIndexHtml = "";
+    try {
+      rawIndexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf8");
+    } catch {
+      // Will read on demand if not ready yet
     }
-    let cachedHtmlPage: HtmlCache | null = null;
-    const HTML_CACHE_TTL_MS = 5 * 60 * 1000;
-
-    function buildAndCacheHtml(): HtmlCache {
-      let html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
-
-      if (rates?.parallel?.USD) {
-        const usdStr = rates.parallel.USD.toFixed(2);
-        const eurStr = (rates.parallel.EUR || 0).toFixed(2);
-        const dynamicTitle = `💵 دولار: ${usdStr} | 💶 يورو: ${eurStr} | مؤشر الدينار`;
-        const dynamicDesc = `السعر الآن في السوق الموازي: الدولار ${usdStr} د.ل، واليورو ${eurStr} د.ل. تابع أسعار العملات والذهب لحظة بلحظة.`;
-
-        html = html
-          .replace(/<title>.*?<\/title>/i, `<title>${dynamicTitle}</title>`)
-          .replace(/<meta\s+name=["']description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta name="description" content="${dynamicDesc}">`)
-          .replace(/<meta\s+property=["']og:title["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="og:title" content="${dynamicTitle}">`)
-          .replace(/<meta\s+property=["']og:description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="og:description" content="${dynamicDesc}">`)
-          .replace(/<meta\s+property=["']twitter:title["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="twitter:title" content="${dynamicTitle}">`)
-          .replace(/<meta\s+property=["']twitter:description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="twitter:description" content="${dynamicDesc}">`);
-      }
-
-      const etag = `"${Buffer.from(`${rates?.parallel?.USD || 0}-${Date.now()}`).toString('base64').slice(0, 16)}"`;
-      cachedHtmlPage = { html, builtAt: Date.now(), usdSnapshot: rates?.parallel?.USD || 0, etag };
-      console.log('[HtmlCache] ✅ Rebuilt HTML cache. ETag:', etag);
-      return cachedHtmlPage;
-    }
-
-    // Build initial cache on startup
-    buildAndCacheHtml();
 
     app.use(express.static(distPath, { 
       index: false,
@@ -198,26 +188,23 @@ export async function createApp(io?: SocketIOServer | null) {
       }
     }));
     
-    // SPA fallback with in-memory caching and ETag support
+    // SPA fallback: Real-time dynamic meta tags injection on every HTML request for link previews & crawlers
     app.get(/^(?!.*\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webmanifest|xml)$).*$/, (req, res) => {
-      const now = Date.now();
-      const cacheExpired = !cachedHtmlPage || (now - cachedHtmlPage.builtAt) >= HTML_CACHE_TTL_MS;
-      const rateChanged = cachedHtmlPage && cachedHtmlPage.usdSnapshot !== (rates?.parallel?.USD || 0);
-
-      const cache = (cacheExpired || rateChanged) ? buildAndCacheHtml() : cachedHtmlPage!;
-
-      const clientEtag = req.headers['if-none-match'];
-      if (clientEtag && clientEtag === cache.etag) {
-        res.status(304).end();
-        return;
+      if (!rawIndexHtml) {
+        try {
+          rawIndexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf8");
+        } catch {
+          return res.status(500).send("index.html not found");
+        }
       }
+
+      const html = injectDynamicMetaTags(rawIndexHtml, false);
 
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-      res.setHeader('ETag', cache.etag);
       res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-      res.send(cache.html);
+      res.send(html);
     });
   }
 

@@ -150,122 +150,131 @@ export function useRatesData(options?: UseRatesDataOptions) {
       if (forceRefresh) {
         await fetchConfig();
       }
+
       const [ratesResult, historyResult] = await Promise.allSettled([
-        fetch(forceRefresh ? "/api/rates?refresh=true" : "/api/rates", { signal: AbortSignal.timeout(30000) }),
-        fetch("/api/history", { signal: AbortSignal.timeout(30000) }),
+        fetch(forceRefresh ? "/api/rates?refresh=true" : "/api/rates", { signal: AbortSignal.timeout(15000) }),
+        fetch("/api/history", { signal: AbortSignal.timeout(15000) }),
       ]);
-      
-      if (ratesResult.status === 'rejected') throw ratesResult.reason;
-      if (historyResult.status === 'rejected') throw historyResult.reason;
 
-      const ratesRes = ratesResult.value;
-      const historyRes = historyResult.value;
+      let newRates: Rates | null = null;
+      let newHistory: HistoryPoint[] | null = null;
 
-      if (!ratesRes.ok || !historyRes.ok) {
-        if (ratesRes.status === 502 || historyRes.status === 502) return;
-        throw new Error("Network response was not ok");
-      }
-
-      const ratesContentType = ratesRes.headers.get("content-type");
-      const historyContentType = historyRes.headers.get("content-type");
-
-      if (!ratesContentType?.includes("application/json") || !historyContentType?.includes("application/json")) {
-        return;
-      }
-
-      const ratesJson = await ratesRes.json();
-      const historyJson = await historyRes.json();
-      
-      const newRates: Rates | null = typeof ratesJson === 'string' ? decodeData(ratesJson) : ratesJson;
-      const newHistory = typeof historyJson === 'string' ? decodeData(historyJson) : historyJson;
-      
-      if (!newRates || !newHistory) {
-        console.error("Failed to decode rates or history");
-        setIsRefreshing(false);
-        return;
-      }
-      
-      // Check for price changes to notify
-      let hasChanges = false;
-      const currentRates = ratesRef.current;
-      
-      if (currentRates) {
-        const isNewer = !currentRates?.lastUpdated || isNaN(new Date(currentRates.lastUpdated).getTime()) || (new Date(newRates.lastUpdated).getTime() > new Date(currentRates.lastUpdated).getTime());
-        
-        if (isNewer) {
-          const currenciesToCheck = Object.keys(newRates.parallel);
-          const changes: { code: string; name: string; oldPrice: number; newPrice: number; priority: number }[] = [];
-          const priorityIds = ["USD", "USD_JBANK", "USD_CHECKS", "EUR", "GOLD"];
-          
-          currenciesToCheck.forEach(code => {
-            const oldPrice = currentRates.parallel[code];
-            const newPrice = newRates.parallel[code];
-            
-            if (oldPrice && newPrice && Math.abs(oldPrice - newPrice) >= thresholdRef.current) {
-              if (lastNotifiedRef.current[code] !== newPrice) {
-                const term = configTermsRef.current.find(t => t.id === code);
-                const name = term ? term.name : code;
-                const priority = priorityIds.indexOf(code);
-                
-                changes.push({ 
-                  code, 
-                  name, 
-                  oldPrice, 
-                  newPrice, 
-                  priority: priority === -1 ? 999 : priority 
-                });
-                lastNotifiedRef.current[code] = newPrice;
-              }
-            }
-          });
-
-          if (changes.length > 0) {
-            hasChanges = true;
-            changes.sort((a, b) => a.priority - b.priority);
-            
-            const maxIndividual = 3;
-            const toNotify = changes.slice(0, maxIndividual);
-            const remainingCount = changes.length - maxIndividual;
-            
-            for (const change of toNotify) {
-              showPriceNotification(change.code, change.name, change.oldPrice, change.newPrice).catch(err => {
-                console.error("Error showing notification:", err);
-              });
-            }
-            
-            if (remainingCount > 0) {
-              const summaryTitle = "📊 تحديثات أسعار إضافية";
-              const summaryBody = `بالإضافة للعملات الرئيسية، تم رصد تغيرات في أسعار ${remainingCount} عملات وأصناف أخرى في السوق.`;
-              addToast(summaryTitle, summaryBody, "info");
-              
-              try {
-                if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-                  navigator.serviceWorker.ready.then(registration => {
-                    registration.showNotification(summaryTitle, {
-                      body: summaryBody,
-                      icon: 'https://flagcdn.com/w80/ly.png',
-                      badge: 'https://flagcdn.com/w80/ly.png',
-                      tag: 'price-change-summary',
-                      renotify: true,
-                      dir: 'rtl'
-                    } as any);
-                  }).catch(() => {});
-                }
-              } catch (err) {
-                console.error("Failed to show summary notification:", err);
-              }
-            }
+      // 1. Process Rates independently
+      if (ratesResult.status === 'fulfilled' && ratesResult.value.ok) {
+        const ratesContentType = ratesResult.value.headers.get("content-type");
+        if (ratesContentType && ratesContentType.includes("application/json")) {
+          try {
+            const ratesJson = await ratesResult.value.json();
+            newRates = typeof ratesJson === 'string' ? decodeData(ratesJson) : ratesJson;
+          } catch (e) {
+            console.warn("Error parsing rates JSON:", e);
           }
         }
       }
 
-      setRates(newRates);
-      setHistory(newHistory);
+      // 2. Process History independently
+      if (historyResult.status === 'fulfilled' && historyResult.value.ok) {
+        const historyContentType = historyResult.value.headers.get("content-type");
+        if (historyContentType && historyContentType.includes("application/json")) {
+          try {
+            const historyJson = await historyResult.value.json();
+            newHistory = typeof historyJson === 'string' ? decodeData(historyJson) : historyJson;
+          } catch (e) {
+            console.warn("Error parsing history JSON:", e);
+          }
+        }
+      }
+
+      // If rates failed to load from API, try restoring from safeStorage
+      if (!newRates) {
+        try {
+          const cachedStr = safeStorage.getItem('lyd_rates');
+          if (cachedStr) {
+            newRates = JSON.parse(cachedStr);
+          }
+        } catch {}
+      }
+
+      if (newRates && newRates.parallel && typeof newRates.parallel === 'object') {
+        // Check for price changes to notify
+        let hasChanges = false;
+        const currentRates = ratesRef.current;
+        
+        if (currentRates) {
+          const isNewer = !currentRates?.lastUpdated || isNaN(new Date(currentRates.lastUpdated).getTime()) || (new Date(newRates.lastUpdated).getTime() > new Date(currentRates.lastUpdated).getTime());
+          
+          if (isNewer) {
+            const currenciesToCheck = Object.keys(newRates.parallel);
+            const changes: { code: string; name: string; oldPrice: number; newPrice: number; priority: number }[] = [];
+            const priorityIds = ["USD", "USD_JBANK", "USD_CHECKS", "EUR", "GOLD"];
+            
+            currenciesToCheck.forEach(code => {
+              const oldPrice = currentRates.parallel[code];
+              const newPrice = newRates.parallel[code];
+              
+              if (oldPrice && newPrice && Math.abs(oldPrice - newPrice) >= thresholdRef.current) {
+                if (lastNotifiedRef.current[code] !== newPrice) {
+                  const term = configTermsRef.current.find(t => t.id === code);
+                  const name = term ? term.name : code;
+                  const priority = priorityIds.indexOf(code);
+                  
+                  changes.push({ 
+                    code, 
+                    name, 
+                    oldPrice, 
+                    newPrice, 
+                    priority: priority === -1 ? 999 : priority 
+                  });
+                  lastNotifiedRef.current[code] = newPrice;
+                }
+              }
+            });
+
+            if (changes.length > 0) {
+              hasChanges = true;
+              changes.sort((a, b) => a.priority - b.priority);
+              
+              const maxIndividual = 3;
+              const toNotify = changes.slice(0, maxIndividual);
+              const remainingCount = changes.length - maxIndividual;
+              
+              for (const change of toNotify) {
+                showPriceNotification(change.code, change.name, change.oldPrice, change.newPrice).catch(err => {
+                  console.error("Error showing notification:", err);
+                });
+              }
+              
+              if (remainingCount > 0) {
+                const summaryTitle = "📊 تحديثات أسعار إضافية";
+                const summaryBody = `بالإضافة للعملات الرئيسية، تم رصد تغيرات في أسعار ${remainingCount} عملات وأصناف أخرى في السوق.`;
+                addToast(summaryTitle, summaryBody, "info");
+              }
+            }
+          }
+        }
+
+        setRates(newRates);
+        try {
+          safeStorage.setItem('lyd_rates', JSON.stringify(newRates));
+        } catch {}
+
+        if (hasChanges) {
+          addToast("تم تحديث الأسعار", "تم رصد تغييرات جديدة في السوق وتحديث البيانات", "info");
+        }
+      }
+
+      if (Array.isArray(newHistory) && newHistory.length > 0) {
+        setHistory(newHistory);
+        try {
+          safeStorage.setItem('lyd_history', JSON.stringify(newHistory));
+        } catch {}
+      }
+
       setLastFetchTime(new Date());
 
-      // Fetch status
+      // Fetch status independently
       try {
-        const statusRes = await fetch("/api/status");
+        const statusRes = await fetch("/api/status", { signal: AbortSignal.timeout(5000) });
         if (statusRes.ok) {
           const contentType = statusRes.headers.get("content-type");
           if (contentType && contentType.includes("application/json")) {
@@ -274,38 +283,10 @@ export function useRatesData(options?: UseRatesDataOptions) {
           }
         }
       } catch (err) {
-        logErrorToServer(err, "useRatesData: fetchStatus");
-      }
-
-      // Persist to local storage
-      try {
-        safeStorage.setItem('lyd_rates', JSON.stringify(newRates));
-        safeStorage.setItem('lyd_history', JSON.stringify(newHistory));
-      } catch (err) {
-        console.warn("Failed to save to storage:", err);
-      }
-
-      if (hasChanges) {
-        addToast("تم تحديث الأسعار", "تم رصد تغييرات جديدة في السوق وتحديث البيانات", "info");
+        // Ignore status fetch errors
       }
     } catch (error) {
-      const errName = error && typeof error === 'object' ? (error as any).name : '';
-      const errMsg = error && typeof error === 'object' ? (error as any).message : '';
-      
-      if (error instanceof TypeError && errMsg === "Failed to fetch") {
-        console.warn("Server might be restarting or network is down...");
-      } else if (errName === 'AbortError' || errName === 'TimeoutError' || (typeof errMsg === 'string' && errMsg.includes('signal timed out'))) {
-        console.warn("Fetch request timed out");
-      } else {
-        const isNetworkError = typeof errMsg === 'string' && errMsg.includes("Network response was not ok");
-        if (!isNetworkError) {
-          console.error("Failed to fetch data:", error);
-          logErrorToServer(error, "useRatesData: fetchData");
-        }
-        if (forceRefresh) {
-          addToast("خطأ في التحديث", "تعذر الاتصال بالخادم، يرجى المحاولة لاحقاً", "info");
-        }
-      }
+      console.error("Failed to fetch rates/data:", error);
     } finally {
       setLoading(false);
       setIsRefreshing(false);

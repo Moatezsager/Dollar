@@ -169,7 +169,7 @@ export async function loadConfigFromSupabase() {
     if (error) {
       if (error.code === 'PGRST116') {
         await supabase.from('app_config').insert([{ id: 1, config: appConfig }]);
-      } else if (!error.message.includes('relation "app_config" does not exist')) {
+      } else if (!error.message || !error.message.includes('relation "app_config" does not exist')) {
         console.error("Error loading config from Supabase:", error);
       }
     } else if (data && data.config) {

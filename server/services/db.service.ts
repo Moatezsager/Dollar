@@ -36,7 +36,7 @@ export async function logErrorArabic(message: string, context = "النظام", 
       created_at: new Date().toISOString()
     }]);
     
-    if (error) console.error("Failed to save Arabic error log:", error.message);
+    if (error) console.error("Failed to save Arabic error log:", error?.message || error);
   } catch (err) {
     console.error("Critical error in logErrorArabic:", err);
   }
@@ -141,6 +141,30 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
     const parallelData = parallelRes.data || [];
     const officialData = officialRes.data || [];
     const metalData = metalRes.data || [];
+
+    // Fallback to local SQLite cache if Supabase returns 0 rows (e.g. Schema cache re-indexing)
+    if (parallelData.length === 0 && officialData.length === 0) {
+      try {
+        const stored = db.prepare("SELECT value FROM server_config WHERE key = 'cached_rates'").get() as any;
+        if (stored && stored.value) {
+          const parsed = JSON.parse(stored.value);
+          if (parsed && parsed.parallel && parsed.official) {
+            Object.assign(rates.parallel, parsed.parallel);
+            Object.assign(rates.official, parsed.official);
+            if (parsed.previousParallel) Object.assign(rates.previousParallel, parsed.previousParallel);
+            if (parsed.previousOfficial) Object.assign(rates.previousOfficial, parsed.previousOfficial);
+            if (parsed.lastChanged) {
+              if (parsed.lastChanged.parallel) Object.assign(rates.lastChanged.parallel, parsed.lastChanged.parallel);
+              if (parsed.lastChanged.official) Object.assign(rates.lastChanged.official, parsed.lastChanged.official);
+            }
+            if (parsed.lastUpdated) rates.lastUpdated = parsed.lastUpdated;
+            console.log(`[DB-Sync] Loaded rates snapshot from local SQLite cache.`);
+          }
+        }
+      } catch (e) {
+        console.warn("[DB-Sync] Failed to load rates snapshot from SQLite:", e);
+      }
+    }
 
     // 1. Process Parallel Rates
     if (parallelData.length > 0) {
@@ -315,6 +339,20 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
       changed = true;
     }
 
+    if (!rates.lastUpdated) {
+      rates.lastUpdated = new Date().toISOString();
+    }
+
+    // Persist latest state to local SQLite cache
+    try {
+      db.prepare(`
+        INSERT INTO server_config (key, value) VALUES ('cached_rates', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(rates));
+    } catch (e) {
+      console.warn("[DB-Sync] Failed to persist rates snapshot to SQLite:", e);
+    }
+
     lastRatesFetchTime = Date.now();
 
     if (changed) {
@@ -471,16 +509,29 @@ export async function fetchHistoryFromSupabase() {
   if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) return history;
   
   try {
+    const emptyRes = { data: null, error: null } as any;
     const [parallelRes, officialRes, metalRes] = await Promise.all([
-      supabase.from('parallel_rates').select('recorded_at, usd, rates').order('recorded_at', { ascending: false }).limit(3000),
-      supabase.from('official_rates').select('recorded_at, usd, rates').order('recorded_at', { ascending: false }).limit(3000),
-      supabase.from('metal_rates').select('recorded_at, rates').order('recorded_at', { ascending: false }).limit(3000)
+      withTimeout(
+        supabase.from('parallel_rates').select('recorded_at, usd, rates').order('recorded_at', { ascending: false }).limit(200),
+        6000,
+        emptyRes
+      ),
+      withTimeout(
+        supabase.from('official_rates').select('recorded_at, usd, rates').order('recorded_at', { ascending: false }).limit(200),
+        6000,
+        emptyRes
+      ),
+      withTimeout(
+        supabase.from('metal_rates').select('recorded_at, rates').order('recorded_at', { ascending: false }).limit(200),
+        6000,
+        emptyRes
+      )
     ]);
 
-    if (parallelRes.error?.message.includes('relation "parallel_rates" does not exist') || 
-        officialRes.error?.message.includes('relation "official_rates" does not exist')) {
+    if (parallelRes.error?.message?.includes('relation "parallel_rates" does not exist') || 
+        officialRes.error?.message?.includes('relation "official_rates" does not exist')) {
         
-        const { data, error } = await supabase.from('exchange_rates').select('*').order('recorded_at', { ascending: false }).limit(3000);
+        const { data, error } = await supabase.from('exchange_rates').select('*').order('recorded_at', { ascending: false }).limit(200);
         if (!error && data) {
            cachedHistory = data.reverse().map((row: any) => ({
               time: row.recorded_at,

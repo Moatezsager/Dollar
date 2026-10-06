@@ -1,7 +1,14 @@
 import express from 'express';
 import crypto from 'crypto';
 
-export let adminToken = crypto.randomBytes(32).toString('hex');
+const AUTH_SALT = process.env.API_HMAC_SECRET || 'lyd-admin-secure-persistent-key-2026';
+
+export function computeStableAdminToken(password = process.env.ADMIN_PASSWORD || 'admin123456'): string {
+  return crypto.createHmac('sha256', AUTH_SALT).update(password.trim()).digest('hex');
+}
+
+export let adminToken = computeStableAdminToken();
+export let sessionToken = crypto.randomBytes(32).toString('hex');
 export let tokenCreatedAt = Date.now();
 
 export function getAdminToken(): string {
@@ -31,13 +38,8 @@ export function safeCompare(a?: string | null, b?: string | null): boolean {
 export function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    if (safeCompare(token, adminToken)) {
-      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-      if (Date.now() - tokenCreatedAt > TWENTY_FOUR_HOURS_MS) {
-        res.status(401).json({ success: false, message: "انتهت صلاحية الجلسة" });
-        return;
-      }
+    const token = authHeader.slice(7).trim();
+    if (safeCompare(token, adminToken) || safeCompare(token, sessionToken)) {
       return next();
     }
   }

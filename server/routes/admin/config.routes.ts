@@ -4,6 +4,7 @@ import { rates, serverStartTime } from '../../state';
 import { AppConfig, DeviceLogEntry, Rates } from '../../types';
 import { syncLatestRatesFromDB } from '../../services/db.service';
 import { facebookBroadcastStatus, telegramBroadcastStatus } from '../../services/social.service';
+import { notifyWorkerReloadConfig } from '../../utils/notify';
 
 export interface AdminConfigDeps {
   apiStats: any;
@@ -64,6 +65,10 @@ export function createAdminConfigRouter(deps: AdminConfigDeps): express.Router {
       await syncLatestRatesFromDB("Admin Config Update");
       
       deps.broadcastConfigUpdate();
+      // إشعار Worker بتحديث الإعدادات فوراً
+      notifyWorkerReloadConfig().catch(err =>
+        console.warn('[WebServer] تعذّر إشعار Worker بتغيير Config:', err)
+      );
       res.json({ success: true, message: saved ? "تم حفظ الإعدادات بنجاح" : "تم حفظ الإعدادات وتطبيقها بنجاح (وضع الذاكرة المؤقتة)" });
     } catch (err) {
       console.error("Error saving config:", err);

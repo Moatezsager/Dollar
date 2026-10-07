@@ -72,7 +72,7 @@ export async function purgeAllCachesAndReload(): Promise<void> {
 /**
  * Processes an incoming server version (from socket or HTTP endpoint)
  */
-export async function processIncomingVersion(serverVersion: string, autoReload = true): Promise<boolean> {
+export async function processIncomingVersion(serverVersion: string, autoReload = false): Promise<boolean> {
   if (!serverVersion || typeof serverVersion !== 'string') return false;
 
   const currentVersion = localStorage.getItem(VERSION_STORAGE_KEY);
@@ -85,23 +85,23 @@ export async function processIncomingVersion(serverVersion: string, autoReload =
 
   if (currentVersion !== serverVersion) {
     console.log(`[AutoUpdater] 🚀 New app version detected! (${currentVersion} -> ${serverVersion})`);
+    localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
     
-    // Prevent reload loops if update happened less than 10 seconds ago
-    const lastReload = parseInt(sessionStorage.getItem(LAST_RELOAD_KEY) || '0', 10);
-    if (Date.now() - lastReload < 10000) {
-      localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
-      return false;
+    // Check if in Webview / In-App browser where abrupt reloads can cause blank screen
+    const isFbOrInApp = typeof navigator !== 'undefined' && /FBAN|FBAV|Messenger|Orca|Instagram|Twitter|Snapchat|Line|MicroMessenger|wv/i.test(navigator.userAgent);
+    
+    if (!isFbOrInApp) {
+      notifyUpdateListeners(serverVersion);
     }
 
-    sessionStorage.setItem(LAST_RELOAD_KEY, Date.now().toString());
-    localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
-    notifyUpdateListeners(serverVersion);
-
-    if (autoReload) {
-      // Delay briefly so any listeners or banners can show
-      setTimeout(async () => {
-        await purgeAllCachesAndReload();
-      }, 1500);
+    if (autoReload && !isFbOrInApp) {
+      const lastReload = parseInt(sessionStorage.getItem(LAST_RELOAD_KEY) || '0', 10);
+      if (Date.now() - lastReload > 30000) {
+        sessionStorage.setItem(LAST_RELOAD_KEY, Date.now().toString());
+        setTimeout(async () => {
+          await purgeAllCachesAndReload();
+        }, 1500);
+      }
     }
     return true;
   }
@@ -129,7 +129,7 @@ export async function checkForAppUpdate(silent = true): Promise<boolean> {
     const data = await res.json();
     const serverVersion = data?.version;
 
-    return await processIncomingVersion(serverVersion, true);
+    return await processIncomingVersion(serverVersion, false);
   } catch (e) {
     if (!silent) console.warn('[AutoUpdater] Error checking for updates:', e);
     return false;

@@ -23,9 +23,9 @@ window.addEventListener('unhandledrejection', (event) => {
 initAutoUpdater();
 
 // Register unified Service Worker (Caching + Push)
-// Avoid registering inside in-app WebViews (Facebook, Instagram) where module SWs can cause blank screens
+// Avoid registering inside in-app WebViews (Facebook, Messenger, Instagram) where module SWs can cause blank screens
 try {
-  const isFbOrInApp = typeof navigator !== 'undefined' && /FBAN|FBAV|Instagram|Twitter|Snapchat|Line|MicroMessenger|wv/i.test(navigator.userAgent);
+  const isFbOrInApp = typeof navigator !== 'undefined' && /FBAN|FBAV|Messenger|Orca|Instagram|Twitter|Snapchat|Line|MicroMessenger|wv/i.test(navigator.userAgent);
   if ('serviceWorker' in navigator && window.self === window.top && !isFbOrInApp) {
     navigator.serviceWorker.register('/push-sw.js', { scope: '/' })
       .then(reg => {

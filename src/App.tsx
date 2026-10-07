@@ -210,6 +210,19 @@ export default function App() {
   const [chartAnalysisCurrency, setChartAnalysisCurrency] = useState('USD_CASH');
   const [chartAnalysisRange, setChartAnalysisRange] = useState<'1w' | '1m' | '6m' | '1y' | 'all'>('1m');
 
+  // Dynamic Document Title and Live Rates in Browser
+  useEffect(() => {
+    const usdVal = usdRate > 0 ? usdRate : Number(rates?.parallel?.USD) || 0;
+    const eurVal = Number(rates?.parallel?.EUR) || 0;
+    if (usdVal > 0 && eurVal > 0) {
+      document.title = `💵 دولار: ${usdVal.toFixed(2)} | 💶 يورو: ${eurVal.toFixed(2)} | مؤشر الدينار`;
+    } else if (usdVal > 0) {
+      document.title = `💵 دولار: ${usdVal.toFixed(2)} | مؤشر الدينار`;
+    } else {
+      document.title = `مؤشر الدينار | Dinar Index`;
+    }
+  }, [usdRate, rates?.parallel?.USD, rates?.parallel?.EUR]);
+
   // PDF Export Modal & Report State
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>([]);

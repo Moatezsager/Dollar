@@ -374,35 +374,38 @@ export function useRatesCalculations({
   }, [history, usdRate, prevUsdRate]);
 
   const usdSparklineData = useMemo(() => {
+    const now = Date.now();
+    const base = usdRate || 9.55;
+    const prev = prevUsdRate || base;
+
     if (!history || !history.length) {
-      const base = usdRate || 9.55;
       return [
-        { time: '1', value: base - 0.08 },
-        { time: '2', value: base - 0.06 },
-        { time: '3', value: base - 0.04 },
-        { time: '4', value: base - 0.01 },
-        { time: '5', value: base - 0.03 },
-        { time: '6', value: base + 0.02 },
-        { time: '7', value: base },
-        { time: '8', value: base + 0.03 },
-        { time: '9', value: base + 0.05 },
+        { time: new Date(now - 18 * 3600000).toISOString(), value: prev - 0.02 },
+        { time: new Date(now - 12 * 3600000).toISOString(), value: prev },
+        { time: new Date(now - 6 * 3600000).toISOString(), value: base },
+        { time: new Date(now).toISOString(), value: base },
       ];
     }
-    const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+    const cutoff24h = now - 24 * 60 * 60 * 1000;
     const pts = history
-      .filter(h => new Date(h.time).getTime() >= cutoff24h)
+      .filter(h => {
+        if (!h.time) return false;
+        const t = new Date(h.time).getTime();
+        return !isNaN(t) && t >= cutoff24h;
+      })
       .map(h => ({
-        time: h.time,
-        value: h.usdParallel || (h.ratesParallel?.USD) || usdRate
+        time: new Date(h.time).toISOString(),
+        value: h.usdParallel || (h.ratesParallel?.USD) || base
       }))
       .filter(p => p.value > 0);
 
-    if (pts.length < 3) {
-      const base = usdRate || 9.55;
+    pts.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+    if (pts.length < 2) {
       return [
-        { time: '1', value: prevUsdRate || base - 0.04 },
-        { time: '2', value: base - 0.02 },
-        { time: '3', value: base }
+        { time: new Date(cutoff24h).toISOString(), value: prev },
+        { time: new Date(now - 6 * 3600000).toISOString(), value: base },
+        { time: new Date(now).toISOString(), value: base }
       ];
     }
     return pts;

@@ -9,6 +9,7 @@ import { rates } from './state';
 import { broadcastRatesUpdate } from './socket/socket.service';
 import { syncLatestRatesFromDB } from './services/db.service';
 import { injectDynamicMetaTags } from './services/preview.service';
+import { isSignificantChange } from './utils/helpers';
 
 // Middlewares
 import {
@@ -110,20 +111,45 @@ export async function createApp(io?: SocketIOServer | null) {
     }
 
     const { ratesParallel, ratesOfficial, lastChanged, lastUpdated } = req.body || {};
+    
+    // 1. Process parallel rates: only update lastChanged if rate actually changed
     if (ratesParallel && typeof ratesParallel === 'object') {
-      Object.assign(rates.parallel, ratesParallel);
+      for (const [code, val] of Object.entries(ratesParallel)) {
+        if (typeof val === 'number' && val > 0) {
+          const currentVal = rates.parallel[code];
+          if (currentVal && isSignificantChange(currentVal, val)) {
+            rates.previousParallel[code] = currentVal;
+            rates.parallel[code] = val;
+            rates.lastChanged.parallel[code] = lastChanged?.parallel?.[code] || new Date().toISOString();
+          } else {
+            rates.parallel[code] = val;
+            if (!rates.lastChanged.parallel[code] && lastChanged?.parallel?.[code]) {
+              rates.lastChanged.parallel[code] = lastChanged.parallel[code];
+            }
+          }
+        }
+      }
     }
+
+    // 2. Process official rates
     if (ratesOfficial && typeof ratesOfficial === 'object') {
-      Object.assign(rates.official, ratesOfficial);
-    }
-    if (lastChanged && typeof lastChanged === 'object') {
-      if (lastChanged.parallel && typeof lastChanged.parallel === 'object') {
-        Object.assign(rates.lastChanged.parallel, lastChanged.parallel);
+      for (const [code, val] of Object.entries(ratesOfficial)) {
+        if (typeof val === 'number' && val > 0) {
+          const currentVal = rates.official[code];
+          if (currentVal && isSignificantChange(currentVal, val)) {
+            rates.previousOfficial[code] = currentVal;
+            rates.official[code] = val;
+            rates.lastChanged.official[code] = lastChanged?.official?.[code] || new Date().toISOString();
+          } else {
+            rates.official[code] = val;
+            if (!rates.lastChanged.official[code] && lastChanged?.official?.[code]) {
+              rates.lastChanged.official[code] = lastChanged.official[code];
+            }
+          }
+        }
       }
-      if (lastChanged.official && typeof lastChanged.official === 'object') {
-        Object.assign(rates.lastChanged.official, lastChanged.official);
-      }
     }
+
     if (lastUpdated && typeof lastUpdated === 'string') {
       rates.lastUpdated = lastUpdated;
     }

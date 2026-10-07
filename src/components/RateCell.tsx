@@ -20,23 +20,46 @@ interface RateCellProps {
 }
 
 const formatArabicRelativeTime = (dateStr?: string) => {
-  if (!dateStr) return 'منذ قليل';
+  if (!dateStr) return 'مستقر';
   try {
-    const d = new Date(dateStr);
+    const normalized = typeof dateStr === 'string' && dateStr.includes(' ') && !dateStr.includes('T')
+      ? dateStr.replace(' ', 'T') + (dateStr.includes('+') || dateStr.endsWith('Z') ? '' : 'Z')
+      : dateStr;
+    const d = new Date(normalized);
     const timeMs = d.getTime();
-    if (isNaN(timeMs)) return 'منذ قليل';
+    if (isNaN(timeMs)) return 'مستقر';
     
     const now = Date.now();
-    const targetDate = timeMs > now ? new Date(now) : d;
+    const diffSec = Math.max(0, Math.floor((now - timeMs) / 1000));
     
-    const rawDistance = formatDistanceToNow(targetDate, { addSuffix: true, locale: ar });
-    let cleaned = rawDistance.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
-    if (cleaned && !cleaned.startsWith('منذ')) {
-      cleaned = `منذ ${cleaned}`;
+    if (diffSec < 60) return 'منذ ثوانٍ';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin === 1) return 'منذ دقيقة';
+    if (diffMin === 2) return 'منذ دقيقتين';
+    if (diffMin < 11) return `منذ ${diffMin} دقائق`;
+    if (diffMin < 60) return `منذ ${diffMin} دقيقة`;
+    
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours === 1) return 'منذ ساعة';
+    if (diffHours === 2) return 'منذ ساعتين';
+    if (diffHours < 11) return `منذ ${diffHours} ساعات`;
+    if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'منذ يوم';
+    if (diffDays === 2) return 'منذ يومين';
+    if (diffDays < 11) return `منذ ${diffDays} أيام`;
+    if (diffDays < 30) return `منذ ${diffDays} يوماً`;
+    
+    const weeks = Math.floor(diffDays / 7);
+    if (diffDays < 60) {
+      return weeks === 1 ? 'منذ أسبوع' : `منذ ${weeks} أسابيع`;
     }
-    return cleaned || 'منذ قليل';
+    
+    const months = Math.floor(diffDays / 30);
+    return months === 1 ? 'منذ شهر' : `منذ ${months} أشهر`;
   } catch {
-    return 'منذ قليل';
+    return 'مستقر';
   }
 };
 

@@ -472,6 +472,7 @@ export default function App() {
                 <MainRatesGrid
                   activeTab={activeTab}
                   rates={rates}
+                  history={history}
                   configTerms={configTerms}
                   dynamicCurrencies={dynamicCurrencies}
                   staleCurrencies={staleCurrencies}

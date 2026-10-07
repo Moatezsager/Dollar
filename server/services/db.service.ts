@@ -51,7 +51,7 @@ function cleanLastChangedMap(raw: any): Record<string, string> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     for (const [key, val] of Object.entries(raw)) {
       if (!/^\d+$/.test(key) && typeof val === 'string' && !isNaN(new Date(val).getTime())) {
-        result[key] = val;
+        result[key.toUpperCase()] = val;
       }
     }
   }
@@ -191,36 +191,57 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
         }
       }
 
-      // Merge cleaned last_changed from latest record
+      // ─── Verified Historical Change Detection for Parallel Rates ───
       const cleanPChanged = cleanLastChangedMap(latestParallel.last_changed);
-      Object.assign(rates.lastChanged.parallel, cleanPChanged);
+      const oldestParallelRecordedAt = parallelData[parallelData.length - 1]?.recorded_at || latestParallel.recorded_at;
 
       // Clean existing junk numeric keys
       Object.keys(rates.lastChanged.parallel).forEach(k => {
         if (/^\d+$/.test(k)) delete rates.lastChanged.parallel[k];
       });
 
-      // Ensure every currency in rates.parallel has a verified change date
+      // Verify every currency in rates.parallel against actual historical row values
       for (const code of Object.keys(rates.parallel)) {
-        const existing = rates.lastChanged.parallel[code];
-        const isDateValid = existing && typeof existing === 'string' && !isNaN(new Date(existing).getTime());
-        if (!isDateValid) {
-          const currentVal = rates.parallel[code];
-          const diffIdx = parallelData.findIndex(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], currentVal));
-          if (diffIdx > 0) {
-            rates.lastChanged.parallel[code] = parallelData[diffIdx - 1].recorded_at;
-          } else if (diffIdx === 0) {
-            rates.lastChanged.parallel[code] = latestParallel.recorded_at;
-          } else {
-            rates.lastChanged.parallel[code] = parallelData[parallelData.length - 1]?.recorded_at || latestParallel.recorded_at;
+        const currentVal = rates.parallel[code];
+        if (typeof currentVal !== 'number' || currentVal <= 0) continue;
+
+        const isUsd = code === 'USD';
+        let diffIdx = -1;
+
+        // Scan downwards through historical records to find where the rate changed
+        for (let i = 1; i < parallelData.length; i++) {
+          const rowVal = isUsd
+            ? (parallelData[i].usd || parallelData[i].rates?.USD || parallelData[i].rates?.usd)
+            : (parallelData[i].rates?.[code] ?? parallelData[i].rates?.[code.toLowerCase()]);
+          if (typeof rowVal === 'number' && rowVal > 0 && isSignificantChange(rowVal, currentVal)) {
+            diffIdx = i;
+            break;
           }
         }
 
-        // Previous rate resolution from history
-        if (!rates.previousParallel[code] || rates.previousParallel[code] === rates.parallel[code]) {
-          const diffRow = parallelData.find(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], rates.parallel[code]));
-          if (diffRow && typeof diffRow.rates[code] === 'number') {
-            rates.previousParallel[code] = diffRow.rates[code];
+        const workerDate = cleanPChanged[code];
+
+        if (diffIdx > 0) {
+          // Genuine price change found in history! Rate changed to currentVal at row (diffIdx - 1)
+          rates.lastChanged.parallel[code] = parallelData[diffIdx - 1].recorded_at;
+          const prevRowVal = isUsd
+            ? (parallelData[diffIdx].usd || parallelData[diffIdx].rates?.USD || parallelData[diffIdx].rates?.usd)
+            : (parallelData[diffIdx].rates?.[code] ?? parallelData[diffIdx].rates?.[code.toLowerCase()]);
+          if (typeof prevRowVal === 'number' && prevRowVal > 0) {
+            rates.previousParallel[code] = prevRowVal;
+          }
+        } else {
+          // Rate remained identical across all loaded historical rows (unchanged)
+          const existingDate = rates.lastChanged.parallel[code];
+          if (existingDate && new Date(existingDate).getTime() < new Date(oldestParallelRecordedAt).getTime()) {
+            // Keep genuine older date already known in memory/storage
+          } else if (workerDate && new Date(workerDate).getTime() < new Date(oldestParallelRecordedAt).getTime()) {
+            rates.lastChanged.parallel[code] = workerDate;
+          } else {
+            rates.lastChanged.parallel[code] = oldestParallelRecordedAt;
+          }
+          if (!rates.previousParallel[code] || rates.previousParallel[code] === currentVal) {
+            rates.previousParallel[code] = currentVal;
           }
         }
       }
@@ -249,21 +270,42 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
         }
       }
 
+      // ─── Verified Historical Change Detection for Metals ───
       const cleanMChanged = cleanLastChangedMap(latestMetal.last_changed);
-      Object.assign(rates.lastChanged.parallel, cleanMChanged);
+      const oldestMetalRecordedAt = metalData[metalData.length - 1]?.recorded_at || latestMetal.recorded_at;
 
       for (const id of METAL_IDS) {
-        if (rates.parallel[id]) {
-          const existing = rates.lastChanged.parallel[id];
-          const isDateValid = existing && typeof existing === 'string' && !isNaN(new Date(existing).getTime());
-          if (!isDateValid) {
-            const currentVal = rates.parallel[id];
-            const diffIdx = metalData.findIndex(r => r.rates && typeof r.rates[id] === 'number' && isSignificantChange(r.rates[id], currentVal));
-            if (diffIdx > 0) {
-              rates.lastChanged.parallel[id] = metalData[diffIdx - 1].recorded_at;
-            } else {
-              rates.lastChanged.parallel[id] = metalData[metalData.length - 1]?.recorded_at || latestMetal.recorded_at;
-            }
+        const currentVal = rates.parallel[id];
+        if (typeof currentVal !== 'number' || currentVal <= 0) continue;
+
+        let diffIdx = -1;
+        for (let i = 1; i < metalData.length; i++) {
+          const rowVal = metalData[i].rates?.[id] ?? metalData[i].rates?.[id.toLowerCase()];
+          if (typeof rowVal === 'number' && rowVal > 0 && isSignificantChange(rowVal, currentVal)) {
+            diffIdx = i;
+            break;
+          }
+        }
+
+        const workerDate = cleanMChanged[id];
+
+        if (diffIdx > 0) {
+          rates.lastChanged.parallel[id] = metalData[diffIdx - 1].recorded_at;
+          const prevRowVal = metalData[diffIdx].rates?.[id] ?? metalData[diffIdx].rates?.[id.toLowerCase()];
+          if (typeof prevRowVal === 'number' && prevRowVal > 0) {
+            rates.previousParallel[id] = prevRowVal;
+          }
+        } else {
+          const existingDate = rates.lastChanged.parallel[id];
+          if (existingDate && new Date(existingDate).getTime() < new Date(oldestMetalRecordedAt).getTime()) {
+            // Keep genuine older date
+          } else if (workerDate && new Date(workerDate).getTime() < new Date(oldestMetalRecordedAt).getTime()) {
+            rates.lastChanged.parallel[id] = workerDate;
+          } else {
+            rates.lastChanged.parallel[id] = oldestMetalRecordedAt;
+          }
+          if (!rates.previousParallel[id] || rates.previousParallel[id] === currentVal) {
+            rates.previousParallel[id] = currentVal;
           }
         }
       }
@@ -300,31 +342,45 @@ export async function syncLatestRatesFromDB(triggerSource = "DB-Sync"): Promise<
         }
       }
 
-      // Compute lastChanged for each official currency from history
+      // ─── Verified Historical Change Detection for Official Rates ───
+      const oldestOfficialRecordedAt = officialData[officialData.length - 1]?.recorded_at || latestOfficial.recorded_at;
+
       for (const code of Object.keys(rates.official)) {
         const currentVal = rates.official[code];
-        const diffIdx = officialData.findIndex(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], currentVal));
-        if (diffIdx > 0) {
-          rates.lastChanged.official[code] = officialData[diffIdx - 1].recorded_at;
-        } else {
-          rates.lastChanged.official[code] = officialData[officialData.length - 1]?.recorded_at || latestOfficial.recorded_at;
-        }
+        if (typeof currentVal !== 'number' || currentVal <= 0) continue;
 
-        if (!rates.previousOfficial[code] || rates.previousOfficial[code] === rates.official[code]) {
-          const diffRow = officialData.find(r => r.rates && typeof r.rates[code] === 'number' && isSignificantChange(r.rates[code], rates.official[code]));
-          if (diffRow && typeof diffRow.rates[code] === 'number') {
-            rates.previousOfficial[code] = diffRow.rates[code];
+        const isUsd = code === 'USD';
+        let diffIdx = -1;
+
+        for (let i = 1; i < officialData.length; i++) {
+          const rowVal = isUsd
+            ? (officialData[i].usd || officialData[i].rates?.USD || officialData[i].rates?.usd)
+            : (officialData[i].rates?.[code] ?? officialData[i].rates?.[code.toLowerCase()]);
+          if (typeof rowVal === 'number' && rowVal > 0 && isSignificantChange(rowVal, currentVal)) {
+            diffIdx = i;
+            break;
           }
         }
-      }
 
-      // Official USD change date
-      const usdDiffIdx = officialData.findIndex(r => r.usd && isSignificantChange(r.usd, rates.official.USD));
-      if (usdDiffIdx > 0) {
-        rates.lastChanged.official.USD = officialData[usdDiffIdx - 1].recorded_at;
-        rates.previousOfficial.USD = officialData[usdDiffIdx].usd;
-      } else {
-        rates.lastChanged.official.USD = latestOfficial.recorded_at;
+        if (diffIdx > 0) {
+          rates.lastChanged.official[code] = officialData[diffIdx - 1].recorded_at;
+          const prevRowVal = isUsd
+            ? (officialData[diffIdx].usd || officialData[diffIdx].rates?.USD || officialData[diffIdx].rates?.usd)
+            : (officialData[diffIdx].rates?.[code] ?? officialData[diffIdx].rates?.[code.toLowerCase()]);
+          if (typeof prevRowVal === 'number' && prevRowVal > 0) {
+            rates.previousOfficial[code] = prevRowVal;
+          }
+        } else {
+          const existingDate = rates.lastChanged.official[code];
+          if (existingDate && new Date(existingDate).getTime() < new Date(oldestOfficialRecordedAt).getTime()) {
+            // Keep genuine older date
+          } else {
+            rates.lastChanged.official[code] = oldestOfficialRecordedAt;
+          }
+          if (!rates.previousOfficial[code] || rates.previousOfficial[code] === currentVal) {
+            rates.previousOfficial[code] = currentVal;
+          }
+        }
       }
 
       if (latestOfficial.recorded_at) {

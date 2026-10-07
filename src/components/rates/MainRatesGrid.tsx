@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   Clock,
   ArrowUpRight,
@@ -12,13 +12,14 @@ import {
 import {
   AreaChart,
   Area,
+  XAxis,
   YAxis,
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
-import { Rates, CurrencyItem, METAL_IDS } from "../../types/rates";
+import { Rates, HistoryPoint, CurrencyItem, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { RateCell } from "../RateCell";
 import { RateSkeleton } from "../ui/RateSkeleton";
@@ -26,6 +27,7 @@ import { RateSkeleton } from "../ui/RateSkeleton";
 interface MainRatesGridProps {
   activeTab: string;
   rates: Rates | null;
+  history?: HistoryPoint[];
   configTerms: any[];
   dynamicCurrencies: CurrencyItem[];
   staleCurrencies: Set<string>;
@@ -57,6 +59,7 @@ interface MainRatesGridProps {
 export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   activeTab,
   rates,
+  history,
   configTerms,
   dynamicCurrencies,
   staleCurrencies,
@@ -79,32 +82,56 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   toggleSection,
   setSelectedRate,
 }) => {
+  // Chart timeframe filter: 'today' (default), 'week', 'month'
+  const [chartTimeframe, setChartTimeframe] = useState<'today' | 'week' | 'month'>('today');
+
   const cleanArabicDistance = (dateStr?: string) => {
-    if (!dateStr) return 'منذ قليل';
+    if (!dateStr) return 'مباشر';
     try {
-      const d = new Date(dateStr);
+      const normalized = typeof dateStr === 'string' && dateStr.includes(' ') && !dateStr.includes('T')
+        ? dateStr.replace(' ', 'T') + (dateStr.includes('+') || dateStr.endsWith('Z') ? '' : 'Z')
+        : dateStr;
+      const d = new Date(normalized);
       const timeMs = d.getTime();
-      if (isNaN(timeMs)) return 'منذ قليل';
+      if (isNaN(timeMs)) return 'مباشر';
+
       const now = Date.now();
-      const targetDate = timeMs > now ? new Date(now) : d;
-      const rawDistance = formatDistanceToNow(targetDate, { addSuffix: true, locale: ar });
-      let cleaned = rawDistance.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
-      if (cleaned && !cleaned.startsWith('منذ')) {
-        cleaned = `منذ ${cleaned}`;
-      }
-      return cleaned || 'منذ قليل';
+      const diffSec = Math.max(0, Math.floor((now - timeMs) / 1000));
+      if (diffSec < 60) return 'الآن';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin === 1) return 'منذ دقيقة';
+      if (diffMin === 2) return 'منذ دقيقتين';
+      if (diffMin < 11) return `منذ ${diffMin} دقائق`;
+      if (diffMin < 60) return `منذ ${diffMin} دقيقة`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours === 1) return 'منذ ساعة';
+      if (diffHours === 2) return 'منذ ساعتين';
+      if (diffHours < 11) return `منذ ${diffHours} ساعات`;
+      if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'منذ يوم';
+      if (diffDays === 2) return 'منذ يومين';
+      if (diffDays < 11) return `منذ ${diffDays} أيام`;
+      if (diffDays < 30) return `منذ ${diffDays} يوماً`;
+      return format(d, 'dd MMM yyyy', { locale: ar });
     } catch {
-      return 'منذ قليل';
+      return 'مباشر';
     }
   };
 
   const getShortTimeAgo = (dateStr?: string) => {
-    if (!dateStr) return 'منذ ثوانٍ';
+    if (!dateStr) return 'مستقر';
     try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return 'منذ ثوانٍ';
-      const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-      if (diffSec < 45) return `منذ ${diffSec < 5 ? 'ثوانٍ' : `${diffSec} ث`}`;
+      const normalized = typeof dateStr === 'string' && dateStr.includes(' ') && !dateStr.includes('T')
+        ? dateStr.replace(' ', 'T') + (dateStr.includes('+') || dateStr.endsWith('Z') ? '' : 'Z')
+        : dateStr;
+      const d = new Date(normalized);
+      const timeMs = d.getTime();
+      if (isNaN(timeMs)) return 'مستقر';
+
+      const now = Date.now();
+      const diffSec = Math.max(0, Math.floor((now - timeMs) / 1000));
+      if (diffSec < 60) return 'منذ ثوانٍ';
       const diffMin = Math.floor(diffSec / 60);
       if (diffMin === 1) return 'منذ دقيقة';
       if (diffMin === 2) return 'منذ دقيقتين';
@@ -116,11 +143,95 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
       const diffDays = Math.floor(diffHours / 24);
       if (diffDays === 1) return 'منذ يوم';
       if (diffDays === 2) return 'منذ يومين';
-      return `منذ ${diffDays} ي`;
+      if (diffDays < 7) return `منذ ${diffDays} ي`;
+      if (diffDays < 30) {
+        const weeks = Math.floor(diffDays / 7);
+        return weeks === 1 ? 'منذ أسبوع' : `منذ ${weeks} أسابيع`;
+      }
+      const months = Math.floor(diffDays / 30);
+      return months === 1 ? 'منذ شهر' : `منذ ${months} أشهر`;
     } catch {
-      return 'منذ ثوانٍ';
+      return 'مستقر';
     }
   };
+
+  // Dynamic Chart Data and Statistics based on selected timeframe
+  const { filteredChartData, filteredChartStats } = useMemo(() => {
+    const now = Date.now();
+    let cutoffMs = now - 24 * 60 * 60 * 1000;
+    if (chartTimeframe === 'week') {
+      cutoffMs = now - 7 * 24 * 60 * 60 * 1000;
+    } else if (chartTimeframe === 'month') {
+      cutoffMs = now - 30 * 24 * 60 * 60 * 1000;
+    }
+
+    const currentUsd = usdRate > 0 ? usdRate : 9.55;
+    const prevUsd = prevUsdRate > 0 ? prevUsdRate : currentUsd;
+
+    const rawPoints = (history || [])
+      .filter((h) => {
+        if (!h.time) return false;
+        const t = new Date(h.time).getTime();
+        return !isNaN(t) && t >= cutoffMs;
+      })
+      .map((h) => ({
+        time: new Date(h.time).toISOString(),
+        value: Number(h.usdParallel || h.ratesParallel?.USD || currentUsd)
+      }))
+      .filter((p) => p.value > 0);
+
+    rawPoints.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+    let points = [...rawPoints];
+
+    if (points.length === 0) {
+      if (chartTimeframe === 'today') {
+        points = [
+          { time: new Date(now - 12 * 3600000).toISOString(), value: prevUsd },
+          { time: new Date(now - 6 * 3600000).toISOString(), value: currentUsd },
+          { time: new Date(now).toISOString(), value: currentUsd },
+        ];
+      } else if (chartTimeframe === 'week') {
+        points = [
+          { time: new Date(now - 7 * 86400000).toISOString(), value: prevUsd },
+          { time: new Date(now - 3 * 86400000).toISOString(), value: prevUsd },
+          { time: new Date(now).toISOString(), value: currentUsd },
+        ];
+      } else {
+        points = [
+          { time: new Date(now - 30 * 86400000).toISOString(), value: prevUsd },
+          { time: new Date(now - 15 * 86400000).toISOString(), value: prevUsd },
+          { time: new Date(now).toISOString(), value: currentUsd },
+        ];
+      }
+    } else if (points.length === 1) {
+      points = [
+        { time: new Date(cutoffMs).toISOString(), value: prevUsd },
+        points[0],
+        { time: new Date(now).toISOString(), value: currentUsd },
+      ];
+    } else {
+      const lastPoint = points[points.length - 1];
+      const lastTimeMs = new Date(lastPoint.time).getTime();
+      if (now - lastTimeMs > 5 * 60 * 1000) {
+        points.push({ time: new Date(now).toISOString(), value: currentUsd });
+      }
+    }
+
+    const values = points.map((p) => p.value);
+    const high = Math.max(...values);
+    const low = Math.min(...values);
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const firstVal = points[0].value;
+    const lastVal = points[points.length - 1].value;
+    const changeVal = lastVal - firstVal;
+    const changePercent = firstVal > 0 ? (changeVal / firstVal) * 100 : 0;
+
+    return {
+      filteredChartData: points,
+      filteredChartStats: { high, low, avg, changeVal, changePercent, prevVal: firstVal }
+    };
+  }, [history, chartTimeframe, usdRate, prevUsdRate]);
 
   return (
     <div className={activeTab === 'main' ? 'space-y-3 sm:space-y-5' : 'hidden md:block md:space-y-8'}>
@@ -362,27 +473,29 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
         })()}
       </div>
 
-      {/* Unified 24-Hour Movement & Analytics Card */}
+      {/* Unified Movement & Analytics Card */}
       <div className="bg-[#0c1322] border border-slate-800/80 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 shrink-0 flex items-center justify-center">
               <FlagIcon flagCode="us" name="US" className="w-full h-full" />
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-bold text-white tracking-wide">حركة الدولار (24 ساعة)</span>
+                <span className="text-sm sm:text-base font-bold text-white tracking-wide">
+                  حركة الدولار ({chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? 'أسبوع' : 'شهر'})
+                </span>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/5">USD/LYD</span>
               </div>
-              <span className="text-xs text-slate-400 font-medium">سوق النقد الموازي · تحديث فوري</span>
+              <span className="text-xs text-slate-400 font-medium">سوق النقد الموازي · رسم بياني وتحديث حي</span>
             </div>
           </div>
         </div>
 
-        {/* Sparkline Interactive Chart */}
-        <div className="h-28 sm:h-36 w-full opacity-95 my-2">
+        {/* Interactive Chart */}
+        <div className="h-32 sm:h-40 w-full opacity-95 my-1">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={usdSparklineData} margin={{ top: 8, right: 4, left: 4, bottom: 4 }}>
+            <AreaChart data={filteredChartData} margin={{ top: 8, right: 6, left: 6, bottom: 4 }}>
               <defs>
                 <linearGradient id="figmaSparkline" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} stopOpacity={0.35}/>
@@ -390,6 +503,28 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                 </linearGradient>
               </defs>
               <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} hide />
+              <XAxis 
+                dataKey="time" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: "#64748b", fontSize: 10 }}
+                tickFormatter={(timeStr) => {
+                  try {
+                    const d = new Date(timeStr);
+                    if (isNaN(d.getTime())) return '';
+                    if (chartTimeframe === 'today') {
+                      return format(d, 'HH:mm', { locale: ar });
+                    } else if (chartTimeframe === 'week') {
+                      return format(d, 'EEE', { locale: ar });
+                    } else {
+                      return format(d, 'dd MMM', { locale: ar });
+                    }
+                  } catch {
+                    return '';
+                  }
+                }}
+                minTickGap={30}
+              />
               <Tooltip
                 contentStyle={{ 
                   backgroundColor: "#070c18", 
@@ -400,11 +535,19 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                   boxShadow: "0 10px 25px rgba(0,0,0,0.5)" 
                 }}
                 itemStyle={{ color: usdRate < prevUsdRate ? "#f43f5e" : "#10b981", fontFamily: "monospace", fontSize: "14px", fontWeight: "bold" }}
-                labelStyle={{ color: "#94a3b8", fontSize: "11px", marginBottom: "2px" }}
+                labelStyle={{ color: "#94a3b8", fontSize: "11px", marginBottom: "4px" }}
                 labelFormatter={(label) => {
                   try {
-                    return format(new Date(label as any), "dd MMM - HH:mm", { locale: ar });
-                  } catch (e) {
+                    const d = new Date(label as any);
+                    if (isNaN(d.getTime())) return '';
+                    if (chartTimeframe === 'today') {
+                      return `اليوم ${format(d, "HH:mm", { locale: ar })}`;
+                    } else if (chartTimeframe === 'week') {
+                      return format(d, "EEEE, dd MMM - HH:mm", { locale: ar });
+                    } else {
+                      return format(d, "dd MMMM yyyy - HH:mm", { locale: ar });
+                    }
+                  } catch {
                     return String(label);
                   }
                 }}
@@ -423,30 +566,85 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
           </ResponsiveContainer>
         </div>
 
-        {/* Bottom 4 Key Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 mt-2 border-t border-white/[0.06] text-center">
+        {/* 3 Timeframe Filter Buttons Underneath the Chart (اليوم، أسبوع، شهر) */}
+        <div className="flex items-center justify-center my-3">
+          <div className="inline-flex p-1 bg-slate-900/90 rounded-xl border border-white/[0.08] shadow-inner gap-1">
+            <button
+              type="button"
+              onClick={() => setChartTimeframe('today')}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                chartTimeframe === 'today'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              اليوم
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartTimeframe('week')}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                chartTimeframe === 'week'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              أسبوع
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartTimeframe('month')}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                chartTimeframe === 'month'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              شهر
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom 4 Key Stats Row Dynamically Linked to Selected Timeframe */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 mt-1 border-t border-white/[0.06] text-center">
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أعلى سعر اليوم</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">
+              أعلى سعر {chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? '(أسبوع)' : '(شهر)'}
+            </span>
             <span className="text-base sm:text-lg font-black font-mono text-emerald-400 tabular-nums">
-              {usd24hStats.high.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.high.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
             </span>
           </div>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أدنى سعر اليوم</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">
+              أدنى سعر {chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? '(أسبوع)' : '(شهر)'}
+            </span>
             <span className="text-base sm:text-lg font-black font-mono text-rose-400 tabular-nums">
-              {usd24hStats.low.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.low.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
             </span>
           </div>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">متوسط التداول</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">
+              متوسط {chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? '(أسبوع)' : '(شهر)'}
+            </span>
             <span className="text-base sm:text-lg font-black font-mono text-slate-200 tabular-nums">
-              {usd24hStats.avg.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.avg.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
             </span>
           </div>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">الإغلاق السابق</span>
-            <span className="text-base sm:text-lg font-black font-mono text-slate-400 tabular-nums">
-              {prevUsdRate > 0 ? prevUsdRate.toFixed(2) : '9.53'} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">
+              التغير {chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? '(أسبوع)' : '(شهر)'}
+            </span>
+            <span className={`text-base sm:text-lg font-black font-mono tabular-nums ${
+              filteredChartStats.changeVal >= 0.005 
+                ? 'text-emerald-400' 
+                : filteredChartStats.changeVal <= -0.005 
+                ? 'text-rose-400' 
+                : 'text-slate-300'
+            }`}>
+              <span dir="ltr">
+                {filteredChartStats.changeVal > 0 ? '+' : ''}{filteredChartStats.changePercent.toFixed(2)}%
+              </span>
             </span>
           </div>
         </div>

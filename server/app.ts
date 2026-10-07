@@ -230,9 +230,11 @@ export async function createApp(io?: SocketIOServer | null) {
 
       const html = injectDynamicMetaTags(rawIndexHtml, false);
 
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+      res.setHeader('X-Robots-Tag', 'noarchive');
       res.setHeader('Content-Type', 'text/html; charset=UTF-8');
       res.send(html);
     });

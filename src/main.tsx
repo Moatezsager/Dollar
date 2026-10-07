@@ -66,6 +66,12 @@ if (path === '/setup-device-auth-8899') {
 const rootEl = document.getElementById('root');
 if (rootEl) {
   try {
+    // Clear temporary reload flags on successful load
+    try {
+      sessionStorage.removeItem('dinar_splash_auto_refresh');
+      sessionStorage.removeItem('dinar_chunk_reload');
+    } catch (e) {}
+
     createRoot(rootEl).render(
       <StrictMode>
         <ErrorBoundary>

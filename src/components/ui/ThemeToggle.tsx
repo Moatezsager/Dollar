@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
+import { safeStorage } from '../../utils/storage';
 
 export function ThemeToggle() {
   const [light, setLight] = useState(() => document.documentElement.dataset.theme === 'light');
@@ -11,6 +12,7 @@ export function ThemeToggle() {
   const toggle = () => {
     const next = document.documentElement.dataset.theme !== 'light';
     document.documentElement.dataset.theme = next ? 'light' : 'dark';
+    safeStorage.setItem('colorTheme', next ? 'light' : 'dark');
     setLight(next);
   };
 

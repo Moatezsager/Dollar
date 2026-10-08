@@ -32,6 +32,8 @@ export function useRatesData(options?: UseRatesDataOptions) {
   });
 
   const ratesRef = useRef<Rates | null>(null);
+  const historyRef = useRef<HistoryPoint[]>([]);
+  const socketRevisionRef = useRef(0);
   const thresholdRef = useRef<number>(0.001);
   const lastNotifiedRef = useRef<Record<string, number>>({});
   const configTermsRef = useRef<any[]>([]);
@@ -39,6 +41,43 @@ export function useRatesData(options?: UseRatesDataOptions) {
   useEffect(() => {
     ratesRef.current = rates;
   }, [rates]);
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+
+  const applyRates = (next: Rates) => {
+    if (!next || !next.parallel || !next.official ||
+        typeof next.parallel !== 'object' || Array.isArray(next.parallel) ||
+        typeof next.official !== 'object' || Array.isArray(next.official) ||
+        !Object.values({ ...next.parallel, ...next.official }).every(value => typeof value === 'number' && Number.isFinite(value)) ||
+        !Number.isFinite(Date.parse(next.lastUpdated))) return false;
+    const currentTime = Date.parse(ratesRef.current?.lastUpdated || '');
+    if (Date.parse(next.lastUpdated) < currentTime) return false;
+    ratesRef.current = next;
+    setRates(next);
+    setLastFetchTime(new Date());
+    safeStorage.setItem('lyd_rates', JSON.stringify(next));
+    return true;
+  };
+
+  const applyHistory = (next: HistoryPoint[]) => {
+    historyRef.current = next;
+    setHistory(next);
+    safeStorage.setItem('lyd_history', JSON.stringify(next));
+  };
+  const appendRateHistory = (next: Rates, points = historyRef.current) => {
+    const point: HistoryPoint = {
+      time: next.lastUpdated,
+      usdParallel: next.parallel.USD || 0,
+      usdOfficial: next.official.USD || 0,
+      ratesParallel: { ...next.parallel },
+      ratesOfficial: { ...next.official },
+    };
+    const nextHistory = points.filter(item => item.time !== point.time);
+    nextHistory.push(point);
+    nextHistory.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+    applyHistory(nextHistory);
+  };
 
   useEffect(() => {
     configTermsRef.current = configTerms;
@@ -145,41 +184,41 @@ export function useRatesData(options?: UseRatesDataOptions) {
   };
 
   const fetchData = async (forceRefresh = false) => {
+    const socketRevision = socketRevisionRef.current;
     setIsRefreshing(true);
     try {
       if (forceRefresh) {
         await fetchConfig();
       }
       const [ratesResult, historyResult] = await Promise.allSettled([
-        fetch(forceRefresh ? "/api/rates?refresh=true" : "/api/rates", { signal: AbortSignal.timeout(30000) }),
-        fetch("/api/history", { signal: AbortSignal.timeout(30000) }),
+        fetch(forceRefresh ? "/api/rates?refresh=true" : "/api/rates", { cache: 'no-store', signal: AbortSignal.timeout(30000) }),
+        fetch("/api/history", { cache: 'no-store', signal: AbortSignal.timeout(30000) }),
       ]);
       
       if (ratesResult.status === 'rejected') throw ratesResult.reason;
-      if (historyResult.status === 'rejected') throw historyResult.reason;
-
       const ratesRes = ratesResult.value;
-      const historyRes = historyResult.value;
+      const historyRes = historyResult.status === 'fulfilled' ? historyResult.value : null;
 
-      if (!ratesRes.ok || !historyRes.ok) {
-        if (ratesRes.status === 502 || historyRes.status === 502) return;
+      if (!ratesRes.ok) {
+        if (ratesRes.status === 502) return;
         throw new Error("Network response was not ok");
       }
 
       const ratesContentType = ratesRes.headers.get("content-type");
-      const historyContentType = historyRes.headers.get("content-type");
+      const historyContentType = historyRes?.headers.get("content-type");
 
-      if (!ratesContentType?.includes("application/json") || !historyContentType?.includes("application/json")) {
+      if (!ratesContentType?.includes("application/json")) {
         return;
       }
 
       const ratesJson = await ratesRes.json();
-      const historyJson = await historyRes.json();
+      const historyJson = historyRes?.ok && historyContentType?.includes("application/json")
+        ? await historyRes.json().catch(() => null) : null;
       
       const newRates: Rates | null = typeof ratesJson === 'string' ? decodeData(ratesJson) : ratesJson;
       const newHistory = typeof historyJson === 'string' ? decodeData(historyJson) : historyJson;
       
-      if (!newRates || !newHistory) {
+      if (!newRates) {
         console.error("Failed to decode rates or history");
         setIsRefreshing(false);
         return;
@@ -188,6 +227,10 @@ export function useRatesData(options?: UseRatesDataOptions) {
       // Check for price changes to notify
       let hasChanges = false;
       const currentRates = ratesRef.current;
+      if (currentRates && (
+        Date.parse(newRates.lastUpdated) < Date.parse(currentRates.lastUpdated) ||
+        (socketRevision !== socketRevisionRef.current && Date.parse(newRates.lastUpdated) <= Date.parse(currentRates.lastUpdated))
+      )) return;
       
       if (currentRates) {
         const isNewer = new Date(newRates.lastUpdated).getTime() > new Date(currentRates.lastUpdated).getTime();
@@ -259,9 +302,10 @@ export function useRatesData(options?: UseRatesDataOptions) {
         }
       }
 
-      setRates(newRates);
-      setHistory(newHistory);
-      setLastFetchTime(new Date());
+      if (!applyRates(newRates)) return;
+      if (socketRevision === socketRevisionRef.current) {
+        appendRateHistory(newRates, Array.isArray(newHistory) ? newHistory : historyRef.current);
+      }
 
       // Fetch status
       try {
@@ -275,14 +319,6 @@ export function useRatesData(options?: UseRatesDataOptions) {
         }
       } catch (err) {
         logErrorToServer(err, "useRatesData: fetchStatus");
-      }
-
-      // Persist to local storage
-      try {
-        safeStorage.setItem('lyd_rates', JSON.stringify(newRates));
-        safeStorage.setItem('lyd_history', JSON.stringify(newHistory));
-      } catch (err) {
-        console.warn("Failed to save to storage:", err);
       }
 
       if (hasChanges) {
@@ -335,6 +371,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
   // Socket.io Real-time connection
   useEffect(() => {
     let socket: any = null;
+    let hasConnected = false;
 
     const connect = () => {
       try {
@@ -346,9 +383,14 @@ export function useRatesData(options?: UseRatesDataOptions) {
         socket = io('/', {
           query: { deviceId },
           transports: ['polling', 'websocket'],
-          reconnectionAttempts: 10,
+          reconnectionAttempts: Infinity,
           reconnectionDelay: 2000,
+          reconnectionDelayMax: 10000,
           timeout: 15000
+        });
+        socket.on('connect', () => {
+          if (hasConnected) fetchData().catch(() => {});
+          hasConnected = true;
         });
 
         socket.on('online_count', (data: any) => {
@@ -356,10 +398,14 @@ export function useRatesData(options?: UseRatesDataOptions) {
         });
 
         socket.on('rates_update', (data: any) => {
-          const decodedRates = decodeData(data.rates);
-          if (decodedRates) {
-            setRates(decodedRates);
-          }
+          const decodedRates = decodeData<Rates>(data?.rates);
+          if (!decodedRates || !applyRates(decodedRates)) return;
+          socketRevisionRef.current++;
+          appendRateHistory(decodedRates);
+          setLoading(false);
+        });
+        socket.on('config_update', (data: any) => {
+          if (Array.isArray(data?.config?.terms)) setConfigTerms(data.config.terms);
         });
 
         socket.on('app_version', (data: any) => {
@@ -392,7 +438,10 @@ export function useRatesData(options?: UseRatesDataOptions) {
     }, 30000);
 
     return () => {
-      if (socket) socket.disconnect();
+      if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+      }
       clearInterval(pollInterval);
     };
   }, []);
@@ -407,8 +456,11 @@ export function useRatesData(options?: UseRatesDataOptions) {
     try {
       const savedRates = safeStorage.getItem('lyd_rates');
       const savedHistory = safeStorage.getItem('lyd_history');
-      if (savedRates) setRates(JSON.parse(savedRates));
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
+      if (savedRates) applyRates(JSON.parse(savedRates));
+      if (savedHistory) {
+        const parsedHistory = JSON.parse(savedHistory);
+        if (Array.isArray(parsedHistory)) applyHistory(parsedHistory);
+      }
     } catch (err) {
       console.warn("Storage not available:", err);
     }

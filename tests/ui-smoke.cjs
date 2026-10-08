@@ -125,12 +125,17 @@ async function main() {
       }
       await page.screenshot({ path: path.join(output, `dashboard-${width}.png`), fullPage: true });
       await page.screenshot({ path: path.join(output, `viewport-${width}.png`) });
-      const priceText = await page.locator('.dollar-cards').innerText();
-      const storageBeforeTheme = await page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort()));
+      const priceValues = (await page.locator('.dollar-cards').innerText()).match(/\d+\.\d{2}/g);
+      const storageBeforeTheme = await page.evaluate(() => JSON.stringify(Object.entries(localStorage).filter(([key]) => key !== 'colorTheme').sort()));
       await toggleTheme(page);
       assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
-      assert.equal(await page.locator('.dollar-cards').innerText(), priceText, 'Theme does not change prices');
-      assert.equal(await page.evaluate(() => JSON.stringify(Object.entries(localStorage).sort())), storageBeforeTheme, 'Theme does not change storage');
+      assert.deepEqual((await page.locator('.dollar-cards').innerText()).match(/\d+\.\d{2}/g), priceValues, 'Theme does not change prices');
+      assert.equal(await page.evaluate(() => JSON.stringify(Object.entries(localStorage).filter(([key]) => key !== 'colorTheme').sort())), storageBeforeTheme, 'Theme only saves its own preference');
+      assert.equal(await page.evaluate(() => localStorage.getItem('colorTheme')), 'light');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.locator('.dollar-cards').waitFor();
+      assert.equal(await page.locator('html').getAttribute('data-theme'), 'light', 'Light theme survives reload');
+      assert.equal(await page.getByText('آخر بيانات متاحة', { exact: true }).count(), 0);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Light layout at ${width}`);
       await page.screenshot({ path: path.join(output, `light-${width}.png`) });
       const card = page.getByRole('button', { name: 'عرض تفاصيل الدولار النقدي في السوق الموازي' });
@@ -259,6 +264,7 @@ async function main() {
       await page.evaluate(() => { localStorage.removeItem('lyd_rates'); localStorage.removeItem('lyd_history'); });
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText('لا توجد بيانات تاريخية كافية لهذه الفترة', { exact: true }).first().waitFor();
+      assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark', 'Dark theme survives reload');
       assert(!await page.locator('.dollar-cards').innerText().then(text => /9\.55|9\.78|6\.41/.test(text)), 'No fabricated price fallback');
       assert.equal(errors.length, 0, errors.join('\n'));
       console.log(`PASS ${width}x${height}: layout, navigation, keyboard dialogs, search, empty data`);
@@ -283,7 +289,6 @@ async function main() {
           await page.keyboard.press('Escape');
           await adminMenu.waitFor({ state: 'hidden' });
         }
-        await page.getByRole('button', { name: 'الوضع الفاتح', exact: true }).click();
         assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
         await page.screenshot({ path: path.join(output, `admin-dashboard-${width}.png`) });
         assert.equal(errors.length, 0, errors.join('\n'));

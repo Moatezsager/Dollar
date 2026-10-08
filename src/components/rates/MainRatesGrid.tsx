@@ -180,11 +180,11 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        {!rates?.lastUpdated && <div className="flex items-center gap-1 shrink-0">
           <span className="text-[10px] sm:text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shadow-sm">
-            {rates?.lastUpdated ? 'آخر بيانات متاحة' : 'بانتظار البيانات'}
+            بانتظار البيانات
           </span>
-        </div>
+        </div>}
       </div>
 
       {/* 3 Dollar Cards Grid (Side-by-Side in 3 Columns) */}

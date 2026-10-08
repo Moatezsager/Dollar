@@ -19,8 +19,8 @@ Cairo remains the primary Arabic face; monospaced/tabular digits support price c
 Emerald indicates upward movement, rose downward movement, blue official rates, and gold metals.
 Existing icons, flags, price hierarchy, market grouping, and callbacks remain in place.
 
-ThemeToggle changes only the document's data-theme. Theme selection lasts for the current
-document and is not persisted, intentionally avoiding changes to existing storage contracts.
+ThemeToggle saves the selected light/dark mode in the colorTheme local-storage key.
+The document restores a valid preference before rendering; unavailable storage is tolerated.
 Printing and the weekly image-export canvas are excluded from theme utility overrides.
 
 ## Changed surfaces
@@ -65,7 +65,7 @@ failed images use accessible fallback icons.
 - npm run lint: TypeScript.
 - npm run build: Web, server bundle, and PWA compilation.
 - tests/ui-smoke.cjs: Edge through Playwright; viewports 320x740, 375x820, 430x932,
-  768x1024, 1024x900, 1440x1000, and 1920x1080. Checks themes without changing prices/storage, overflow, navigation,
+  768x1024, 1024x900, 1440x1000, and 1920x1080. Checks theme persistence without changing prices or unrelated storage, overflow, navigation,
   loading, converter field separation, legal pages, search, keyboard dialogs, settings, clipboard success/failure, contact success/failure,
   price refresh, failed price requests, empty history, administration login/menu/dashboard.
 - Existing tests/cbl-service.test.ts: run with external service imports isolated and network

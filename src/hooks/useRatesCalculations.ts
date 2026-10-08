@@ -77,13 +77,6 @@ export function useRatesCalculations({
 
     const sorted = [...data].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     
-    if (sorted.length === 1) {
-      return [
-        { ...sorted[0], time: new Date(new Date(sorted[0].time).getTime() - 60000).toISOString() },
-        sorted[0]
-      ];
-    }
-    
     return sorted;
   }, [selectedRate, filteredHistory]);
 

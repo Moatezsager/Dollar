@@ -1,202 +1,138 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
-import { Mail, Phone, MessageSquare, Send, CheckCircle2, AlertCircle, ArrowRight, User } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ArrowRight, CheckCircle2, LoaderCircle, Mail, Send } from 'lucide-react';
 
 export const Contact = ({ onBack }: { onBack?: () => void }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    message: ''
-  });
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', message: '' });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const submitting = useRef(false);
+  const successRef = useRef<HTMLHeadingElement>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (submitting.current) return;
+    const payload = Object.fromEntries(Object.entries(formData).map(([key, value]) => [key, value.trim()]));
+    if (!payload.email || !payload.phone || !payload.message || payload.message.length > 1000) {
+      setStatus('error');
+      setErrorMessage('أكمل بيانات التواصل واكتب رسالة لا تتجاوز 1000 حرف.');
+      return;
+    }
+    submitting.current = true;
     setStatus('loading');
     setErrorMessage('');
-
     try {
       const response = await fetch('/api/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setStatus('success');
-        setFormData({ name: '', email: '', phone: '', message: '' });
-      } else {
-        setStatus('error');
-        setErrorMessage(data.error || 'حدث خطأ أثناء إرسال الرسالة');
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.success !== true) {
+        throw new Error(typeof data?.error === 'string' ? data.error :
+          response.status === 429 ? 'أرسلت عدة رسائل خلال وقت قصير. انتظر قليلًا قبل المحاولة مجددًا.' :
+          'لم نتمكن من تأكيد إرسال الرسالة. بقي النص محفوظًا في هذه الصفحة.');
       }
+      setFormData({ name: '', email: '', phone: '', message: '' });
+      setStatus('success');
+      requestAnimationFrame(() => successRef.current?.focus());
     } catch (error) {
       setStatus('error');
-      setErrorMessage('حدث خطأ في الاتصال بالخادم');
+      setErrorMessage(error instanceof Error && error.name !== 'TypeError' ? error.message :
+        'تعذر الاتصال. بقيت رسالتك في الصفحة؛ تحقق من اتصالك قبل المحاولة مجددًا.');
+    } finally {
+      submitting.current = false;
     }
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="content-page max-w-3xl mx-auto px-4 sm:px-6 py-8 pb-32 sm:py-12 sm:pb-16 space-y-6 sm:space-y-8"
-    >
-      {onBack && (
-        <button 
-          onClick={onBack}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-        >
-          <ArrowRight className="w-5 h-5" />
-          <span>العودة</span>
-        </button>
-      )}
-      <div className="text-center space-y-4">
-        <div className="w-16 h-16 mx-auto bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6">
-          <Mail className="w-8 h-8 text-emerald-400" />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-black text-gradient tracking-tight">
-          اتصل بنا
-        </h1>
-        <p className="text-slate-400 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-          نحن هنا لمساعدتك. أرسل لنا استفسارك وسنقوم بالرد عليك في أقرب وقت ممكن.
-        </p>
-      </div>
-
-      <div className="glass-panel-heavy premium-border rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-        
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 mb-8 flex items-start gap-3">
-          <div className="p-2 bg-emerald-500/20 rounded-xl shrink-0">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div>
-            <h3 className="text-emerald-400 font-bold text-sm mb-1">سرعة الاستجابة</h3>
-            <p className="text-emerald-400/80 text-xs leading-relaxed">
-              نضمن لك الإجابة على استفساراتك عبر واتساب أو البريد الإلكتروني في أقل من 24 ساعة.
-            </p>
-          </div>
-        </div>
-
+    <article className="content-page contact-page" dir="rtl">
+      <style>{`
+        .content-page.contact-page { max-width: 880px; padding: 28px 16px 160px; margin-inline: auto; color: var(--ink); }
+        .contact-page button { min-height: 44px; border-radius: 8px; }
+        .contact-back { display: inline-flex; align-items: center; gap: 8px; color: var(--muted-ink); margin-bottom: 24px; font-size: 14px; }
+        .contact-header { padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+        .contact-header h1 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+        .contact-header p { color: var(--muted-ink); font-size: 15px; }
+        .contact-layout { display: grid; gap: 32px; padding-top: 28px; }
+        .contact-form { min-width: 0; }
+        .contact-form fieldset { display: grid; gap: 20px; min-width: 0; }
+        .contact-field label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+        .contact-field label span { color: var(--muted-ink); font-weight: 400; font-size: 12px; }
+        .contact-page .contact-field :is(input, textarea) { display: block; width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 12px; font-size: 16px; }
+        .contact-field textarea { min-height: 160px; resize: vertical; line-height: 1.8; }
+        .contact-field input:disabled, .contact-field textarea:disabled { opacity: .7; }
+        .contact-field :is(input, textarea):focus-visible, .contact-page button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+        .contact-count { display: flex; justify-content: space-between; gap: 12px; color: var(--muted-ink); font-size: 12px; margin-top: 8px; }
+        .contact-submit { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 20px; width: 100%; background: var(--positive); color: var(--page); font-size: 15px; font-weight: 700; margin-top: 24px; }
+        .contact-submit:disabled { cursor: wait; opacity: .7; }
+        .contact-error { color: var(--negative); font-size: 14px; line-height: 1.8; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+        .contact-notes { color: var(--muted-ink); font-size: 14px; line-height: 1.9; }
+        .contact-notes h2 { color: var(--ink); font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .contact-notes section + section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line); }
+        .contact-notes ul { list-style: disc; padding-inline-start: 20px; }
+        .contact-notes li + li { margin-top: 8px; }
+        .contact-success { padding: 24px 0; }
+        .contact-success h2 { font-size: 22px; font-weight: 700; margin: 16px 0 8px; }
+        .contact-success p { color: var(--muted-ink); font-size: 15px; }
+        .contact-success > svg { color: var(--positive); }
+        .contact-success button { display: inline-flex; align-items: center; gap: 8px; margin-top: 24px; padding: 10px 16px; border: 1px solid var(--line); color: var(--positive); font-size: 14px; font-weight: 600; }
+        @media (min-width: 768px) { .contact-layout { grid-template-columns: minmax(0, 1fr) 240px; gap: 40px; } .contact-page { padding-top: 40px; } }
+      `}</style>
+      {onBack && <button className="contact-back" onClick={onBack}><ArrowRight size={18} aria-hidden="true" />العودة</button>}
+      <header className="contact-header">
+        <h1>اتصل بنا</h1>
+        <p>لديك ملاحظة على سعر، مشكلة في الموقع أو اقتراح؟ أرسلها لنا هنا.</p>
+      </header>
+      <div className="contact-layout">
         {status === 'success' ? (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center justify-center py-12 text-center space-y-4"
-          >
-            <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-10 h-10 text-emerald-400" />
-            </div>
-            <h3 className="text-2xl font-bold text-gradient">تم الإرسال بنجاح!</h3>
-            <p className="text-slate-400">شكراً لتواصلك معنا. سنتصل بك قريباً.</p>
-            <button 
-              onClick={() => setStatus('idle')}
-              className="mt-6 px-6 py-2 glass-panel hover-lift rounded-xl text-white transition-colors"
-            >
-              إرسال رسالة أخرى
-            </button>
-          </motion.div>
+          <section className="contact-success" role="status">
+            <CheckCircle2 size={36} aria-hidden="true" />
+            <h2 ref={successRef} tabIndex={-1}>تم الإرسال بنجاح!</h2>
+            <p>وصلت رسالتك إلى المنصة. سنراجعها، وقد نتواصل معك عبر البيانات التي أرسلتها.</p>
+            <button onClick={() => setStatus('idle')}><Mail size={18} aria-hidden="true" />إرسال رسالة أخرى</button>
+          </section>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
-            {status === 'error' && (
-              <div role="alert" className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-3 text-rose-400 text-sm">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <p>{errorMessage}</p>
+          <form className="contact-form" onSubmit={handleSubmit} aria-busy={status === 'loading'}>
+            {status === 'error' && <p className="contact-error" role="alert">{errorMessage}</p>}
+            <fieldset disabled={status === 'loading'}>
+              <div className="contact-field">
+                <label htmlFor="contact-name">الاسم <span>(اختياري)</span></label>
+                <input id="contact-name" name="name" aria-label="الاسم (اختياري)" autoComplete="name" maxLength={100} placeholder="اسمك الكريم"
+                  value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
               </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                <User className="w-4 h-4 text-emerald-400" />
-                الاسم (اختياري)
-              </label>
-              <input
-                type="text"
-                aria-label="الاسم (اختياري)"
-                autoComplete="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="اسمك الكريم"
-                className="w-full bg-[#0f172a]/40 border border-slate-700/50 rounded-2xl px-4 py-3.5 sm:py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:bg-[#1e293b]/60 transition-all text-base sm:text-sm"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                <Mail className="w-4 h-4 text-emerald-400" />
-                البريد الإلكتروني
-              </label>
-              <input
-                type="email"
-                aria-label="البريد الإلكتروني"
-                autoComplete="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="example@domain.com"
-                className="w-full bg-[#0f172a]/40 border border-slate-700/50 rounded-2xl px-4 py-3.5 sm:py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:bg-[#1e293b]/60 transition-all text-base sm:text-sm text-left"
-                dir="ltr"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                <Phone className="w-4 h-4 text-emerald-400" />
-                رقم الهاتف (واتساب)
-              </label>
-              <input
-                type="tel"
-                aria-label="رقم الهاتف (واتساب)"
-                autoComplete="tel"
-                required
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+218 9X XXX XXXX"
-                className="w-full bg-[#0f172a]/40 border border-slate-700/50 rounded-2xl px-4 py-3.5 sm:py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:bg-[#1e293b]/60 transition-all text-base sm:text-sm text-left"
-                dir="ltr"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-emerald-400" />
-                الرسالة
-              </label>
-              <textarea
-                aria-label="الرسالة"
-                required
-                value={formData.message}
-                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                placeholder="اكتب رسالتك أو استفسارك هنا..."
-                rows={5}
-                className="w-full bg-[#0f172a]/40 border border-slate-700/50 rounded-2xl px-4 py-3.5 sm:py-4 text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 focus:bg-[#1e293b]/60 transition-all text-base sm:text-sm resize-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={status === 'loading'}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-4 rounded-2xl text-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-4"
-            >
-              {status === 'loading' ? (
-                <div className="w-6 h-6 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-              ) : (
-                <>
-                  <Send className="w-5 h-5" />
-                  إرسال الرسالة
-                </>
-              )}
+              <div className="contact-field">
+                <label htmlFor="contact-email">البريد الإلكتروني</label>
+                <input id="contact-email" name="email" type="email" autoComplete="email" required maxLength={254} dir="ltr" placeholder="name@example.com"
+                  value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+              </div>
+              <div className="contact-field">
+                <label htmlFor="contact-phone">رقم الهاتف (واتساب)</label>
+                <input id="contact-phone" name="phone" type="tel" autoComplete="tel" required maxLength={40} dir="ltr" placeholder="09X XXX XXXX"
+                  value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+              </div>
+              <div className="contact-field">
+                <label htmlFor="contact-message">الرسالة</label>
+                <textarea id="contact-message" name="message" required maxLength={1000} rows={6} aria-describedby="contact-message-count" placeholder="اكتب رسالتك هنا..."
+                  value={formData.message} onChange={e => setFormData({ ...formData, message: e.target.value })} />
+                <div className="contact-count" id="contact-message-count"><span>الحد الأقصى 1000 حرف</span><span dir="ltr">{formData.message.length} / 1000</span></div>
+              </div>
+            </fieldset>
+            <button className="contact-submit" type="submit" disabled={status === 'loading'}>
+              {status === 'loading' ? <LoaderCircle size={18} className="animate-spin" aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
+              {status === 'loading' ? 'جارٍ الإرسال…' : 'إرسال الرسالة'}
             </button>
           </form>
         )}
+        <aside className="contact-notes">
+          <section><h2>حتى نفهم ملاحظتك</h2><ul>
+            <li>عند الإبلاغ عن سعر، اذكر العملة والسوق ووقت الملاحظة.</li>
+            <li>عند حدوث مشكلة، اذكر نوع الجهاز والمتصفح وما حدث.</li>
+            <li>نراجع الاقتراحات والرسائل بحسب موضوعها؛ لا يوجد موعد رد مضمون.</li>
+          </ul></section>
+          <section><h2>بيانات التواصل</h2><p>نطلب البريد ورقم الهاتف للمتابعة عند الحاجة. قد تُحفظ الرسالة وتُحوّل إلى قناة الإدارة على Telegram. لا ترسل كلمات مرور أو بيانات بطاقات أو وثائق حساسة.</p></section>
+          <section><h2>عن الأسعار</h2><p>المنصة تعرض معلومات للمقارنة، ولا تنفّذ بيعًا أو شراءً للعملات.</p></section>
+        </aside>
       </div>
-    </motion.div>
+    </article>
   );
 };

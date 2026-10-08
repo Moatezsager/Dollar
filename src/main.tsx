@@ -10,6 +10,12 @@ import { logErrorToServer } from './utils/logger';
 
 import { initAutoUpdater, purgeAllCachesAndReload } from './utils/autoUpdater';
 
+// Restore here too when a cached HTML page lacks the external theme bootstrap.
+const savedTheme = safeStorage.getItem('colorTheme');
+if (savedTheme === 'light' || savedTheme === 'dark') {
+  document.documentElement.dataset.theme = savedTheme;
+}
+
 // Global error handlers
 window.addEventListener('error', (event) => {
   logErrorToServer(event.error || event.message, 'Global Error Handler');

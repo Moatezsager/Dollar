@@ -1,29 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
 import { format } from "date-fns";
-import { ar } from "date-fns/locale";
-import {
-  ArrowUpRight,
-  ArrowDownRight,
-  X,
-  Calculator,
-  CheckCircle2,
-  Copy,
-  Share2,
-  TrendingUp
-} from "lucide-react";
-import { Rates, CURRENCIES } from "../../types/rates";
+import { ArrowUpRight, ArrowDownRight, Minus, X, Calculator, CheckCircle2, Copy, Share2, ChartNoAxesCombined } from "lucide-react";
+import { Rates, CURRENCIES, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
-import { useDialogAccessibility } from '../../hooks/useDialogAccessibility';
+import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 
 interface CurrencyChartModalProps {
   selectedRate: { code: string; name: string; market: 'official' | 'parallel' } | null;
@@ -31,19 +13,8 @@ interface CurrencyChartModalProps {
   rates: Rates | null;
   configTerms: any[];
   chartData: { time: string; value: number }[];
-  chartStats: {
-    max: number;
-    min: number;
-    avg: number;
-    isUp: boolean;
-    change: number;
-    changePercent: number;
-  };
-  advancedStats: {
-    ma30: number;
-    support: number;
-    resistance: number;
-  };
+  chartStats: { max: number; min: number; avg: number; isUp: boolean; change: number; changePercent: number };
+  advancedStats: { ma30: number; support: number; resistance: number };
   chartRange: '24h' | '7d' | 'all';
   setChartRange: (range: '24h' | '7d' | 'all') => void;
   triggerHaptic: (pattern?: number | number[]) => void;
@@ -51,27 +22,16 @@ interface CurrencyChartModalProps {
 }
 
 export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
-  selectedRate,
-  setSelectedRate,
-  rates,
-  configTerms,
-  chartData,
-  chartStats,
-  advancedStats,
-  chartRange,
-  setChartRange,
-  triggerHaptic,
-  handleShareCardImage,
+  selectedRate, setSelectedRate, rates, configTerms, chartData, chartStats,
+  advancedStats, chartRange, setChartRange, triggerHaptic, handleShareCardImage,
 }) => {
-  const [modalCalcAmount, setModalCalcAmount] = useState<number>(100);
-  const [copiedModalRate, setCopiedModalRate] = useState(false);
+  const [amount, setAmount] = useState('100');
+  const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const [showHistoryTable, setShowHistoryTable] = useState(false);
   const dialogRef = useDialogAccessibility(!!selectedRate, () => setSelectedRate(null));
   useEffect(() => {
-    setCopiedModalRate(false);
-    setCopyError(false);
-    setShowHistoryTable(false);
+    setCopied(false); setCopyError(false); setShowHistoryTable(false); setAmount('100');
   }, [selectedRate?.code, selectedRate?.market]);
 
   return (
@@ -79,374 +39,153 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
       {selectedRate && (() => {
         const currentRate = (selectedRate.market === 'parallel' ? rates?.parallel[selectedRate.code] : rates?.official[selectedRate.code]) || 0;
         const decimals = selectedRate.market === 'official' ? 4 : (selectedRate.code === 'EGP' || selectedRate.code === 'TRY' ? 3 : 2);
-        const spreadDiff = Math.max(0, chartStats.max - chartStats.min);
-
+        const market = selectedRate.market === 'parallel' ? 'السوق الموازي' : 'المصرف المركزي';
+        const isMetal = METAL_IDS.includes(selectedRate.code);
+        const rangeLabel = chartRange === '24h' ? '24 ساعة' : chartRange === '7d' ? '7 أيام' : 'كل السجل';
+        const color = chartStats.change > 0 ? 'var(--positive)' : chartStats.change < 0 ? 'var(--negative)' : 'var(--official)';
+        const TrendIcon = chartStats.change > 0 ? ArrowUpRight : chartStats.change < 0 ? ArrowDownRight : Minus;
+        const parsedAmount = Number(amount);
+        const total = amount !== '' && Number.isFinite(parsedAmount) && parsedAmount >= 0 && currentRate > 0 ? parsedAmount * currentRate : null;
+        const updatedAt = Date.parse(rates?.lastUpdated || '');
+        const intraday = chartData.length > 1 && Date.parse(chartData[chartData.length - 1].time) - Date.parse(chartData[0].time) < 172800000;
         const handleCopyRate = async () => {
           triggerHaptic(8);
-          const textToCopy = `${selectedRate.name} (${selectedRate.market === 'parallel' ? 'السوق الموازي' : 'السوق الرسمي'}): ${currentRate.toFixed(decimals)} د.ل`;
           try {
-            await navigator.clipboard.writeText(textToCopy);
-            setCopyError(false);
-            setCopiedModalRate(true);
-            setTimeout(() => setCopiedModalRate(false), 2000);
-          } catch {
-            setCopiedModalRate(false);
-            setCopyError(true);
-          }
+            await navigator.clipboard.writeText(`${selectedRate.name} (${market}): ${currentRate.toFixed(decimals)} د.ل`);
+            setCopyError(false); setCopied(true); setTimeout(() => setCopied(false), 2000);
+          } catch { setCopied(false); setCopyError(true); }
         };
 
         return (
-          <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 overflow-hidden">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedRate(null)}
-              className="absolute inset-0 bg-black/85 backdrop-blur-xl"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 25 }}
-              ref={dialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="currency-dialog-title"
-              tabIndex={-1}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 25 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className="relative w-full max-w-4xl bg-[#090e1a]/98 border-t sm:border border-slate-800/90 rounded-t-[1.75rem] sm:rounded-3xl overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.95)] flex flex-col max-h-[92dvh] sm:max-h-[88vh] z-10"
-            >
-              {/* Mobile Pull Bar */}
-              <div className="sm:hidden pt-2.5 pb-1 flex justify-center bg-slate-900/60 shrink-0">
-                <div className="w-12 h-1.5 bg-slate-700/60 rounded-full" />
+          <div className="currency-detail-overlay">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setSelectedRate(null)} className="currency-detail-backdrop" />
+            <motion.div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="currency-dialog-title"
+              tabIndex={-1} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.18 }} className="currency-detail-dialog" dir="rtl">
+              <div className="currency-detail-header">
+                <span aria-hidden="true"><FlagIcon flagCode={configTerms.find(term => term.id === selectedRate.code)?.flag || CURRENCIES.find(item => item.code === selectedRate.code)?.flag}
+                  name={selectedRate.name} className="w-10 h-8" /></span>
+                <div>
+                  <h2 id="currency-dialog-title">{selectedRate.name}</h2>
+                  <p>{market}<span dir="ltr">{selectedRate.code}</span></p>
+                </div>
+                <button aria-label="إغلاق" title="إغلاق" onClick={() => { triggerHaptic(6); setSelectedRate(null); }}>
+                  <X size={20} aria-hidden="true" />
+                </button>
               </div>
 
-              {/* Header */}
-              <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-white/[0.08] flex items-center justify-between shrink-0 relative overflow-hidden bg-slate-900/60 backdrop-blur-xl">
-                <div className={`absolute inset-0 opacity-15 pointer-events-none ${chartStats.isUp ? 'bg-gradient-to-r from-emerald-500/20 via-transparent to-transparent' : 'bg-gradient-to-r from-rose-500/20 via-transparent to-transparent'}`}></div>
-                <div className="flex items-center gap-3 sm:gap-3.5 relative z-10 min-w-0">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 flex items-center justify-center">
-                    <FlagIcon 
-                      flagCode={configTerms.find(t => t.id === selectedRate.code)?.flag || CURRENCIES.find(c => c.code === selectedRate.code)?.flag} 
-                      name={selectedRate.name} 
-                      className="w-full h-full" 
-                      fallbackType="coins" 
-                    />
+              <div className="currency-detail-content">
+                <div className="currency-detail-price">
+                  <div><p>السعر الحالي</p>
+                    <div><strong dir="ltr">{currentRate > 0 ? currentRate.toFixed(decimals) : '—'}</strong><span>د.ل</span></div>
+                    {Number.isFinite(updatedAt) && <small>تحديث البيانات: <time dateTime={new Date(updatedAt).toISOString()}>{format(updatedAt, 'dd/MM/yyyy · HH:mm')}</time></small>}
                   </div>
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 id="currency-dialog-title" className="text-base sm:text-xl font-bold text-white leading-relaxed break-words">
-                        {selectedRate.name}
-                      </h3>
-                      <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-300 bg-white/10 px-1.5 py-0.5 rounded-md border border-white/10">
-                        {selectedRate.code}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold border ${
-                        selectedRate.market === 'parallel' 
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' 
-                          : 'bg-blue-500/10 text-blue-400 border-blue-500/25'
-                      }`}>
-                        <span className="relative flex h-1.5 w-1.5">
-                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${selectedRate.market === 'parallel' ? 'bg-emerald-400' : 'bg-blue-400'}`}></span>
-                          <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${selectedRate.market === 'parallel' ? 'bg-emerald-500' : 'bg-blue-500'}`}></span>
-                        </span>
-                        {selectedRate.market === 'parallel' ? 'السوق الموازي' : 'المصرف المركزي (الرسمي)'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-1.5 relative z-10 shrink-0">
-                  <button 
-                    onClick={() => {
-                      triggerHaptic(6);
-                      setSelectedRate(null);
-                    }}
-                    className="w-11 h-11 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:scale-95 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
-                    title="إغلاق (Esc)"
-                    aria-label="إغلاق"
-                  >
-                    <X className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Scrollable Content */}
-              <div className="p-3.5 sm:p-6 flex-1 overflow-y-auto custom-scrollbar flex flex-col space-y-4 sm:space-y-5">
-                {/* Price & Range Filter Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-white/[0.06]">
-                  <div className="flex flex-col">
-                    <span className="text-xs text-slate-300 font-semibold mb-0.5">سعر الصرف المتاح</span>
-                    <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
-                      <span className="text-3xl sm:text-4xl lg:text-5xl font-mono font-black text-white tracking-tight tabular-nums">
-                        {currentRate > 0 ? currentRate.toFixed(decimals) : '—'}
-                      </span>
-                      <span className="text-xs sm:text-sm font-bold text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded-md border border-white/10 shadow-inner">د.ل</span>
-                      {chartStats.change !== 0 && (
-                        <span className={`inline-flex items-center gap-1 text-[11px] sm:text-xs font-mono font-bold px-2.5 py-1 rounded-lg border shadow-sm ${
-                          chartStats.isUp ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                        }`}>
-                          {chartStats.isUp ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                          <span dir="ltr">{chartStats.isUp ? '+' : ''}{chartStats.change.toFixed(decimals)} ({chartStats.isUp ? '+' : ''}{chartStats.changePercent.toFixed(2)}%)</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Range Tabs */}
-                  <div className="flex items-center bg-slate-900/90 p-1 rounded-xl border border-white/[0.08] shrink-0 self-start sm:self-auto shadow-sm">
-                    {(['24h', '7d', 'all'] as const).map((range) => (
-                      <button
-                        key={range}
-                        aria-pressed={chartRange === range}
-                        onClick={() => {
-                          setChartRange(range);
-                          triggerHaptic(5);
-                        }}
-                        className={`px-3 sm:px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                          chartRange === range 
-                            ? 'bg-emerald-500 text-slate-950 font-black shadow-[0_2px_10px_rgba(16,185,129,0.35)]' 
-                            : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
-                        }`}
-                      >
-                        {range === '24h' ? '24 ساعة' : range === '7d' ? '7 أيام' : 'الكل'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Interactive Chart */}
-                <div className="w-full h-44 sm:h-60 md:h-72 min-h-[176px] sm:min-h-[240px] shrink-0 relative my-1">
-                  {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%" key={selectedRate.code}>
-                      <AreaChart data={chartData} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="modalChartGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={chartStats.isUp ? "#10b981" : "#f43f5e"} stopOpacity={0.35}/>
-                            <stop offset="95%" stopColor={chartStats.isUp ? "#10b981" : "#f43f5e"} stopOpacity={0.02}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid 
-                          vertical={false} 
-                          stroke="rgba(255,255,255,0.04)" 
-                          strokeDasharray="3 3" 
-                        />
-                        <XAxis 
-                          dataKey="time" 
-                          tick={{ fontSize: 11, fill: '#94a3b8' }}
-                          tickFormatter={(time) => format(new Date(time), chartRange === '24h' ? 'HH:mm' : 'dd/MM HH:mm', { locale: ar })}
-                          minTickGap={40}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis 
-                          domain={[(dataMin: number) => dataMin - (dataMin * 0.005), (dataMax: number) => dataMax + (dataMax * 0.005)]} 
-                          orientation="right"
-                          tick={{ fontSize: 12, fill: '#94a3b8', fontFamily: 'monospace' }}
-                          axisLine={false}
-                          tickLine={false}
-                          tickFormatter={(val) => val.toFixed(decimals)}
-                          width={42}
-                        />
-                        <Tooltip
-                          contentStyle={{ 
-                            backgroundColor: "#070c18", 
-                            border: "1px solid rgba(255,255,255,0.12)", 
-                            borderRadius: "14px", 
-                            color: "#fff", 
-                            boxShadow: "0 15px 40px rgba(0, 0, 0, 0.6)",
-                            padding: "8px 12px"
-                          }}
-                          itemStyle={{ color: chartStats.isUp ? "#10b981" : "#f43f5e", fontFamily: "monospace", fontSize: "14px", fontWeight: "bold" }}
-                          labelStyle={{ color: "#94a3b8", fontSize: "11px", marginBottom: "4px" }}
-                          labelFormatter={(label) => {
-                            try {
-                              return format(new Date(label as any), "eeee، dd MMMM - HH:mm", { locale: ar });
-                            } catch (e) {
-                              return String(label);
-                            }
-                          }}
-                          formatter={(value: number) => [`${value.toFixed(decimals)} د.ل`, 'السعر']}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="value"
-                          stroke={chartStats.isUp ? "#10b981" : "#f43f5e"}
-                          strokeWidth={2.5}
-                          fillOpacity={1}
-                          fill="url(#modalChartGradient)"
-                          isAnimationActive={false}
-                          dot={false}
-                          activeDot={{ r: 5, fill: "#070c18", stroke: chartStats.isUp ? "#10b981" : "#f43f5e", strokeWidth: 2.5 }}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="flex flex-col items-center gap-2 opacity-30 text-slate-400">
-                        <TrendingUp className="w-8 h-8" />
-                        <p className="text-xs font-mono">لا توجد بيانات تاريخية كافية لهذه الفترة</p>
-                      </div>
+                  {chartData.length >= 2 && (
+                    <div className="currency-detail-trend">
+                      <div style={{ color }}><TrendIcon size={18} aria-hidden="true" /><strong dir="ltr">{chartStats.change > 0 ? '+' : ''}{chartStats.change.toFixed(decimals)} د.ل</strong></div>
+                      <span style={{ color }} dir="ltr">{chartStats.changePercent > 0 ? '+' : ''}{chartStats.changePercent.toFixed(2)}%</span>
+                      <small>التغير خلال {rangeLabel}</small>
                     </div>
                   )}
                 </div>
 
-                {chartData.length > 0 && <details onToggle={(event) => setShowHistoryTable(event.currentTarget.open)} className="border-y border-white/10 py-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-slate-300">القراءات التاريخية</summary>
-                  {showHistoryTable && <div className="max-h-52 overflow-auto mt-3">
-                    <table className="w-full text-sm text-right">
-                      <caption className="sr-only">سجل سعر {selectedRate.name} للفترة المحددة بالدينار الليبي</caption>
-                      <thead className="text-slate-300"><tr><th scope="col" className="p-2">التاريخ والوقت</th><th scope="col" className="p-2">السعر (د.ل)</th></tr></thead>
-                      <tbody>{chartData.map((point, index) => <tr key={`${point.time}-${index}`} className="border-t border-white/5"><td className="p-2 text-slate-300"><time dateTime={point.time}>{new Date(point.time).toLocaleString('ar-LY')}</time></td><td dir="ltr" className="p-2 font-mono text-white text-right">{point.value.toFixed(decimals)}</td></tr>)}</tbody>
-                    </table>
-                  </div>}
-                </details>}
+                <div className="currency-detail-grid">
+                  <section className="currency-detail-history" aria-label="حركة السعر">
+                    <div className="currency-detail-chart-heading">
+                      <h3>حركة السعر</h3>
+                      <div role="group" aria-label="فترة الرسم البياني">
+                        {(['24h', '7d', 'all'] as const).map(range => (
+                          <button key={range} aria-pressed={chartRange === range} onClick={() => { setChartRange(range); triggerHaptic(5); }}>
+                            {range === '24h' ? '24 ساعة' : range === '7d' ? '7 أيام' : 'الكل'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="currency-detail-chart" role="group" aria-label="الرسم البياني للسعر">
+                      {chartData.length >= 2 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={chartData} accessibilityLayer margin={{ top: 12, right: 4, left: 4, bottom: 4 }}>
+                            <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
+                            <XAxis dataKey="time" tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
+                              tickFormatter={time => format(new Date(time), chartRange === '24h' || intraday ? 'HH:mm' : 'dd/MM')}
+                              minTickGap={32} axisLine={false} tickLine={false} />
+                            <YAxis domain={['auto', 'auto']} orientation="right" tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
+                              axisLine={false} tickLine={false} tickFormatter={value => Number(value).toFixed(decimals)} width={68} />
+                            <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--ink)' }}
+                              itemStyle={{ color, fontSize: 14, fontWeight: 700 }} labelStyle={{ color: 'var(--muted-ink)', fontSize: 12 }}
+                              labelFormatter={time => format(new Date(String(time)), 'dd/MM/yyyy · HH:mm')}
+                              formatter={(value: number) => [`${Number(value).toFixed(decimals)} د.ل`, 'السعر']} />
+                            <Area type="linear" dataKey="value" stroke={color} strokeWidth={2.5} fill={color} fillOpacity={0.08} isAnimationActive={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      ) : <div className="currency-detail-empty" role="status"><ChartNoAxesCombined size={28} aria-hidden="true" /><p>لا توجد بيانات تاريخية كافية لهذه الفترة</p></div>}
+                    </div>
+                    {chartData.length > 0 && (
+                      <details onToggle={event => setShowHistoryTable(event.currentTarget.open)} className="currency-detail-records">
+                        <summary>القراءات التاريخية</summary>
+                        {showHistoryTable && <div>
+                          <table>
+                            <caption className="sr-only">سجل سعر {selectedRate.name} للفترة المحددة بالدينار الليبي</caption>
+                            <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">السعر (د.ل)</th></tr></thead>
+                            <tbody>{chartData.map((point, index) => (
+                              <tr key={`${point.time}-${index}`}><td><time dateTime={point.time} dir="ltr">{format(new Date(point.time), 'dd/MM/yyyy · HH:mm')}</time></td><td><span dir="ltr">{point.value.toFixed(decimals)}</span></td></tr>
+                            ))}</tbody>
+                          </table>
+                        </div>}
+                      </details>
+                    )}
+                  </section>
 
-                {/* Period Performance Summary Grid */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-400 font-semibold px-1">
-                    <span>ملخص حركة الفترة المحددة</span>
-                    <span className="text-[10px] text-slate-500 font-normal">بيانات حسابية دقيقة</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                    <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-500/[0.04] border border-emerald-500/15 flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-emerald-400/90 font-medium mb-0.5">أعلى سعر</span>
-                      <span className="text-sm sm:text-lg font-mono font-black text-emerald-400 tabular-nums">
-                        {chartStats.max.toFixed(decimals)} <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">د.ل</span>
-                      </span>
-                    </div>
-                    <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-rose-500/[0.04] border border-rose-500/15 flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-rose-400/90 font-medium mb-0.5">أدنى سعر</span>
-                      <span className="text-sm sm:text-lg font-mono font-black text-rose-400 tabular-nums">
-                        {chartStats.min.toFixed(decimals)} <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">د.ل</span>
-                      </span>
-                    </div>
-                    <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-slate-900/60 border border-white/[0.07] flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-slate-300 font-medium mb-0.5">متوسط السعر</span>
-                      <span className="text-sm sm:text-lg font-mono font-black text-slate-200 tabular-nums">
-                        {chartStats.avg.toFixed(decimals)} <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">د.ل</span>
-                      </span>
-                    </div>
-                    <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/15 flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-fuchsia-300 font-medium mb-0.5">مدى التذبذب</span>
-                      <span className="text-sm sm:text-lg font-mono font-black text-fuchsia-400 tabular-nums">
-                        {spreadDiff.toFixed(decimals)} <span className="text-[9px] sm:text-[10px] text-slate-400 font-sans">د.ل</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  <div className="currency-detail-information">
+                    <section aria-label="ملخص الفترة">
+                      <h3>ملخص الفترة</h3>
+                      <dl className="currency-detail-statistics">
+                        {[
+                          { label: 'أعلى سعر', value: chartStats.max },
+                          { label: 'أقل سعر', value: chartStats.min },
+                          { label: 'متوسط القراءات', value: chartStats.avg },
+                          { label: 'الفرق بين الأعلى والأقل', value: Math.max(0, chartStats.max - chartStats.min) },
+                        ].map(stat => <div key={stat.label}><dt>{stat.label}</dt><dd><strong dir="ltr">{chartData.length ? stat.value.toFixed(decimals) : '—'}</strong><span>د.ل</span></dd></div>)}
+                      </dl>
+                    </section>
 
-                {/* Technical Analysis (30 Days) */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-400 font-semibold px-1">
-                    <span>المؤشرات الفنية (30 يوم)</span>
-                    <span className="text-[10px] text-slate-500 font-normal">تحليل فني آلي</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                    <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-500/5 border border-emerald-500/15 flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-emerald-400/80 font-medium mb-0.5 truncate max-w-full">مستوى المقاومة</span>
-                      <span className="text-sm sm:text-base font-mono font-black text-emerald-400 tabular-nums">
-                        {advancedStats.resistance > 0 ? advancedStats.resistance.toFixed(3) : '-'}
-                      </span>
-                    </div>
-                    <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-rose-500/5 border border-rose-500/15 flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-rose-400/80 font-medium mb-0.5 truncate max-w-full">مستوى الدعم</span>
-                      <span className="text-sm sm:text-base font-mono font-black text-rose-400 tabular-nums">
-                        {advancedStats.support > 0 ? advancedStats.support.toFixed(3) : '-'}
-                      </span>
-                    </div>
-                    <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-white/[0.03] border border-white/[0.07] flex flex-col items-center text-center">
-                      <span className="text-[10px] sm:text-xs text-slate-400 font-medium mb-0.5 truncate max-w-full">متوسط MA30</span>
-                      <span className="text-sm sm:text-base font-mono font-black text-white tabular-nums">
-                        {advancedStats.ma30 > 0 ? advancedStats.ma30.toFixed(3) : '-'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                    <section className="currency-detail-converter" aria-labelledby="detail-converter-title">
+                      <h3 id="detail-converter-title"><Calculator size={18} aria-hidden="true" />تحويل سريع للدينار</h3>
+                      <label htmlFor="detail-amount">{isMetal ? 'الكمية' : 'المبلغ بالعملة الأجنبية'}</label>
+                      <input id="detail-amount" type="number" inputMode="decimal" min="0" step="any" dir="ltr" value={amount}
+                        onChange={event => setAmount(event.target.value)} placeholder="0" />
+                      <div className="currency-detail-presets" role="group" aria-label="مبالغ التحويل السريع">
+                        {[50, 100, 500, 1000, 5000].map(value => <button key={value} aria-pressed={amount === String(value)}
+                          onClick={() => { triggerHaptic(4); setAmount(String(value)); }}>{value.toLocaleString('en-US')}</button>)}
+                      </div>
+                      <div className="currency-detail-total"><span>القيمة بالدينار الليبي</span>
+                        <output htmlFor="detail-amount"><strong dir="ltr">{total !== null && Number.isFinite(total) ? total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</strong><span>د.ل</span></output>
+                      </div>
+                    </section>
 
-                {/* Interactive Quick Currency Converter */}
-                <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-900/70 border border-white/[0.07] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold mb-1">
-                      <Calculator className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>تحويل سريع مقابل الدينار الليبي</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {[50, 100, 500, 1000, 5000].map(amount => (
-                        <button
-                          key={amount}
-                          onClick={() => {
-                            triggerHaptic(4);
-                            setModalCalcAmount(amount);
-                          }}
-                          className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-lg border transition-all ${
-                            modalCalcAmount === amount
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
-                              : 'bg-white/5 text-slate-400 hover:text-white border-white/5'
-                          }`}
-                        >
-                          {amount.toLocaleString()}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="sm:text-left text-right bg-black/40 px-3.5 py-2 rounded-xl border border-white/5 shrink-0">
-                    <span className="text-[10px] text-slate-400 font-medium block">
-                      القيمة الإجمالية المقابلة
-                    </span>
-                    <span className="text-base sm:text-lg font-mono font-black text-emerald-400 tabular-nums">
-                      {(modalCalcAmount * currentRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      <span className="text-xs text-slate-400 font-sans mr-1"> د.ل</span>
-                    </span>
+                    <details className="currency-detail-long-range">
+                      <summary>ملخص آخر 30 يومًا</summary>
+                      <dl>{[
+                        { label: 'أعلى قراءة', value: advancedStats.resistance },
+                        { label: 'أقل قراءة', value: advancedStats.support },
+                        { label: 'متوسط القراءات', value: advancedStats.ma30 },
+                      ].map(stat => <div key={stat.label}><dt>{stat.label}</dt><dd dir="ltr">{stat.value > 0 ? stat.value.toFixed(decimals) : '—'} د.ل</dd></div>)}</dl>
+                    </details>
                   </div>
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="px-4 py-3 sm:px-6 sm:py-3.5 bg-slate-900/70 border-t border-white/[0.08] flex items-center justify-between shrink-0 flex-wrap gap-2">
-                <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-slate-400 font-medium">
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <span className="truncate">آخر بيانات السعر المتاحة</span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={handleCopyRate}
-                    disabled={currentRate <= 0}
-                    aria-label="نسخ السعر"
-                    className="px-3 sm:px-4 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-white/10 transition-all flex items-center gap-1.5 shadow-sm"
-                    title="نسخ السعر"
-                  >
-                    {copiedModalRate ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                    <span role="status">{copyError ? 'تعذر النسخ' : copiedModalRate ? 'تم النسخ!' : 'نسخ'}</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      triggerHaptic(8);
-                      handleShareCardImage(selectedRate.code, selectedRate.name, currentRate || 0, selectedRate.market === 'official');
-                    }}
-                    className="px-3 sm:px-4 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-white/10 transition-all flex items-center gap-1.5 shadow-sm"
-                    title="مشاركة بطاقة السعر"
-                    disabled={currentRate <= 0}
-                  >
-                    <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="hidden sm:inline">مشاركة</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      triggerHaptic(6);
-                      setSelectedRate(null);
-                    }}
-                    className="px-4 sm:px-5 py-1.5 bg-white text-slate-950 hover:bg-slate-200 active:scale-95 text-xs font-extrabold rounded-xl transition-all shadow-sm"
-                  >
-                    إغلاق
-                  </button>
-                </div>
+              <div className="currency-detail-footer">
+                <button onClick={handleCopyRate} disabled={currentRate <= 0} aria-label="نسخ السعر" title="نسخ السعر">
+                  {copied ? <CheckCircle2 size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                  <span role="status">{copyError ? 'تعذر النسخ' : copied ? 'تم النسخ!' : 'نسخ'}</span>
+                </button>
+                <button disabled={currentRate <= 0} aria-label="مشاركة بطاقة السعر" title="مشاركة بطاقة السعر"
+                  onClick={() => { triggerHaptic(8); handleShareCardImage(selectedRate.code, selectedRate.name, currentRate, selectedRate.market === 'official'); }}>
+                  <Share2 size={18} aria-hidden="true" /><span>مشاركة</span>
+                </button>
+                <button className="currency-detail-close" onClick={() => { triggerHaptic(6); setSelectedRate(null); }}>إغلاق</button>
               </div>
             </motion.div>
           </div>

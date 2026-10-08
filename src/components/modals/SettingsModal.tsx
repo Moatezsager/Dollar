@@ -1,609 +1,197 @@
-import React, { useState } from "react";
+import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Settings2, X, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import { Settings2, X, RefreshCw, CheckCircle2, Bell, Palette, Volume2, Smartphone } from "lucide-react";
 import { safeStorage } from "../../utils/storage";
 import { purgeAllCachesAndReload } from "../../utils/autoUpdater";
-
-import { useDialogAccessibility } from '../../hooks/useDialogAccessibility';
+import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
+import { ThemeToggle } from "../ui/ThemeToggle";
 
 interface SettingsModalProps {
   showSettingsModal: boolean;
   setShowSettingsModal: (show: boolean) => void;
+  settingsTab: 'general' | 'notifications' | 'appearance';
+  setSettingsTab: (tab: 'general' | 'notifications' | 'appearance') => void;
   hapticEnabled: boolean;
   setHapticEnabled: (enabled: boolean) => void;
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
-  autoRefreshEnabled: boolean;
-  setAutoRefreshEnabled: (enabled: boolean) => void;
-  showChart: boolean;
-  setShowChart: (show: boolean) => void;
   notificationsEnabled: boolean;
   requestNotificationPermission: () => void;
   notificationThreshold: number;
   setNotificationThreshold: (val: number) => void;
-  majorChangesOnly: boolean;
-  setMajorChangesOnly: (val: boolean) => void;
-  dailySummaryEnabled: boolean;
-  setDailySummaryEnabled: (val: boolean) => void;
-  goldNotificationsEnabled: boolean;
-  setGoldNotificationsEnabled: (val: boolean) => void;
   compactMode: boolean;
   setCompactMode: (val: boolean) => void;
   animationsEnabled: boolean;
   setAnimationsEnabled: (val: boolean) => void;
   fontSizePreference: 'small' | 'medium' | 'large';
   setFontSizePreference: (val: 'small' | 'medium' | 'large') => void;
-  dataSaver: boolean;
-  setDataSaver: (val: boolean) => void;
-  defaultMarket: 'parallel' | 'official';
-  setDefaultMarket: (val: 'parallel' | 'official') => void;
-  chartResolution: 'low' | 'medium' | 'high';
-  setChartResolution: (val: 'low' | 'medium' | 'high') => void;
-  spreadAlertEnabled: boolean;
-  setSpreadAlertEnabled: (val: boolean) => void;
-  spreadAlertValue: number;
-  setSpreadAlertValue: (val: number) => void;
   triggerHaptic: (pattern?: number | number[]) => void;
   addToast: (title: string, body: string, type: 'up' | 'down' | 'info') => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
-  showSettingsModal,
-  setShowSettingsModal,
-  hapticEnabled,
-  setHapticEnabled,
-  soundEnabled,
-  setSoundEnabled,
-  autoRefreshEnabled,
-  setAutoRefreshEnabled,
-  showChart,
-  setShowChart,
-  notificationsEnabled,
-  requestNotificationPermission,
-  notificationThreshold,
-  setNotificationThreshold,
-  majorChangesOnly,
-  setMajorChangesOnly,
-  dailySummaryEnabled,
-  setDailySummaryEnabled,
-  goldNotificationsEnabled,
-  setGoldNotificationsEnabled,
-  compactMode,
-  setCompactMode,
-  animationsEnabled,
-  setAnimationsEnabled,
-  fontSizePreference,
-  setFontSizePreference,
-  dataSaver,
-  setDataSaver,
-  defaultMarket,
-  setDefaultMarket,
-  chartResolution,
-  setChartResolution,
-  spreadAlertEnabled,
-  setSpreadAlertEnabled,
-  spreadAlertValue,
-  setSpreadAlertValue,
-  triggerHaptic,
-  addToast,
+  showSettingsModal, setShowSettingsModal, settingsTab, setSettingsTab,
+  hapticEnabled, setHapticEnabled, soundEnabled, setSoundEnabled,
+  notificationsEnabled, requestNotificationPermission, notificationThreshold, setNotificationThreshold,
+  compactMode, setCompactMode, animationsEnabled, setAnimationsEnabled,
+  fontSizePreference, setFontSizePreference, triggerHaptic, addToast,
 }) => {
-  const [settingsTab, setSettingsTab] = useState<'general' | 'notifications' | 'appearance' | 'advanced'>('general');
   const dialogRef = useDialogAccessibility(showSettingsModal, () => setShowSettingsModal(false));
+  const notificationPermission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+  const tabs = [
+    { id: 'general', label: 'عام', icon: Settings2 },
+    { id: 'notifications', label: 'التنبيهات', icon: Bell },
+    { id: 'appearance', label: 'المظهر', icon: Palette },
+  ] as const;
+
+  useEffect(() => {
+    const saved = Number(safeStorage.getItem('notificationThreshold'));
+    if (Number.isFinite(saved) && saved >= 0.001 && saved <= 0.1) setNotificationThreshold(saved);
+  }, [setNotificationThreshold]);
 
   return (
     <AnimatePresence>
       {showSettingsModal && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+        <div className="settings-overlay">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowSettingsModal(false)} className="settings-backdrop" />
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowSettingsModal(false)}
-            className="absolute inset-0 bg-black/60 backdrop-blur-md"
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-dialog-title"
-            tabIndex={-1}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md max-h-[90dvh] flex flex-col glass-panel-heavy premium-border border border-slate-700/50 rounded-3xl overflow-hidden shadow-2xl"
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
+            ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title"
+            tabIndex={-1} className="settings-dialog" dir="rtl"
           >
-            <div className="p-4 sm:p-6 border-b border-slate-800/60 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400">
-                  <Settings2 className="w-4 h-4" />
-                </div>
-                <h3 id="settings-dialog-title" className="text-lg font-semibold">الإعدادات</h3>
-              </div>
-              <button aria-label="إغلاق الإعدادات" onClick={() => setShowSettingsModal(false)} className="w-11 h-11 flex items-center justify-center text-slate-300 hover:text-white rounded-lg hover:bg-white/5">
-                <X className="w-5 h-5" />
+            <div className="settings-header">
+              <div><h2 id="settings-dialog-title">الإعدادات</h2><p>تفضيلات هذا الجهاز</p></div>
+              <button aria-label="إغلاق الإعدادات" onClick={() => setShowSettingsModal(false)} className="settings-close">
+                <X size={20} aria-hidden="true" />
               </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-slate-800/60 overflow-x-auto custom-scrollbar shrink-0">
-              <button
-                onClick={() => setSettingsTab('general')}
-                aria-pressed={settingsTab === 'general'}
-                className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'general' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-              >
-                عام
-              </button>
-              <button
-                onClick={() => setSettingsTab('notifications')}
-                aria-pressed={settingsTab === 'notifications'}
-                className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'notifications' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-              >
-                التنبيهات
-              </button>
-              <button
-                onClick={() => setSettingsTab('appearance')}
-                aria-pressed={settingsTab === 'appearance'}
-                className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'appearance' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-              >
-                المظهر
-              </button>
-              <button
-                onClick={() => setSettingsTab('advanced')}
-                aria-pressed={settingsTab === 'advanced'}
-                className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'advanced' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
-              >
-                متقدم
-              </button>
+            <div role="tablist" aria-label="أقسام الإعدادات" className="settings-tabs"
+              onKeyDown={event => {
+                const index = tabs.findIndex(tab => tab.id === settingsTab);
+                const next = event.key === 'ArrowLeft' ? (index + 1) % tabs.length :
+                  event.key === 'ArrowRight' ? (index + tabs.length - 1) % tabs.length :
+                  event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+                if (next < 0) return;
+                event.preventDefault();
+                setSettingsTab(tabs[next].id);
+                event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next].focus();
+              }}
+            >
+              {tabs.map(({ id, label, icon: Icon }) => (
+                <button key={id} id={`settings-tab-${id}`} role="tab"
+                  aria-selected={settingsTab === id} aria-controls={`settings-panel-${id}`}
+                  tabIndex={settingsTab === id ? 0 : -1} onClick={() => setSettingsTab(id)}>
+                  <Icon size={18} aria-hidden="true" /><span>{label}</span>
+                </button>
+              ))}
             </div>
 
-            <div className="p-4 sm:p-6 space-y-8 overflow-y-auto min-h-0 flex-1">
+            <div className="settings-content" role="tabpanel" id={`settings-panel-${settingsTab}`}
+              aria-labelledby={`settings-tab-${settingsTab}`} tabIndex={0}>
               {settingsTab === 'general' && (
-                <div className="space-y-6">
-                  {/* Haptic Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">الاهتزاز (Haptic Feedback)</p>
-                      <p className="text-xs text-slate-500 mt-1">تفعيل أو تعطيل الاهتزاز عند التفاعل مع التطبيق</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !hapticEnabled;
-                        setHapticEnabled(newVal);
-                        safeStorage.setItem('hapticEnabled', String(newVal));
-                        if (newVal && typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) window.navigator.vibrate(10);
-                      }}
-                      role="switch"
-                      aria-label="الاهتزاز"
-                      aria-checked={hapticEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${hapticEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
+                <>
+                  <div className="settings-row">
+                    <Volume2 className="settings-row-icon" aria-hidden="true" />
+                    <div className="settings-copy"><h3>المؤثرات الصوتية</h3><p>صوت عند تغيّر الأسعار أثناء فتح الموقع</p></div>
+                    <button role="switch" aria-label="المؤثرات الصوتية" aria-checked={soundEnabled} className="settings-switch"
+                      onClick={() => { setSoundEnabled(!soundEnabled); safeStorage.setItem('soundEnabled', String(!soundEnabled)); triggerHaptic(10); }}>
+                      <span><span /></span>
                     </button>
                   </div>
-
-                  {/* Sound Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">المؤثرات الصوتية</p>
-                      <p className="text-xs text-slate-500 mt-1">تفعيل أو تعطيل الأصوات عند تغير الأسعار</p>
-                    </div>
-                    <button
+                  <div className="settings-row">
+                    <Smartphone className="settings-row-icon" aria-hidden="true" />
+                    <div className="settings-copy"><h3>الاهتزاز</h3><p>استجابة خفيفة للمس على الأجهزة الداعمة</p></div>
+                    <button role="switch" aria-label="الاهتزاز" aria-checked={hapticEnabled} className="settings-switch"
                       onClick={() => {
-                        const newVal = !soundEnabled;
-                        setSoundEnabled(newVal);
-                        safeStorage.setItem('soundEnabled', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="المؤثرات الصوتية"
-                      aria-checked={soundEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${soundEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
+                        setHapticEnabled(!hapticEnabled);
+                        safeStorage.setItem('hapticEnabled', String(!hapticEnabled));
+                        if (!hapticEnabled && navigator.vibrate) navigator.vibrate(10);
+                      }}>
+                      <span><span /></span>
                     </button>
                   </div>
-
-                  {/* Auto Refresh Toggle */}
-                  <div className="flex items-center justify-between">
+                  <details className="settings-maintenance">
+                    <summary>إصلاح مشاكل العرض</summary>
                     <div>
-                      <p className="text-sm font-medium text-slate-200">التحديث التلقائي</p>
-                      <p className="text-xs text-slate-500 mt-1">تحديث الأسعار تلقائياً كل 10 ثوانٍ</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !autoRefreshEnabled;
-                        setAutoRefreshEnabled(newVal);
-                        safeStorage.setItem('autoRefreshEnabled', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="التحديث التلقائي"
-                      aria-checked={autoRefreshEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${autoRefreshEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Show Chart Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">المخطط البياني</p>
-                      <p className="text-xs text-slate-500 mt-1">إظهار المخطط البياني المصغر في الشاشة الرئيسية</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !showChart;
-                        setShowChart(newVal);
-                        safeStorage.setItem('showChart', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="المخطط البياني"
-                      aria-checked={showChart}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${showChart ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Clear Cache & Auto-Update */}
-                  <div className="pt-4 border-t border-slate-800/60 flex flex-col gap-2">
-                    <button
-                      onClick={async () => {
+                      <button className="settings-repair" onClick={() => {
                         triggerHaptic(10);
                         addToast('جاري التحديث', 'يتم الآن مسح الذاكرة المؤقتة وتحديث التطبيق...', 'info');
-                        setTimeout(() => {
-                          purgeAllCachesAndReload();
-                        }, 300);
-                      }}
-                      className="w-full py-3 text-sm font-bold text-rose-400 hover:text-rose-300 bg-rose-500/5 hover:bg-rose-500/10 border border-rose-500/20 rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>مسح الذاكرة المؤقتة وتحديث الواجهة بالكامل</span>
-                    </button>
-                    <p className="text-[11px] text-slate-500 text-center">
-                      يقوم بحذف الكاش القديم وجلب أحدث كود ونسخة واجهة معتمدة فورياً.
-                    </p>
-                  </div>
-                </div>
+                        setTimeout(() => { purgeAllCachesAndReload(); }, 300);
+                      }}><RefreshCw size={18} aria-hidden="true" />مسح الكاش وإعادة فتح الموقع</button>
+                      <p>يحذف البيانات المؤقتة ويعيد تحميل الصفحة، مع الاحتفاظ بتفضيلاتك.</p>
+                    </div>
+                  </details>
+                </>
               )}
 
               {settingsTab === 'notifications' && (
                 <>
-                  {/* Permission Status */}
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-slate-800/60">
-                    <div className="flex items-center gap-3">
-                      {notificationsEnabled ? (
-                        <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                      ) : (
-                        <AlertCircle className="w-5 h-5 text-amber-500" />
-                      )}
-                      <div>
-                        <p className="text-sm font-medium">حالة التنبيهات</p>
-                        <p className="text-xs text-slate-500">{notificationsEnabled ? 'مفعلة على هذا الجهاز' : 'غير مفعلة حالياً'}</p>
-                      </div>
+                  <div className="settings-permission">
+                    {notificationsEnabled ? <CheckCircle2 aria-hidden="true" /> : <Bell aria-hidden="true" />}
+                    <div className="settings-copy">
+                      <h3>إشعارات المتصفح</h3>
+                      <p>{notificationPermission === 'unsupported' ? 'غير مدعومة في هذا المتصفح' :
+                        notificationPermission === 'denied' ? 'محظورة من إعدادات المتصفح' :
+                        notificationsEnabled ? 'مفعّلة على هذا الجهاز' : 'لم يتم تفعيلها بعد'}</p>
                     </div>
-                    {!notificationsEnabled && (
-                      <button 
-                        onClick={requestNotificationPermission}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-xl transition-colors"
-                      >
-                        تفعيل الآن
-                      </button>
+                    {!notificationsEnabled && notificationPermission === 'default' && (
+                      <button className="settings-enable" onClick={requestNotificationPermission}>تفعيل</button>
                     )}
                   </div>
-
-                  {/* Threshold Slider */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-slate-300">حساسية التنبيه (Threshold)</label>
-                      <span className="text-xs font-mono text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded-lg">
-                        {notificationThreshold.toFixed(2)} د.ل
-                      </span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.001" 
-                      max="0.1" 
-                      step="0.001" 
-                      value={notificationThreshold}
-                      aria-label="حساسية التنبيه"
-                      onChange={(e) => setNotificationThreshold(parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                    />
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      سيقوم التطبيق بإرسال تنبيه فقط إذا تغير السعر بمقدار أكبر من القيمة المحددة أعلاه. القيمة الحالية ({notificationThreshold.toFixed(3)}) تجعل التنبيهات حساسة جداً لأي تغيير.
-                    </p>
-                  </div>
-
-                  {/* Major Changes Only */}
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-800/60">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">التغيرات الكبرى فقط</p>
-                      <p className="text-xs text-slate-500 mt-1">تلقي تنبيهات فقط عند حدوث قفزات تزيد عن 0.05 د.ل</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !majorChangesOnly;
-                        setMajorChangesOnly(newVal);
-                        safeStorage.setItem('majorChangesOnly', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="التغييرات الكبيرة فقط"
-                      aria-checked={majorChangesOnly}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${majorChangesOnly ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Daily Summary */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">الملخص اليومي للأسعار</p>
-                      <p className="text-xs text-slate-500 mt-1">تلقي تقرير يومي شامل بحركة العملات والمعادن الساعة 8:00 مساءً</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !dailySummaryEnabled;
-                        setDailySummaryEnabled(newVal);
-                        safeStorage.setItem('dailySummaryEnabled', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="الملخص اليومي"
-                      aria-checked={dailySummaryEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dailySummaryEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Gold and Metals Specific Alert */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">تنبيهات أسعار الذهب والكسر</p>
-                      <p className="text-xs text-slate-500 mt-1">تفعيل أو تعطيل تنبيهات سوق الصاغة والمعادن الثمينة</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !goldNotificationsEnabled;
-                        setGoldNotificationsEnabled(newVal);
-                        safeStorage.setItem('goldNotificationsEnabled', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="تنبيهات الذهب"
-                      aria-checked={goldNotificationsEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${goldNotificationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
+                  <div className="settings-threshold">
+                    <div><label htmlFor="settings-threshold">الحد الأدنى لتغيّر السعر</label>
+                      <output htmlFor="settings-threshold">{notificationThreshold.toFixed(3)} د.ل</output></div>
+                    <input id="settings-threshold" type="range" min="0.001" max="0.1" step="0.001"
+                      value={notificationThreshold} aria-label="حساسية التنبيه"
+                      aria-valuetext={`${notificationThreshold.toFixed(3)} دينار ليبي`}
+                      onChange={event => {
+                        const value = Number(event.target.value);
+                        setNotificationThreshold(value);
+                        safeStorage.setItem('notificationThreshold', String(value));
+                      }} />
+                    <div className="settings-range-labels"><span>0.001 د.ل</span><span>0.100 د.ل</span></div>
+                    <p>حدّ تنبيهات تغيّر الأسعار أثناء فتح الموقع.</p>
                   </div>
                 </>
               )}
 
               {settingsTab === 'appearance' && (
-                <div className="space-y-6">
-                  {/* Compact Mode Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">الوضع المضغوط</p>
-                      <p className="text-xs text-slate-500 mt-1">تصغير حجم البطاقات لعرض المزيد من البيانات</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !compactMode;
-                        setCompactMode(newVal);
-                        safeStorage.setItem('compactMode', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="الوضع المضغوط"
-                      aria-checked={compactMode}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${compactMode ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
+                <>
+                  <div className="settings-row">
+                    <div className="settings-copy"><h3>الوضع الليلي والنهاري</h3></div><ThemeToggle />
                   </div>
-
-                  {/* Animations Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">الحركات التفاعلية</p>
-                      <p className="text-xs text-slate-500 mt-1">تفعيل أو تعطيل الحركات والانتقالات في التطبيق</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !animationsEnabled;
-                        setAnimationsEnabled(newVal);
-                        safeStorage.setItem('animationsEnabled', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="الحركة"
-                      aria-checked={animationsEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${animationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Font Size Preference */}
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-800/60">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">حجم خط العرض</p>
-                      <p className="text-xs text-slate-500 mt-1">تعديل حجم النصوص والأسعار المعروضة في الشاشة</p>
-                    </div>
-                    <select
-                      value={fontSizePreference}
-                      aria-label="حجم الخط"
-                      onChange={(e) => {
-                        const val = e.target.value as 'small' | 'medium' | 'large';
-                        setFontSizePreference(val);
-                        safeStorage.setItem('fontSizePreference', val);
-                        triggerHaptic(10);
-                      }}
-                      className="bg-white/5 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500/50"
-                    >
-                      <option value="small" className="bg-slate-900 text-white">صغير</option>
-                      <option value="medium" className="bg-slate-900 text-white">متوسط (افتراضي)</option>
-                      <option value="large" className="bg-slate-900 text-white">كبير</option>
+                  <div className="settings-field">
+                    <label htmlFor="settings-font-size">حجم الخط</label>
+                    <select id="settings-font-size" aria-label="حجم الخط" value={fontSizePreference}
+                      onChange={event => {
+                        const value = event.target.value as 'small' | 'medium' | 'large';
+                        setFontSizePreference(value); safeStorage.setItem('fontSizePreference', value); triggerHaptic(10);
+                      }}>
+                      <option value="small">صغير</option><option value="medium">متوسط</option><option value="large">كبير</option>
                     </select>
                   </div>
-                </div>
-              )}
-
-              {settingsTab === 'advanced' && (
-                <div className="space-y-6">
-                  {/* Data Saver Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">توفير البيانات</p>
-                      <p className="text-xs text-slate-500 mt-1">تقليل استهلاك البيانات بإيقاف التحديثات التلقائية السريعة</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newVal = !dataSaver;
-                        setDataSaver(newVal);
-                        safeStorage.setItem('dataSaver', String(newVal));
-                        triggerHaptic(10);
-                      }}
-                      role="switch"
-                      aria-label="توفير البيانات"
-                      aria-checked={dataSaver}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dataSaver ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
+                  <div className="settings-row">
+                    <div className="settings-copy"><h3>الوضع المضغوط</h3><p>مسافات أقل في بطاقات الأسعار</p></div>
+                    <button role="switch" aria-label="الوضع المضغوط" aria-checked={compactMode} className="settings-switch"
+                      onClick={() => { setCompactMode(!compactMode); safeStorage.setItem('compactMode', String(!compactMode)); triggerHaptic(10); }}>
+                      <span><span /></span>
                     </button>
                   </div>
-
-                  {/* Default Market Select */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">السوق الافتراضي</p>
-                      <p className="text-xs text-slate-500 mt-1">تحديد السوق المفضل لعرض الأسعار</p>
-                    </div>
-                    <select
-                      value={defaultMarket}
-                      aria-label="السوق الافتراضي"
-                      onChange={(e) => {
-                        const val = e.target.value as 'parallel' | 'official';
-                        setDefaultMarket(val);
-                        safeStorage.setItem('defaultMarket', val);
-                        triggerHaptic(10);
-                      }}
-                      className="bg-white/5 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500/50"
-                    >
-                      <option value="parallel">السوق الموازي</option>
-                      <option value="official">السوق الرسمي</option>
-                    </select>
+                  <div className="settings-row">
+                    <div className="settings-copy"><h3>الحركات والانتقالات</h3></div>
+                    <button role="switch" aria-label="الحركة" aria-checked={animationsEnabled} className="settings-switch"
+                      onClick={() => { setAnimationsEnabled(!animationsEnabled); safeStorage.setItem('animationsEnabled', String(!animationsEnabled)); triggerHaptic(10); }}>
+                      <span><span /></span>
+                    </button>
                   </div>
-
-                  {/* Chart Resolution */}
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-800/60">
-                    <div>
-                      <p className="text-sm font-medium text-slate-200">دقة تفاصيل المخطط</p>
-                      <p className="text-xs text-slate-500 mt-1">تحديد مستوى دقة وتفاصيل المخططات البيانية</p>
-                    </div>
-                    <select
-                      value={chartResolution}
-                      aria-label="دقة الرسم البياني"
-                      onChange={(e) => {
-                        const val = e.target.value as 'low' | 'medium' | 'high';
-                        setChartResolution(val);
-                        safeStorage.setItem('chartResolution', val);
-                        triggerHaptic(10);
-                      }}
-                      className="bg-white/5 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500/50"
-                    >
-                      <option value="low" className="bg-slate-900 text-white">منخفض (يومي)</option>
-                      <option value="medium" className="bg-slate-900 text-white">متوسط (كل 6 ساعات)</option>
-                      <option value="high" className="bg-slate-900 text-white">مرتفع (لحظي)</option>
-                    </select>
-                  </div>
-
-                  {/* Spread Gap Alert */}
-                  <div className="pt-4 border-t border-slate-800/60 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-slate-200">تنبيه فجوة السعر الموازي/الرسمي</p>
-                        <p className="text-xs text-slate-500 mt-1">التنبيه عند تجاوز الفرق بين السعر الموازي والرسمي حداً معيناً</p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const newVal = !spreadAlertEnabled;
-                          setSpreadAlertEnabled(newVal);
-                          safeStorage.setItem('spreadAlertEnabled', String(newVal));
-                          triggerHaptic(10);
-                        }}
-                      role="switch"
-                      aria-label="تنبيه فرق السعر"
-                      aria-checked={spreadAlertEnabled}
-                      className="w-11 h-11 shrink-0 flex items-center justify-center"
-                    >
-                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${spreadAlertEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
-                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
-                      </span>
-                      </button>
-                    </div>
-
-                    {spreadAlertEnabled && (
-                      <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-slate-800/60">
-                        <span className="text-xs text-slate-400">نبهني عندما تزيد الفجوة عن:</span>
-                        <div className="flex items-center gap-1.5 ml-auto">
-                          <input
-                            type="number"
-                            min="0.1"
-                            max="10.0"
-                            step="0.1"
-                            value={spreadAlertValue}
-                            aria-label="قيمة فرق السعر للتنبيه"
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 1.5;
-                              setSpreadAlertValue(val);
-                              safeStorage.setItem('spreadAlertValue', String(val));
-                            }}
-                            className="w-16 bg-white/10 border border-slate-700/50 rounded-lg px-2 py-1 text-xs text-center text-white focus:outline-none focus:border-indigo-500"
-                          />
-                          <span className="text-xs font-mono text-indigo-400">د.ل</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                </>
               )}
             </div>
-
-            <div className="p-4 sm:p-6 bg-white/[0.02] border-t border-slate-800/60 shrink-0">
-              <button 
-                onClick={() => setShowSettingsModal(false)}
-                className="w-full py-3 bg-white text-black text-sm font-bold rounded-2xl hover:bg-zinc-200 transition-colors"
-              >
-                حفظ الإعدادات
-              </button>
+            <div className="settings-footer">
+              <span><CheckCircle2 size={16} aria-hidden="true" />تُحفظ التفضيلات تلقائيًا</span>
+              <button onClick={() => setShowSettingsModal(false)}>تم</button>
             </div>
           </motion.div>
         </div>

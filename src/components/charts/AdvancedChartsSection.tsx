@@ -1,17 +1,10 @@
-import React from "react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import React, { useMemo } from "react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
 import { format } from "date-fns";
-import { LineChart } from "lucide-react";
+import { ChartNoAxesCombined, TrendingUp, TrendingDown, Minus, List, ChevronDown } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import { HistoryPoint } from "../../types/rates";
-import { useReducedMotion } from 'motion/react';
+import { FlagIcon } from "../FlagIcon";
 
 interface AdvancedChartsSectionProps {
   activeTab: string;
@@ -22,199 +15,155 @@ interface AdvancedChartsSectionProps {
   history: HistoryPoint[];
 }
 
+const currencies = [
+  { id: 'USD_CASH', label: 'دولار كاش', flag: 'us' },
+  { id: 'USD_CHECKS', label: 'دولار صكوك', flag: 'us' },
+  { id: 'EUR', label: 'يورو', flag: 'eu' },
+  { id: 'GOLD_SCRAP_18', label: 'ذهب كسر 18', flag: 'gold' },
+];
+const ranges = [
+  { id: '1w', label: 'أسبوع', days: 7 },
+  { id: '1m', label: 'شهر', days: 30 },
+  { id: '6m', label: '6 أشهر', days: 180 },
+  { id: '1y', label: 'سنة', days: 365 },
+  { id: 'all', label: 'الكل', days: Infinity },
+] as const;
+
 export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
-  activeTab,
-  chartAnalysisCurrency,
-  setChartAnalysisCurrency,
-  chartAnalysisRange,
-  setChartAnalysisRange,
-  history,
+  activeTab, chartAnalysisCurrency, setChartAnalysisCurrency,
+  chartAnalysisRange, setChartAnalysisRange, history,
 }) => {
   const reducedMotion = useReducedMotion();
+  const currency = currencies.find(item => item.id === chartAnalysisCurrency) || currencies[0];
+  const data = useMemo(() => {
+    const days = ranges.find(item => item.id === chartAnalysisRange)?.days ?? Infinity;
+    const cutoff = days === Infinity ? 0 : Date.now() - days * 86400000;
+    return history.map(point => {
+      const time = Date.parse(point.time);
+      const value = chartAnalysisCurrency === 'USD_CASH' ? point.usdParallel || point.ratesParallel?.USD :
+        chartAnalysisCurrency === 'USD_CHECKS' ? point.ratesParallel?.USD_CHECKS || point.ratesParallel?.USD_JBANK || point.ratesParallel?.USD_NCB :
+        point.ratesParallel?.[chartAnalysisCurrency];
+      return { time, value };
+    }).filter((point): point is { time: number; value: number } =>
+      Number.isFinite(point.time) && point.time >= cutoff && typeof point.value === 'number' && Number.isFinite(point.value) && point.value > 0
+    ).sort((a, b) => a.time - b.time);
+  }, [history, chartAnalysisCurrency, chartAnalysisRange]);
+  const first = data[0];
+  const last = data[data.length - 1];
+  const change = first && last ? last.value - first.value : 0;
+  const changePercent = first ? change / first.value * 100 : 0;
+  const trendColor = change > 0 ? 'var(--positive)' : change < 0 ? 'var(--negative)' : 'var(--official)';
+  const TrendIcon = change > 0 ? TrendingUp : change < 0 ? TrendingDown : Minus;
+  const intraday = first && last && last.time - first.time < 86400000 * 2;
+  const statistics = data.reduce((result, point) => ({
+    min: Math.min(result.min, point.value), max: Math.max(result.max, point.value), sum: result.sum + point.value,
+  }), { min: Infinity, max: -Infinity, sum: 0 });
+  const unit = chartAnalysisCurrency === 'GOLD_SCRAP_18' ? 'د.ل / غرام' : 'د.ل';
+
   return (
-    <section id="charts-section" className={`mt-16 ${activeTab === 'charts' ? '' : 'hidden md:block'}`}>
-      <div className="mb-8">
-        <h2 className="text-3xl font-black text-gradient tracking-tight flex items-center gap-3 mb-2">
-          <LineChart className="w-8 h-8 text-fuchsia-500" />
-          التحليل المتقدم
-        </h2>
-        <p className="text-slate-400">تابع اتجاهات السوق وحركة الأسعار زمنياً</p>
+    <section id="charts-section" className={`analysis-section ${activeTab === 'charts' ? '' : 'hidden md:block'}`}>
+      <div className="analysis-heading">
+        <span><ChartNoAxesCombined size={22} aria-hidden="true" /></span>
+        <div><h2>التحليل المتقدم</h2><p>حركة الأسعار في السوق الموازي</p></div>
       </div>
-      
-      <div className="glass-panel-heavy rounded-3xl premium-border p-4 sm:p-6 shadow-2xl relative overflow-hidden">
-        {/* Background Ambient */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-        
-        <div className="relative z-10 flex flex-col gap-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            {/* Currency Filter */}
-            <div className="grid grid-cols-2 sm:flex bg-white/5 p-1 rounded-2xl border border-slate-800/60 w-full sm:w-auto">
-              {['USD_CASH', 'USD_CHECKS', 'EUR', 'GOLD_SCRAP_18'].map(curr => (
-                <button
-                  key={curr}
-                  aria-pressed={chartAnalysisCurrency === curr}
-                  onClick={() => setChartAnalysisCurrency(curr)}
-                  className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-sm font-bold transition-all ${chartAnalysisCurrency === curr ? 'bg-fuchsia-500/20 text-fuchsia-400' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                  {curr === 'USD_CASH' ? 'دولار كاش' : curr === 'USD_CHECKS' ? 'دولار شيك' : curr === 'EUR' ? 'يورو' : curr === 'GOLD_SCRAP_18' ? 'ذهب كسر 18' : curr}
-                </button>
-              ))}
-            </div>
-            
-            {/* Time Range Filter */}
-            <div className="flex bg-white/5 p-1 rounded-2xl border border-slate-800/60 w-full sm:w-auto">
-              {[
-                { id: '1w', label: 'أسبوع' },
-                { id: '1m', label: 'شهر' },
-                { id: '6m', label: '6 أشهر' },
-                { id: '1y', label: 'سنة' },
-                { id: 'all', label: 'الكل' }
-              ].map(range => (
-                <button
-                  key={range.id}
-                  aria-pressed={chartAnalysisRange === range.id}
-                  onClick={() => setChartAnalysisRange(range.id as any)}
-                  className={`flex-1 sm:flex-none px-3 py-2 rounded-xl text-xs font-bold transition-all ${chartAnalysisRange === range.id ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  {range.label}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          {/* Area Chart */}
-          <div className="w-full h-[300px] sm:h-[400px]">
-            {history.length > 0 ? (() => {
-              const now = new Date();
-              let cutoff = new Date(0);
-              if (chartAnalysisRange === '1w') cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-              if (chartAnalysisRange === '1m') cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-              if (chartAnalysisRange === '6m') cutoff = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
-              if (chartAnalysisRange === '1y') cutoff = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-              
-              const filteredData = history
-                .filter(h => new Date(h.time) >= cutoff)
-                .map(h => {
-                  let val = 0;
-                  if (chartAnalysisCurrency === 'USD_CASH') val = h.usdParallel || h.ratesParallel?.USD || 0;
-                  if (chartAnalysisCurrency === 'USD_CHECKS') val = h.ratesParallel?.USD_CHECKS || h.ratesParallel?.USD_JBANK || h.ratesParallel?.USD_NCB || 0;
-                  if (chartAnalysisCurrency === 'EUR') val = h.ratesParallel?.EUR || 0;
-                  if (chartAnalysisCurrency === 'GOLD_SCRAP_18') val = h.ratesParallel?.GOLD_SCRAP_18 || 0;
-                  
-                  return {
-                    time: format(new Date(h.time), "yyyy-MM-dd HH:mm"),
-                    rawTime: h.time,
-                    value: val
-                  };
-                })
-                .filter(d => d.value > 0);
-
-              if (filteredData.length < 2) {
-                return <div className="w-full h-full flex items-center justify-center text-slate-500">لا توجد بيانات كافية لهذه الفترة</div>;
-              }
-
-              const firstVal = filteredData[0].value;
-              const lastVal = filteredData[filteredData.length - 1].value;
-              const isUp = lastVal >= firstVal;
-              const color = isUp ? "#10b981" : "#f43f5e";
-
-              return (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorAnalysis" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={color} stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor={color} stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis 
-                      dataKey="time" 
-                      hide={false} 
-                      tick={{ fill: '#94a3b8', fontSize: 12 }}
-                      tickFormatter={(tick) => tick.split(' ')[0]}
-                      minTickGap={30}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis 
-                      domain={['auto', 'auto']} 
-                      hide={false}
-                      orientation="right"
-                      tick={{ fill: '#94a3b8', fontSize: 12 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                    />
-                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff" strokeOpacity={0.05} vertical={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#050505", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "#fff", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)" }}
-                      itemStyle={{ color: color, fontFamily: "monospace", fontSize: "16px", fontWeight: "bold" }}
-                      labelStyle={{ color: "#a1a1aa", fontSize: "12px", marginBottom: "4px" }}
-                      formatter={(val: number) => [`${val.toFixed(2)} د.ل`, chartAnalysisCurrency === 'GOLD_SCRAP_18' ? 'ذهب كسر 18' : chartAnalysisCurrency === 'USD_CASH' ? 'دولار كاش' : chartAnalysisCurrency === 'USD_CHECKS' ? 'دولار صكوك' : 'يورو']}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke={color} 
-                      strokeWidth={3}
-                      fillOpacity={1} 
-                      fill="url(#colorAnalysis)"
-                      animationDuration={1000}
-                      isAnimationActive={!reducedMotion}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              );
-            })() : (
-              <div className="w-full h-full flex items-center justify-center">
-                <p role="status" className="text-sm text-slate-300">لا توجد بيانات تاريخية متاحة بعد</p>
-              </div>
-            )}
-          </div>
-          
-          {/* Statistics summary below chart */}
-          {history.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
-              {[
-                { label: 'أعلى سعر', calc: (arr: number[]) => Math.max(...arr) },
-                { label: 'أقل سعر', calc: (arr: number[]) => Math.min(...arr) },
-                { label: 'متوسط السعر', calc: (arr: number[]) => arr.reduce((a,b)=>a+b,0)/arr.length },
-                { label: 'التغير', calc: (arr: number[]) => arr[arr.length-1] - arr[0] }
-              ].map((stat, i) => {
-                const now = new Date();
-                let cutoff = new Date(0);
-                if (chartAnalysisRange === '1w') cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                if (chartAnalysisRange === '1m') cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                if (chartAnalysisRange === '6m') cutoff = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
-                if (chartAnalysisRange === '1y') cutoff = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-                
-                const values = history
-                  .filter(h => new Date(h.time) >= cutoff)
-                  .map(h => {
-                    if (chartAnalysisCurrency === 'USD_CASH') return h.usdParallel || h.ratesParallel?.USD || 0;
-                    if (chartAnalysisCurrency === 'USD_CHECKS') return h.ratesParallel?.USD_CHECKS || h.ratesParallel?.USD_JBANK || h.ratesParallel?.USD_NCB || 0;
-                    if (chartAnalysisCurrency === 'EUR') return h.ratesParallel?.EUR || 0;
-                    if (chartAnalysisCurrency === 'GOLD_SCRAP_18') return h.ratesParallel?.GOLD_SCRAP_18 || 0;
-                    return 0;
-                  }).filter(v => v > 0);
-                  
-                const val = values.length > 0 ? stat.calc(values) : 0;
-                const isChange = i === 3;
-                const isPositive = val > 0;
-                
-                return (
-                  <div key={i} className="bg-white/5 rounded-2xl p-3 border border-slate-800/60 flex flex-col items-center justify-center text-center">
-                    <span className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">{stat.label}</span>
-                    <span className={`font-mono font-bold ${isChange ? (isPositive ? 'text-emerald-400' : 'text-rose-400') : 'text-white'}`}>
-                      {values.length > 0 ? `${isChange && isPositive ? '+' : ''}${val.toFixed(2)}` : '—'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      <div className="analysis-toolbar">
+        <div className="analysis-currencies" role="group" aria-label="عملة التحليل">
+          {currencies.map(item => (
+            <button key={item.id} aria-pressed={chartAnalysisCurrency === item.id} onClick={() => setChartAnalysisCurrency(item.id)}>
+              <span aria-hidden="true"><FlagIcon flagCode={item.flag} name={item.label} className="w-7 h-6" /></span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="analysis-ranges" role="group" aria-label="فترة التحليل">
+          {ranges.map(range => (
+            <button key={range.id} aria-pressed={chartAnalysisRange === range.id} onClick={() => setChartAnalysisRange(range.id)}>
+              {range.label}
+            </button>
+          ))}
         </div>
       </div>
+
+      <div className="analysis-summary">
+        <div>
+          <h3>{currency.label}</h3>
+          <div className="analysis-latest"><strong dir="ltr">{last ? last.value.toFixed(2) : '—'}</strong><span>{unit}</span></div>
+          {last && <p>آخر قراءة: <time dateTime={new Date(last.time).toISOString()}>{format(last.time, 'dd/MM/yyyy · HH:mm')}</time></p>}
+        </div>
+        <div className="analysis-period">
+          {data.length >= 2 && (
+            <div className="analysis-trend" style={{ color: trendColor }}>
+              <TrendIcon size={18} aria-hidden="true" />
+              <strong dir="ltr">{changePercent > 0 ? '+' : ''}{changePercent.toFixed(2)}%</strong>
+              <span>{change > 0 ? 'ارتفاع' : change < 0 ? 'انخفاض' : 'استقرار'}</span>
+            </div>
+          )}
+          <p>خلال الفترة المحددة</p>
+          {first && last && <span dir="ltr">{format(first.time, 'dd/MM/yyyy')} — {format(last.time, 'dd/MM/yyyy')}</span>}
+        </div>
+      </div>
+
+      <div className="analysis-chart" role="group" aria-label={`الرسم البياني لحركة ${currency.label}`}>
+        {data.length >= 2 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} accessibilityLayer margin={{ top: 20, right: 8, left: 8, bottom: 8 }}>
+              <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} scale="time"
+                tick={{ fill: 'var(--muted-ink)', fontSize: 12 }} tickFormatter={time => format(time, intraday ? 'HH:mm' : 'dd/MM')}
+                minTickGap={32} axisLine={false} tickLine={false} />
+              <YAxis domain={['auto', 'auto']} orientation="right" tick={{ fill: 'var(--muted-ink)', fontSize: 12 }}
+                tickFormatter={value => Number(value).toFixed(2)} axisLine={false} tickLine={false} width={64} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+              <Tooltip
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--ink)' }}
+                itemStyle={{ color: trendColor, fontSize: 14, fontWeight: 700 }}
+                labelStyle={{ color: 'var(--muted-ink)', fontSize: 12 }}
+                labelFormatter={time => format(Number(time), 'dd/MM/yyyy · HH:mm')}
+                formatter={(value: number) => [`${Number(value).toFixed(2)} ${unit}`, currency.label]} />
+              <Area type="linear" dataKey="value" stroke={trendColor} strokeWidth={2.5}
+                fill={trendColor} fillOpacity={0.08} isAnimationActive={!reducedMotion} animationDuration={350} />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="analysis-empty" role="status">
+            <ChartNoAxesCombined size={28} aria-hidden="true" />
+            <p>{history.length ? 'لا توجد بيانات كافية لهذه الفترة' : 'لا توجد بيانات تاريخية متاحة بعد'}</p>
+          </div>
+        )}
+      </div>
+
+      <dl className="analysis-statistics">
+        {[
+          { label: 'أعلى سعر', value: statistics.max },
+          { label: 'أقل سعر', value: statistics.min },
+          { label: 'متوسط السعر', value: statistics.sum / data.length },
+          { label: 'التغير', value: change },
+        ].map((stat, index) => (
+          <div key={stat.label}>
+            <dt>{stat.label}</dt>
+            <dd style={index === 3 && data.length >= 2 ? { color: trendColor } : undefined}>
+              <strong dir="ltr">{data.length && (index !== 3 || data.length >= 2) ? `${index === 3 && change > 0 ? '+' : ''}${stat.value.toFixed(2)}` : '—'}</strong>
+              <span>{unit}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {data.length > 0 && (
+        <details className="analysis-records">
+          <summary><List size={18} aria-hidden="true" />القراءات التاريخية <span>{data.length} قراءة</span><ChevronDown size={16} aria-hidden="true" /></summary>
+          <table>
+            <caption>أحدث {Math.min(data.length, 20)} قراءة في الفترة المحددة</caption>
+            <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">السعر ({unit})</th></tr></thead>
+            <tbody>{data.slice(-20).reverse().map((point, index) => (
+              <tr key={`${point.time}-${index}`}>
+                <td><time dateTime={new Date(point.time).toISOString()} dir="ltr">{format(point.time, 'dd/MM/yyyy · HH:mm')}</time></td>
+                <td><span dir="ltr">{point.value.toFixed(2)}</span></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </details>
+      )}
     </section>
   );
 };

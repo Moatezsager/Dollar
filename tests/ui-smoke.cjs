@@ -30,6 +30,7 @@ async function main() {
       });
       const now = new Date().toISOString();
       let empty = false;
+      let singleHistory = false;
       let contactFailure = true;
       let usd = 9.4;
       let ratesFailure = false;
@@ -42,12 +43,13 @@ async function main() {
           await initialRatesReady;
         }
         if (url.pathname === '/api/rates' && ratesFailure) return route.fulfill({ status: 503, json: {} });
-        if (url.pathname === '/api/messages') return route.fulfill({ status: contactFailure ? 503 : 200, json: { error: 'تعذر الإرسال مؤقتاً' } });
+        if (url.pathname === '/api/messages') return route.fulfill({ status: contactFailure ? 503 : 200, json: contactFailure ? { error: 'تعذر الإرسال مؤقتاً' } : { success: true } });
         let body = {};
         if (url.pathname === '/api/config') body = { terms: [{ id: 'EUR', name: 'يورو', flag: 'eu' }, { id: 'GBP', name: 'جنيه إسترليني', flag: 'gb' }] };
         if (url.pathname === '/api/rates') body = { parallel: empty ? {} : { USD: usd, USD_CHECKS: 9.6, EUR: 10.2, GBP: 12.1 }, official: empty ? {} : { USD: 6.3, EUR: 7.1 }, previousParallel: { USD: 9.3, EUR: 10.1 }, previousOfficial: { USD: 6.2 }, lastUpdated: now };
         if (url.pathname === '/api/history') body = empty ? [] : Array.from({ length: 12 }, (_, i) => ({ time: new Date(Date.now() - (12 - i) * 3600000).toISOString(), usdParallel: 9.3 + i * 0.01, usdOfficial: 6.3, ratesParallel: { EUR: 10 + i * 0.02, USD_CHECKS: 9.6 } }));
         if (url.pathname === '/api/status') body = { status: 'active', minutesSinceLastScrape: 0 };
+        if (url.pathname === '/api/history' && singleHistory) body = [{ time: now, usdParallel: usd, usdOfficial: 6.3, ratesParallel: { EUR: 10.2 } }];
         return route.fulfill({ json: body });
       });
       await page.route('**/socket.io/**', route => route.fulfill({ status: 503, body: '' }));
@@ -112,16 +114,37 @@ async function main() {
         assert.equal(await nav.locator('button span').count(), 5);
         assert.equal(await nav.locator('[aria-current="page"]').count(), 1, 'Exactly one mobile tab is selected');
         await nav.getByRole('button', { name: 'التحليل', exact: true }).click();
-        const charts = page.locator('#charts-section');
-        await charts.getByRole('button', { name: 'يورو', exact: true }).click();
-        assert.equal(await charts.getByRole('button', { name: 'يورو', exact: true }).getAttribute('aria-pressed'), 'true');
-        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Chart filter overflow at ${width}`);
-        await page.screenshot({ path: path.join(output, `charts-${width}.png`) });
-        await nav.getByRole('button', { name: 'الرئيسية', exact: true }).click();
       } else {
         for (const link of await page.getByRole('navigation', { name: 'أقسام لوحة الأسعار' }).locator('a').all()) {
           assert.equal(await page.locator(await link.getAttribute('href')).count(), 1);
         }
+      }
+      const charts = page.locator('#charts-section');
+      await charts.scrollIntoViewIfNeeded();
+      await charts.getByRole('button', { name: 'يورو', exact: true }).click();
+      assert.equal(await charts.getByRole('button', { name: 'يورو', exact: true }).getAttribute('aria-pressed'), 'true');
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Chart filter overflow at ${width}`);
+      await charts.locator('.recharts-area-curve').waitFor();
+      assert(await charts.locator('.recharts-area-curve').evaluate(path => path.getTotalLength() > 0), 'Analysis chart draws a nonblank price series');
+      assert.equal(await charts.locator('.analysis-statistics > div').nth(0).locator('strong').innerText(), '10.22');
+      assert.equal(await charts.locator('.analysis-statistics > div').nth(1).locator('strong').innerText(), '10.00');
+      assert.equal(await charts.locator('.analysis-statistics > div').nth(2).locator('strong').innerText(), '10.12');
+      await charts.getByText('القراءات التاريخية', { exact: false }).filter({ has: page.locator('svg') }).click();
+      assert.equal(await charts.getByRole('table').locator('tbody tr').count(), 13, 'History table shares the chart readings');
+      assert.equal(await charts.getByRole('table').locator('tbody tr').first().locator('td').last().innerText(), '10.20', 'Newest reading is first');
+      await charts.getByRole('button', { name: 'أسبوع', exact: true }).click();
+      assert.equal(await charts.getByRole('button', { name: 'أسبوع', exact: true }).getAttribute('aria-pressed'), 'true');
+      await charts.locator('summary').click();
+      await charts.screenshot({ path: path.join(output, `charts-${width}.png`) });
+      await charts.getByRole('button', { name: 'ذهب كسر 18', exact: true }).click();
+      await charts.getByRole('status').filter({ hasText: 'لا توجد بيانات كافية لهذه الفترة' }).waitFor();
+      assert.equal(await charts.locator('.analysis-latest strong').innerText(), '—', 'Missing metal prices are not fabricated');
+      assert.equal(await charts.locator('.analysis-statistics strong').allTextContents().then(values => values.join('')), '————');
+      await charts.getByRole('button', { name: 'يورو', exact: true }).click();
+      if (width < 768) {
+        await page.getByRole('navigation', { name: 'التنقل الرئيسي' }).getByRole('button', { name: 'الرئيسية', exact: true }).click();
+      } else {
+        await page.evaluate(() => window.scrollTo(0, 0));
       }
       await page.screenshot({ path: path.join(output, `dashboard-${width}.png`), fullPage: true });
       await page.screenshot({ path: path.join(output, `viewport-${width}.png`) });
@@ -145,6 +168,17 @@ async function main() {
       await dialog.waitFor();
       await page.waitForTimeout(250);
       assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Dialog must receive focus');
+      await dialog.locator('.currency-detail-chart').scrollIntoViewIfNeeded();
+      await dialog.locator('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value').first().waitFor();
+      assert((await dialog.locator('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value').allTextContents()).some(text => /\d{2}:\d{2}/.test(text)), 'Short history uses readable hourly axis labels');
+      const detailBounds = await dialog.boundingBox();
+      assert(detailBounds.y >= 0 && detailBounds.y + detailBounds.height <= height + 1, 'Currency details fit the viewport');
+      await dialog.getByRole('spinbutton', { name: 'المبلغ بالعملة الأجنبية' }).fill('2.5');
+      assert.equal(await dialog.locator('.currency-detail-total strong').innerText(), '23.50', 'Custom decimal conversion uses the current rate');
+      await dialog.getByRole('spinbutton', { name: 'المبلغ بالعملة الأجنبية' }).fill('');
+      assert.equal(await dialog.locator('.currency-detail-total strong').innerText(), '—', 'Empty conversion does not fabricate a value');
+      await dialog.getByRole('group', { name: 'مبالغ التحويل السريع' }).getByRole('button', { name: '100', exact: true }).click();
+      assert.equal(await dialog.locator('.currency-detail-total strong').innerText(), '940.00');
       await dialog.getByText('القراءات التاريخية', { exact: true }).click();
       await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('Test clipboard failure'); }; });
       await dialog.getByRole('button', { name: 'نسخ السعر', exact: true }).click();
@@ -159,6 +193,7 @@ async function main() {
       await last.focus();
       await page.keyboard.press('Tab');
       assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Tab must stay inside dialog');
+      await dialog.locator('.currency-detail-content').evaluate(element => { element.scrollTop = 0; });
       await page.screenshot({ path: path.join(output, `dialog-${width}.png`) });
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'hidden' });
@@ -177,7 +212,9 @@ async function main() {
       const settings = page.getByRole('dialog', { name: 'الإعدادات' });
       await settings.waitFor();
       await page.waitForTimeout(300);
-      assert.equal(await settings.getByRole('switch').count(), 4);
+      assert.equal(await settings.getByRole('switch').count(), 2, 'General settings only contain working controls');
+      assert.equal(await settings.getByRole('tab').count(), 3, 'Settings have three focused categories');
+      assert.equal(await settings.getByText('التحديث التلقائي', { exact: true }).count(), 0, 'No nonfunctional refresh toggle');
       const haptic = settings.getByRole('switch', { name: 'الاهتزاز', exact: true });
       await haptic.focus();
       await page.keyboard.press('Space');
@@ -185,8 +222,18 @@ async function main() {
       const bounds = await settings.boundingBox();
       assert(bounds.y >= -1 && bounds.y + bounds.height <= height + 1, `Settings must fit ${width}x${height}`);
       await page.screenshot({ path: path.join(output, `settings-${width}.png`) });
-      await settings.getByRole('button', { name: 'المظهر', exact: true }).click();
+      await settings.getByRole('tab', { name: 'عام', exact: true }).focus();
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await settings.getByRole('tab', { name: 'التنبيهات', exact: true }).getAttribute('aria-selected'), 'true', 'RTL tabs support arrow navigation');
+      await settings.getByRole('slider', { name: 'حساسية التنبيه' }).evaluate(input => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, '0.025');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      assert.equal(await settings.locator('output').innerText(), '0.025 د.ل', 'Threshold displays full precision');
+      assert.equal(await page.evaluate(() => localStorage.getItem('notificationThreshold')), '0.025');
+      await settings.getByRole('tab', { name: 'المظهر', exact: true }).click();
       await settings.getByRole('combobox', { name: 'حجم الخط', exact: true }).selectOption('large');
+      await page.screenshot({ path: path.join(output, `settings-appearance-${width}.png`) });
       await page.keyboard.press('Escape');
       await settings.waitFor({ state: 'hidden' });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Large text overflow at ${width}`);
@@ -196,6 +243,21 @@ async function main() {
         await page.getByRole('button', { name: label, exact: true }).click();
         await page.getByRole('heading', { name: title, exact: true }).first().waitFor();
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${title} overflow at ${width}`);
+        if (title === 'عن المنصة') {
+          const informationNav = page.getByRole('navigation', { name: 'معلومات المنصة' });
+          await informationNav.getByRole('button', { name: 'الخصوصية', exact: true }).click();
+          await page.getByRole('heading', { name: 'سياسة الخصوصية', exact: true }).waitFor();
+          await page.getByRole('heading', { name: 'الخدمات الخارجية', exact: true }).waitFor();
+          assert(await page.locator('.information-body').innerText().then(text => text.includes('عنوان الإنترنت (IP)') && text.includes('Telegram') && text.includes('Supabase')), 'Privacy reflects technical data and message processing');
+          await page.screenshot({ path: path.join(output, `privacy-light-${width}.png`), fullPage: true });
+          await informationNav.getByRole('button', { name: 'الاستخدام', exact: true }).click();
+          await page.getByRole('heading', { name: 'سياسة الاستخدام', exact: true }).waitFor();
+          await page.getByRole('heading', { name: 'المشاركة وإعادة الاستخدام', exact: true }).waitFor();
+          await page.screenshot({ path: path.join(output, `terms-light-${width}.png`), fullPage: true });
+          await informationNav.getByRole('button', { name: 'عن المنصة', exact: true }).click();
+          await page.getByRole('heading', { name: 'عن المنصة', exact: true }).waitFor();
+          assert.equal(await informationNav.locator('[aria-current="page"]').count(), 1);
+        }
         if (title === 'اتصل بنا') {
           await page.getByRole('textbox', { name: 'البريد الإلكتروني', exact: true }).fill('test@example.com');
           await page.getByRole('textbox', { name: 'رقم الهاتف (واتساب)', exact: true }).fill('+218910000000');
@@ -225,16 +287,38 @@ async function main() {
       await page.getByRole('combobox', { name: 'عملة التحويل', exact: true }).selectOption('EUR');
       await page.getByRole('textbox', { name: 'المبلغ بالعملة الأجنبية', exact: true }).fill('2');
       assert.equal(await page.getByRole('spinbutton', { name: 'المبلغ بالدينار في السوق الموازي', exact: true }).inputValue(), '20.40');
+      assert.equal(await page.locator('#converter-foreign').evaluate(input => getComputedStyle(input).fontSize), '28px', 'Converter amounts retain readable display size');
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Converter overflow');
       const directionButton = await page.getByRole('button', { name: 'إدخال القيمة بالدينار', exact: true }).boundingBox();
       const currencyInput = await page.getByRole('textbox', { name: 'المبلغ بالعملة الأجنبية', exact: true }).boundingBox();
       const parallelInput = await page.getByRole('spinbutton', { name: 'المبلغ بالدينار في السوق الموازي', exact: true }).boundingBox();
       assert(directionButton.y >= currencyInput.y + currencyInput.height && directionButton.y + directionButton.height <= parallelInput.y, 'Converter command must not overlap fields');
       await page.screenshot({ path: path.join(output, `converter-${width}.png`) });
+      await page.locator('#converter-parallel').fill('102');
+      assert.equal(await page.locator('#converter-foreign').inputValue(), '10', 'Reverse parallel conversion works');
+      assert.equal(await page.locator('#converter-official').inputValue(), '71', 'Reverse conversion updates official result');
       if (width < 768) {
         await page.getByRole('navigation', { name: 'التنقل الرئيسي' }).getByRole('button', { name: 'الذهب', exact: true }).click();
         await page.getByRole('status').filter({ hasText: 'لا توجد أسعار معادن متاحة' }).waitFor();
         await page.getByRole('navigation', { name: 'التنقل الرئيسي' }).getByRole('button', { name: 'المزيد', exact: true }).click();
+        const more = page.locator('#more-section');
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'More section has no horizontal overflow');
+        for (const command of await more.locator('button, a').all()) {
+          const bounds = await command.boundingBox();
+          assert(bounds && bounds.height >= 44, 'More commands have accessible touch targets');
+        }
+        assert.equal(await more.getByRole('link', { name: /قناة التيليجرام/ }).getAttribute('href'), 'https://t.me/libya_index_dollar');
+        await more.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(output, `more-light-${width}.png`), fullPage: true });
+        await toggleTheme(page);
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: path.join(output, `more-dark-${width}.png`), fullPage: true });
+        await toggleTheme(page);
+        await more.getByRole('button', { name: 'التنبيهات', exact: true }).click();
+        await page.getByRole('dialog').waitFor();
+        assert.equal(await page.getByRole('tab', { name: 'التنبيهات', exact: true }).getAttribute('aria-selected'), 'true', 'More shortcut opens notification settings directly');
+        assert.equal(await page.getByRole('slider', { name: 'حساسية التنبيه' }).inputValue(), '0.025');
+        await page.keyboard.press('Escape');
         for (const title of ['سياسة الاستخدام', 'سياسة الخصوصية']) {
           await page.getByRole('button').filter({ has: page.getByText(title, { exact: true }) }).first().click();
           await page.getByRole('heading', { name: title, exact: true }).waitFor();
@@ -260,11 +344,30 @@ async function main() {
       ratesFailure = false;
       await toggleTheme(page);
       assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+      if (width === 320) {
+        singleHistory = true;
+        await page.evaluate(() => { localStorage.removeItem('lyd_rates'); localStorage.removeItem('lyd_history'); });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.locator('.dollar-cards').waitFor();
+        await card.click();
+        await dialog.getByRole('status').filter({ hasText: 'لا توجد بيانات تاريخية كافية لهذه الفترة' }).waitFor();
+        await dialog.getByText('القراءات التاريخية', { exact: true }).click();
+        await dialog.getByRole('table').locator('tbody tr').first().waitFor();
+        assert.equal(await dialog.getByRole('table').locator('tbody tr').count(), 1, 'A single real reading is not duplicated into a fabricated chart point');
+        await page.keyboard.press('Escape');
+        singleHistory = false;
+      }
       empty = true;
       await page.evaluate(() => { localStorage.removeItem('lyd_rates'); localStorage.removeItem('lyd_history'); });
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText('لا توجد بيانات تاريخية كافية لهذه الفترة', { exact: true }).first().waitFor();
       assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark', 'Dark theme survives reload');
+      await page.getByRole('button', { name: 'المزيد من الخيارات', exact: true }).click();
+      await page.getByRole('button', { name: 'الإعدادات والتنبيهات', exact: true }).click();
+      await settings.getByRole('tab', { name: 'التنبيهات', exact: true }).click();
+      assert.equal(await settings.getByRole('slider', { name: 'حساسية التنبيه' }).inputValue(), '0.025', 'Threshold survives reload');
+      await page.screenshot({ path: path.join(output, `settings-notifications-dark-${width}.png`) });
+      await page.keyboard.press('Escape');
       assert(!await page.locator('.dollar-cards').innerText().then(text => /9\.55|9\.78|6\.41/.test(text)), 'No fabricated price fallback');
       assert.equal(errors.length, 0, errors.join('\n'));
       console.log(`PASS ${width}x${height}: layout, navigation, keyboard dialogs, search, empty data`);

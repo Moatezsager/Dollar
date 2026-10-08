@@ -1,86 +1,44 @@
 import React from 'react';
-import { ShieldAlert, ArrowRight } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { InformationPage, InformationPageProps } from './InformationPage';
 
-export function Terms({ onBack }: { onBack: () => void }) {
+export function Terms(props: InformationPageProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-      className="content-page max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 md:py-12 pb-32"
-    >
-      <button 
-        onClick={onBack}
-        className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors mb-8"
-      >
-        <ArrowRight className="w-5 h-5" />
-        <span>العودة</span>
-      </button>
-
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-          <ShieldAlert className="w-7 h-7 text-indigo-400" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-white">سياسة الاستخدام</h1>
-          <p className="text-zinc-400 mt-1">تحديث: سبتمبر 2026</p>
-        </div>
-      </div>
-
-      <div className="bg-[#111111] rounded-3xl border border-white/5 p-6 md:p-8 space-y-8">
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
-            مقدمة
-          </h2>
-          <p className="text-zinc-400 leading-relaxed">
-            مرحباً بك في منصة "مؤشر الدينار". باستخدامك لهذه المنصة، فإنك توافق على الامتثال والالتزام بشروط وأحكام الاستخدام التالية التي تحكم علاقة المنصة معك.
-          </p>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
-            طبيعة المعلومات والبيانات
-          </h2>
-          <p className="text-zinc-400 leading-relaxed">
-            الأسعار المعروضة في التطبيق هي عبارة عن أسعار استرشادية تقريبية مبنية على متوسط السوق لحظة الإصدار. لا تتحمل المنصة أو فريق التطوير أي مسؤولية عن أية قرارات مالية، استثمارية، أو تجارية يتم اتخاذها بناءً على هذه البيانات. الأسعار قد تتغير بسرعة وحسب المنطقة.
-          </p>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
-            إخلاء المسؤولية
-          </h2>
-          <p className="text-zinc-400 leading-relaxed">
-            "مؤشر الدينار" منصة معلوماتية بحتة، ولا تمثل أي جهة حكومية أو رسمية (باستثناء عرضها لبيانات مصرف ليبيا المركزي ضمن قسم السوق الرسمي كمصدر معلن). استخدامك للمنصة يكون على مسؤوليتك الشخصية بالكامل.
-          </p>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
-            حقوق الملكية الفكرية
-          </h2>
-          <p className="text-zinc-400 leading-relaxed">
-            كافة حقوق التصميم، البرمجيات، الواجهات، وآليات العرض مملوكة لمنصة "مؤشر الدينار" وفريق التطوير (GreenBox). يمنع نسخ أو إعادة نشر أي جزء من المنصة أو بياناتها لأغراض تجارية دون إذن مسبق.
-          </p>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
-            الاستخدام المقبول
-          </h2>
-          <ul className="list-disc list-inside text-zinc-400 leading-relaxed space-y-2">
-            <li>يمنع استخدام المنصة لأي أغراض غير قانونية.</li>
-            <li>يمنع محاولة اختراق أو تعطيل البنية التحتية للمنصة أو واجهات برمجة التطبيقات (API).</li>
-            <li>يحق لنا حظر أي عنوان IP يتسبب في ضغط غير مبرر على خوادم المنصة (مثل هجمات DDoS أو السكرابينغ المكثف).</li>
-          </ul>
-        </section>
-      </div>
-    </motion.div>
+    <InformationPage {...props} page="terms" title="سياسة الاستخدام">
+      <p className="information-lead">مؤشر الدينار خدمة لعرض أسعار العملات والمعادن ومقارنتها. ليست مكتب صرافة أو وسيطًا ماليًا، ولا تنفّذ عمليات بيع أو شراء. توضح هذه الصفحة حدود المعلومات وطريقة الاستخدام المقبولة.</p>
+      <section>
+        <h2>قبل الاعتماد على سعر</h2>
+        <p>أسعار السوق الموازي استرشادية، وقد تختلف عن السعر الذي تحصل عليه حسب المكان والمبلغ ونوع المعاملة. والأسعار الرسمية المعروضة منسوبة إلى مصدرها، ولا تعني أن المنصة تمثل مصرف ليبيا المركزي أو أي جهة حكومية.</p>
+        <p>تحقق من العملة والسوق ووقت تحديث البيانات، ثم أكد السعر مع الجهة التي ستتعامل معها. وقد تتأخر البيانات أو التنبيهات بسبب الاتصال أو المصادر أو خدمات الاستضافة.</p>
+      </section>
+      <section>
+        <h2>التحويل والتحليل</h2>
+        <p>المحول يحسب قيمة على أساس السعر المعروض؛ النتيجة ليست عرضًا لتنفيذ معاملة، ولا تشمل تلقائيًا عمولات أو رسومًا أو فروق بيع وشراء.</p>
+        <p>إحصاءات الرسوم تصف القراءات الموجودة في السجل، ولا تضمن تغطية كل حركة السوق. وأي تعليق بمساعدة أدوات ذكاء اصطناعي قد يحتوي على خطأ أو يغفل سياقًا مهمًا. هذه المعلومات ليست نصيحة استثمارية شخصية أو وعدًا باتجاه السعر.</p>
+      </section>
+      <section>
+        <h2>المشاركة وإعادة الاستخدام</h2>
+        <p>يمكنك استخدام الأسعار للاستفادة الشخصية ومشاركة البطاقات والتقارير التي تتيحها المنصة، مع إبقاء اسم المصدر ووقت البيانات وعدم تغيير الأرقام أو نسبتها إلى جهة أخرى.</p>
+        <p>إذا أردت إعادة نشر البيانات بصورة مكثفة أو دمجها في خدمة تجارية، تواصل معنا لتنسيق الاستخدام. واستخدام واجهات API يخضع لحدود الوصول الموضحة في وثائقها، ولا يتيح تجاوز الحماية أو استخراج بيانات الإدارة.</p>
+        <p>هوية المنصة ونصوصها وتصميمها محفوظة لأصحابها. وتبقى حقوق المصادر والمكونات البرمجية الخارجية خاضعة لتراخيصها؛ وجود سعر عام لا يعني امتلاك المنصة حقوقًا حصرية على معلومة السوق نفسها.</p>
+      </section>
+      <section>
+        <h2>الاستخدام المقبول</h2>
+        <ul>
+          <li>لا تحاول تعطيل الخدمة أو تجاوز حدود الطلبات أو الوصول إلى بيانات غير متاحة لك.</li>
+          <li>لا ترسل رسائل مزعجة أو محتوى ضارًا أو بيانات تخص الآخرين دون صلاحية.</li>
+          <li>لا تقدّم محتوى المنصة على أنه ضمان لسعر صفقة أو توصية رسمية.</li>
+        </ul>
+        <p>قد يُقيّد الوصول عند رصد طلبات مسيئة أو ضغط يهدد استقرار الخدمة. إذا ظننت أن التقييد حدث بالخطأ، يمكنك مراسلتنا.</p>
+      </section>
+      <section>
+        <h2>توفر الخدمة وحدود المسؤولية</h2>
+        <p>قد تتوقف بعض الوظائف للصيانة أو بسبب عطل، وقد تظهر آخر بيانات محفوظة عند انقطاع الاتصال. لا نضمن تحديث كل مصدر دون تأخير أو وصول كل إشعار.</p>
+        <p>قراراتك ومعاملاتك تبقى مسؤوليتك، ولا تُغني هذه الخدمة عن التحقق المباشر. ولا يقصد بهذه الصفحة استبعاد حقوق أو مسؤوليات لا يسمح القانون المطبق باستبعادها.</p>
+      </section>
+      <section>
+        <h2>التعديلات والتواصل</h2>
+        <p>قد تتغير الوظائف وهذه الشروط مع تطوير الخدمة، ويُبيّن التاريخ أعلى الصفحة آخر مراجعة. تعامل المنصة مع بيانات الزيارة والمراسلات موضح في سياسة الخصوصية. وللاستفسار عن استخدام البيانات أو الإبلاغ عن خطأ، استخدم صفحة التواصل.</p>
+      </section>
+    </InformationPage>
   );
 }

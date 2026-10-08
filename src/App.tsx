@@ -64,30 +64,10 @@ export default function App() {
     setSoundEnabled,
     animationsEnabled,
     setAnimationsEnabled,
-    autoRefreshEnabled,
-    setAutoRefreshEnabled,
-    showChart,
-    setShowChart,
     compactMode,
     setCompactMode,
-    dataSaver,
-    setDataSaver,
-    defaultMarket,
-    setDefaultMarket,
-    majorChangesOnly,
-    setMajorChangesOnly,
-    dailySummaryEnabled,
-    setDailySummaryEnabled,
-    goldNotificationsEnabled,
-    setGoldNotificationsEnabled,
     fontSizePreference,
     setFontSizePreference,
-    chartResolution,
-    setChartResolution,
-    spreadAlertEnabled,
-    setSpreadAlertEnabled,
-    spreadAlertValue,
-    setSpreadAlertValue,
     expandedSections,
     toggleSection,
     triggerHaptic,
@@ -200,7 +180,7 @@ export default function App() {
 
   // Settings Modal State
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'notifications' | 'appearance' | 'advanced'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'notifications' | 'appearance'>('general');
 
   // Header More Menu & Tour
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -434,11 +414,11 @@ export default function App() {
               </motion.div>
             ) : currentPage === 'terms' ? (
               <motion.div key="terms" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <Terms onBack={() => setCurrentPage('dashboard')} />
+                <Terms onBack={() => setCurrentPage('dashboard')} onNavigate={setCurrentPage} />
               </motion.div>
             ) : currentPage === 'privacy' ? (
               <motion.div key="privacy" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <Privacy onBack={() => setCurrentPage('dashboard')} />
+                <Privacy onBack={() => setCurrentPage('dashboard')} onNavigate={setCurrentPage} />
               </motion.div>
             ) : currentPage === 'contact' ? (
               <motion.div key="contact" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -446,7 +426,7 @@ export default function App() {
               </motion.div>
             ) : currentPage === 'about' ? (
               <motion.div key="about" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <About onBack={() => setCurrentPage('dashboard')} />
+                <About onBack={() => setCurrentPage('dashboard')} onNavigate={setCurrentPage} />
               </motion.div>
             ) : (
               /* Main Dashboard Content */
@@ -581,40 +561,22 @@ export default function App() {
           <SettingsModal
             showSettingsModal={showSettingsModal}
             setShowSettingsModal={setShowSettingsModal}
+            settingsTab={settingsTab}
+            setSettingsTab={setSettingsTab}
             hapticEnabled={hapticEnabled}
             setHapticEnabled={setHapticEnabled}
             soundEnabled={soundEnabled}
             setSoundEnabled={setSoundEnabled}
-            autoRefreshEnabled={autoRefreshEnabled}
-            setAutoRefreshEnabled={setAutoRefreshEnabled}
-            showChart={showChart}
-            setShowChart={setShowChart}
             notificationsEnabled={notificationsEnabled}
             requestNotificationPermission={requestNotificationPermission}
             notificationThreshold={notificationThreshold}
             setNotificationThreshold={setNotificationThreshold}
-            majorChangesOnly={majorChangesOnly}
-            setMajorChangesOnly={setMajorChangesOnly}
-            dailySummaryEnabled={dailySummaryEnabled}
-            setDailySummaryEnabled={setDailySummaryEnabled}
-            goldNotificationsEnabled={goldNotificationsEnabled}
-            setGoldNotificationsEnabled={setGoldNotificationsEnabled}
             compactMode={compactMode}
             setCompactMode={setCompactMode}
             animationsEnabled={animationsEnabled}
             setAnimationsEnabled={setAnimationsEnabled}
             fontSizePreference={fontSizePreference}
             setFontSizePreference={setFontSizePreference}
-            dataSaver={dataSaver}
-            setDataSaver={setDataSaver}
-            defaultMarket={defaultMarket}
-            setDefaultMarket={setDefaultMarket}
-            chartResolution={chartResolution}
-            setChartResolution={setChartResolution}
-            spreadAlertEnabled={spreadAlertEnabled}
-            setSpreadAlertEnabled={setSpreadAlertEnabled}
-            spreadAlertValue={spreadAlertValue}
-            setSpreadAlertValue={setSpreadAlertValue}
             triggerHaptic={triggerHaptic}
             addToast={addToast}
           />

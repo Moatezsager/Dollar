@@ -8,7 +8,7 @@ export function Privacy({ onBack }: { onBack: () => void }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 md:py-12 pb-32"
+      className="content-page max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 md:py-12 pb-32"
     >
       <button 
         onClick={onBack}

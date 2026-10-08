@@ -4,6 +4,8 @@ import { Settings2, X, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react
 import { safeStorage } from "../../utils/storage";
 import { purgeAllCachesAndReload } from "../../utils/autoUpdater";
 
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility';
+
 interface SettingsModalProps {
   showSettingsModal: boolean;
   setShowSettingsModal: (show: boolean) => void;
@@ -86,6 +88,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   addToast,
 }) => {
   const [settingsTab, setSettingsTab] = useState<'general' | 'notifications' | 'appearance' | 'advanced'>('general');
+  const dialogRef = useDialogAccessibility(showSettingsModal, () => setShowSettingsModal(false));
 
   return (
     <AnimatePresence>
@@ -100,51 +103,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-dialog-title"
+            tabIndex={-1}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md glass-panel-heavy premium-border border border-slate-700/50 rounded-3xl overflow-hidden shadow-2xl"
+            className="relative w-full max-w-md max-h-[90dvh] flex flex-col glass-panel-heavy premium-border border border-slate-700/50 rounded-3xl overflow-hidden shadow-2xl"
           >
-            <div className="p-6 border-b border-slate-800/60 flex items-center justify-between">
+            <div className="p-4 sm:p-6 border-b border-slate-800/60 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400">
                   <Settings2 className="w-4 h-4" />
                 </div>
-                <h3 className="text-lg font-medium">الإعدادات</h3>
+                <h3 id="settings-dialog-title" className="text-lg font-semibold">الإعدادات</h3>
               </div>
-              <button onClick={() => setShowSettingsModal(false)} className="text-slate-500 hover:text-white">
+              <button aria-label="إغلاق الإعدادات" onClick={() => setShowSettingsModal(false)} className="w-11 h-11 flex items-center justify-center text-slate-300 hover:text-white rounded-lg hover:bg-white/5">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-800/60 overflow-x-auto custom-scrollbar">
+            <div className="flex border-b border-slate-800/60 overflow-x-auto custom-scrollbar shrink-0">
               <button
                 onClick={() => setSettingsTab('general')}
+                aria-pressed={settingsTab === 'general'}
                 className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'general' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
               >
                 عام
               </button>
               <button
                 onClick={() => setSettingsTab('notifications')}
+                aria-pressed={settingsTab === 'notifications'}
                 className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'notifications' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
               >
                 التنبيهات
               </button>
               <button
                 onClick={() => setSettingsTab('appearance')}
+                aria-pressed={settingsTab === 'appearance'}
                 className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'appearance' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
               >
                 المظهر
               </button>
               <button
                 onClick={() => setSettingsTab('advanced')}
+                aria-pressed={settingsTab === 'advanced'}
                 className={`flex-none px-4 py-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${settingsTab === 'advanced' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}
               >
                 متقدم
               </button>
             </div>
 
-            <div className="p-6 space-y-8 min-h-[300px]">
+            <div className="p-4 sm:p-6 space-y-8 overflow-y-auto min-h-0 flex-1">
               {settingsTab === 'general' && (
                 <div className="space-y-6">
                   {/* Haptic Toggle */}
@@ -160,9 +172,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('hapticEnabled', String(newVal));
                         if (newVal && typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) window.navigator.vibrate(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${hapticEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="الاهتزاز"
+                      aria-checked={hapticEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${hapticEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -179,9 +196,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('soundEnabled', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${soundEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="المؤثرات الصوتية"
+                      aria-checked={soundEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${soundEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -198,9 +220,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('autoRefreshEnabled', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${autoRefreshEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="التحديث التلقائي"
+                      aria-checked={autoRefreshEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${autoRefreshEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -217,9 +244,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('showChart', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${showChart ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="المخطط البياني"
+                      aria-checked={showChart}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${showChart ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -284,6 +316,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       max="0.1" 
                       step="0.001" 
                       value={notificationThreshold}
+                      aria-label="حساسية التنبيه"
                       onChange={(e) => setNotificationThreshold(parseFloat(e.target.value))}
                       className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                     />
@@ -305,9 +338,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('majorChangesOnly', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${majorChangesOnly ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="التغييرات الكبيرة فقط"
+                      aria-checked={majorChangesOnly}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${majorChangesOnly ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -324,9 +362,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('dailySummaryEnabled', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dailySummaryEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="الملخص اليومي"
+                      aria-checked={dailySummaryEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dailySummaryEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -343,9 +386,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('goldNotificationsEnabled', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${goldNotificationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="تنبيهات الذهب"
+                      aria-checked={goldNotificationsEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${goldNotificationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
                 </>
@@ -366,9 +414,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('compactMode', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${compactMode ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="الوضع المضغوط"
+                      aria-checked={compactMode}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${compactMode ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -385,9 +438,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('animationsEnabled', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${animationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="الحركة"
+                      aria-checked={animationsEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${animationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -399,6 +457,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <select
                       value={fontSizePreference}
+                      aria-label="حجم الخط"
                       onChange={(e) => {
                         const val = e.target.value as 'small' | 'medium' | 'large';
                         setFontSizePreference(val);
@@ -430,9 +489,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         safeStorage.setItem('dataSaver', String(newVal));
                         triggerHaptic(10);
                       }}
-                      className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dataSaver ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
+                      role="switch"
+                      aria-label="توفير البيانات"
+                      aria-checked={dataSaver}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
                     >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${dataSaver ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
+                        <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                     </button>
                   </div>
 
@@ -444,6 +508,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <select
                       value={defaultMarket}
+                      aria-label="السوق الافتراضي"
                       onChange={(e) => {
                         const val = e.target.value as 'parallel' | 'official';
                         setDefaultMarket(val);
@@ -465,6 +530,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <select
                       value={chartResolution}
+                      aria-label="دقة الرسم البياني"
                       onChange={(e) => {
                         const val = e.target.value as 'low' | 'medium' | 'high';
                         setChartResolution(val);
@@ -493,9 +559,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           safeStorage.setItem('spreadAlertEnabled', String(newVal));
                           triggerHaptic(10);
                         }}
-                        className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${spreadAlertEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}
-                      >
+                      role="switch"
+                      aria-label="تنبيه فرق السعر"
+                      aria-checked={spreadAlertEnabled}
+                      className="w-11 h-11 shrink-0 flex items-center justify-center"
+                    >
+                      <span className={`w-11 h-6 rounded-full transition-colors flex items-center px-1 ${spreadAlertEnabled ? 'bg-indigo-500 justify-end' : 'bg-zinc-700 justify-start'}`}>
                         <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                      </span>
                       </button>
                     </div>
 
@@ -509,6 +580,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             max="10.0"
                             step="0.1"
                             value={spreadAlertValue}
+                            aria-label="قيمة فرق السعر للتنبيه"
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 1.5;
                               setSpreadAlertValue(val);
@@ -525,7 +597,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
 
-            <div className="p-6 bg-white/[0.02] border-t border-slate-800/60">
+            <div className="p-4 sm:p-6 bg-white/[0.02] border-t border-slate-800/60 shrink-0">
               <button 
                 onClick={() => setShowSettingsModal(false)}
                 className="w-full py-3 bg-white text-black text-sm font-bold rounded-2xl hover:bg-zinc-200 transition-colors"

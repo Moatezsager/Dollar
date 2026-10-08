@@ -19,7 +19,7 @@ export const FloatingSocialButtons: React.FC<FloatingSocialButtonsProps> = ({ is
         transition={{ type: "spring", stiffness: 260, damping: 20, delay: 1 }}
         whileHover={{ scale: 1.1, y: -4 }}
         whileTap={{ scale: 0.9 }}
-        className={`fixed left-6 z-[999] md:flex hidden items-center justify-center w-14 h-14 bg-[#24A1DE] text-white rounded-full shadow-[0_8px_30px_rgb(36,161,222,0.4)] hover:shadow-[0_8px_40px_rgb(36,161,222,0.6)] border border-slate-700/50 group overflow-hidden transition-all duration-500 ${isInstallPromptVisible ? 'bottom-56 md:bottom-52' : 'bottom-48 md:bottom-24'}`}
+        className={`fixed left-6 z-[60] md:flex hidden items-center justify-center w-14 h-14 bg-[#24A1DE] text-white rounded-full shadow-[0_8px_30px_rgb(36,161,222,0.4)] hover:shadow-[0_8px_40px_rgb(36,161,222,0.6)] border border-slate-700/50 group overflow-hidden transition-all duration-500 ${isInstallPromptVisible ? 'bottom-56 md:bottom-52' : 'bottom-48 md:bottom-24'}`}
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-black/10 to-transparent"></div>
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.2)_0%,transparent_100%)]"></div>
@@ -36,7 +36,7 @@ export const FloatingSocialButtons: React.FC<FloatingSocialButtonsProps> = ({ is
         transition={{ type: "spring", stiffness: 260, damping: 20, delay: 1.1 }}
         whileHover={{ scale: 1.1, y: -4 }}
         whileTap={{ scale: 0.9 }}
-        className={`fixed left-6 z-[999] md:flex hidden items-center justify-center w-14 h-14 bg-[#1877F2] text-white rounded-full shadow-[0_8px_30px_rgb(24,119,242,0.4)] hover:shadow-[0_8px_40px_rgb(24,119,242,0.6)] border border-slate-700/50 group overflow-hidden transition-all duration-500 ${isInstallPromptVisible ? 'bottom-36 md:bottom-32' : 'bottom-28 md:bottom-6'}`}
+        className={`fixed left-6 z-[60] md:flex hidden items-center justify-center w-14 h-14 bg-[#1877F2] text-white rounded-full shadow-[0_8px_30px_rgb(24,119,242,0.4)] hover:shadow-[0_8px_40px_rgb(24,119,242,0.6)] border border-slate-700/50 group overflow-hidden transition-all duration-500 ${isInstallPromptVisible ? 'bottom-36 md:bottom-32' : 'bottom-28 md:bottom-6'}`}
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-black/10 to-transparent"></div>
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.2)_0%,transparent_100%)]"></div>

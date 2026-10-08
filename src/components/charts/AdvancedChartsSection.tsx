@@ -11,6 +11,7 @@ import {
 import { format } from "date-fns";
 import { LineChart } from "lucide-react";
 import { HistoryPoint } from "../../types/rates";
+import { useReducedMotion } from 'motion/react';
 
 interface AdvancedChartsSectionProps {
   activeTab: string;
@@ -29,6 +30,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
   setChartAnalysisRange,
   history,
 }) => {
+  const reducedMotion = useReducedMotion();
   return (
     <section id="charts-section" className={`mt-16 ${activeTab === 'charts' ? '' : 'hidden md:block'}`}>
       <div className="mb-8">
@@ -46,10 +48,11 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
         <div className="relative z-10 flex flex-col gap-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             {/* Currency Filter */}
-            <div className="flex bg-white/5 p-1 rounded-2xl border border-slate-800/60 w-full sm:w-auto overflow-x-auto">
+            <div className="grid grid-cols-2 sm:flex bg-white/5 p-1 rounded-2xl border border-slate-800/60 w-full sm:w-auto">
               {['USD_CASH', 'USD_CHECKS', 'EUR', 'GOLD_SCRAP_18'].map(curr => (
                 <button
                   key={curr}
+                  aria-pressed={chartAnalysisCurrency === curr}
                   onClick={() => setChartAnalysisCurrency(curr)}
                   className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-sm font-bold transition-all ${chartAnalysisCurrency === curr ? 'bg-fuchsia-500/20 text-fuchsia-400' : 'text-slate-400 hover:text-slate-200'}`}
                 >
@@ -69,6 +72,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
               ].map(range => (
                 <button
                   key={range.id}
+                  aria-pressed={chartAnalysisRange === range.id}
                   onClick={() => setChartAnalysisRange(range.id as any)}
                   className={`flex-1 sm:flex-none px-3 py-2 rounded-xl text-xs font-bold transition-all ${chartAnalysisRange === range.id ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
                 >
@@ -126,7 +130,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
                     <XAxis 
                       dataKey="time" 
                       hide={false} 
-                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      tick={{ fill: '#94a3b8', fontSize: 12 }}
                       tickFormatter={(tick) => tick.split(' ')[0]}
                       minTickGap={30}
                       axisLine={false}
@@ -136,7 +140,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
                       domain={['auto', 'auto']} 
                       hide={false}
                       orientation="right"
-                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      tick={{ fill: '#94a3b8', fontSize: 12 }}
                       axisLine={false}
                       tickLine={false}
                       width={40}
@@ -146,7 +150,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
                       contentStyle={{ backgroundColor: "#050505", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "#fff", boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)" }}
                       itemStyle={{ color: color, fontFamily: "monospace", fontSize: "16px", fontWeight: "bold" }}
                       labelStyle={{ color: "#a1a1aa", fontSize: "12px", marginBottom: "4px" }}
-                      formatter={(val: number) => [`${val.toFixed(2)} د.ل`, chartAnalysisCurrency === 'GOLD' ? 'جرام كسر 18' : chartAnalysisCurrency]}
+                      formatter={(val: number) => [`${val.toFixed(2)} د.ل`, chartAnalysisCurrency === 'GOLD_SCRAP_18' ? 'ذهب كسر 18' : chartAnalysisCurrency === 'USD_CASH' ? 'دولار كاش' : chartAnalysisCurrency === 'USD_CHECKS' ? 'دولار صكوك' : 'يورو']}
                     />
                     <Area 
                       type="monotone" 
@@ -156,13 +160,14 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
                       fillOpacity={1} 
                       fill="url(#colorAnalysis)"
                       animationDuration={1000}
+                      isAnimationActive={!reducedMotion}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               );
             })() : (
               <div className="w-full h-full flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-fuchsia-500"></div>
+                <p role="status" className="text-sm text-slate-300">لا توجد بيانات تاريخية متاحة بعد</p>
               </div>
             )}
           </div>
@@ -201,7 +206,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
                   <div key={i} className="bg-white/5 rounded-2xl p-3 border border-slate-800/60 flex flex-col items-center justify-center text-center">
                     <span className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">{stat.label}</span>
                     <span className={`font-mono font-bold ${isChange ? (isPositive ? 'text-emerald-400' : 'text-rose-400') : 'text-white'}`}>
-                      {isChange ? (isPositive ? '+' : '') : ''}{val.toFixed(2)}
+                      {values.length > 0 ? `${isChange && isPositive ? '+' : ''}${val.toFixed(2)}` : '—'}
                     </span>
                   </div>
                 );

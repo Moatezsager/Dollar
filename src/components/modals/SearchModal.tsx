@@ -1,8 +1,9 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Search, X } from "lucide-react";
 import { SearchResult } from "../../utils/smartSearch";
 import { RateCell } from "../RateCell";
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility';
 
 interface SearchModalProps {
   showSearchModal: boolean;
@@ -26,24 +27,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   handleShareCardImage,
 }) => {
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (showSearchModal) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 150);
-    }
-  }, [showSearchModal]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showSearchModal) {
-        setShowSearchModal(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSearchModal, setShowSearchModal]);
+  const dialogRef = useDialogAccessibility(showSearchModal, () => setShowSearchModal(false));
 
   return (
     <AnimatePresence>
@@ -61,6 +45,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         >
           <motion.div
             initial={{ scale: 0.95, y: -20, opacity: 0 }}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="search-dialog-title"
+            tabIndex={-1}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.95, y: -20, opacity: 0 }}
             transition={{ duration: 0.2 }}
@@ -72,7 +61,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
                   <Search className="w-4 h-4" />
                 </div>
-                <h3 className="text-base sm:text-lg font-bold text-white">
+                <h3 id="search-dialog-title" className="text-base sm:text-lg font-bold text-white">
                   البحث
                 </h3>
               </div>
@@ -82,7 +71,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   triggerHaptic(6);
                   setShowSearchModal(false);
                 }}
-                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-all"
+                className="w-11 h-11 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-zinc-300 hover:text-white flex items-center justify-center transition-all"
                 title="إغلاق (Esc)"
                 aria-label="إغلاق"
               >
@@ -97,10 +86,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 <input
                   ref={searchInputRef}
                   type="text"
+                  aria-label="البحث عن عملة أو ذهب أو صكوك"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ابحث عن أي عملة أو ذهب أو صكوك..."
-                  className="flex-1 bg-transparent text-sm sm:text-base text-white placeholder-zinc-500 focus:outline-none font-medium text-right"
+                  className="flex-1 min-w-0 bg-transparent text-base text-white placeholder-zinc-400 focus:outline-none font-medium text-right"
                   dir="rtl"
                 />
                 {searchQuery && (

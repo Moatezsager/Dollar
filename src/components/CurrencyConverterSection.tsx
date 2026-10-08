@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { ArrowLeftRight, ArrowUpDown, RefreshCw, ChevronDown, Coins } from "lucide-react";
+import { ArrowLeftRight, ArrowUpDown, ChevronDown } from "lucide-react";
 import { METAL_IDS } from "../types/rates";
 
 interface CurrencyConverterSectionProps {
@@ -56,16 +56,13 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
           </div>
           <div>
             <h3 className="text-2xl font-black text-white tracking-tight">المحول الذكي</h3>
-            <p className="text-xs text-slate-500 uppercase tracking-[0.2em] font-mono font-bold">Premium Exchange Calculator</p>
+            <p className="text-xs text-slate-400">السوق الموازي والمصرف المركزي</p>
           </div>
         </div>
 
         <div className="relative flex flex-col gap-2 z-10">
           {/* TOP CARD: Foreign Currency */}
           <div className="bg-[#0f172a]/90 backdrop-blur-xl border border-slate-700/60 rounded-[2.5rem] p-6 sm:p-8 shadow-2xl relative overflow-hidden group focus-within:ring-2 focus-within:ring-blue-500/50 transition-all">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-              <RefreshCw className="w-40 h-40 text-blue-400 rotate-12" />
-            </div>
             
             <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-6">
               <div className="w-full sm:w-1/3">
@@ -74,6 +71,7 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
                 </label>
                 <div className="relative">
                   <select 
+                    aria-label="عملة التحويل"
                     value={convCurrency}
                     onChange={(e) => {
                       setConvCurrency(e.target.value);
@@ -97,9 +95,9 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
                   المبلغ بالعملة الأجنبية
                 </label>
                 <motion.input 
-                  whileFocus={{ scale: 1.02 }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
                   type="text"
+                  aria-label="المبلغ بالعملة الأجنبية"
                   value={convActiveField === 'top' ? convInputValue : (topAmount ? (topAmount % 1 === 0 ? topAmount : topAmount.toFixed(2)) : '')}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -110,7 +108,7 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
                       setConvCurrency(detected);
                     }
                   }}
-                  className="w-full bg-transparent text-white font-mono text-5xl sm:text-6xl tracking-tighter font-light focus:outline-none appearance-none text-right sm:text-left placeholder-slate-700"
+                  className="w-full min-w-0 bg-transparent text-white font-mono text-3xl font-semibold focus:outline-none appearance-none text-right sm:text-left placeholder-slate-700"
                   placeholder="0.00"
                 />
               </div>
@@ -118,10 +116,11 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
           </div>
 
           {/* FLOATING SWAP BUTTON */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
+          <div className="flex justify-center py-1">
             <motion.button
-              whileHover={{ scale: 1.1, rotate: 180 }}
-              whileTap={{ scale: 0.9, rotate: -180 }}
+              aria-label="إدخال القيمة بالدينار"
+              title="إدخال القيمة بالدينار"
+              whileTap={{ scale: 0.98 }}
               transition={{ type: "spring", stiffness: 300, damping: 20 }}
               onClick={() => {
                 triggerHaptic(10);
@@ -135,12 +134,9 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
 
           {/* BOTTOM CARD: Local Currency (LYD) */}
           <div className="bg-[#0f172a]/90 backdrop-blur-xl border border-slate-700/60 rounded-[2.5rem] p-6 sm:p-8 shadow-2xl relative overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500/50 transition-all">
-            <div className="absolute bottom-0 left-0 p-8 opacity-5">
-              <Coins className="w-40 h-40 text-emerald-400 -rotate-12" />
-            </div>
 
             <div className="relative z-10 flex flex-col gap-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs text-emerald-400/80 font-bold uppercase tracking-widest">
                   القيمة بالدينار الليبي (LYD)
                 </label>
@@ -156,7 +152,7 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
                   <div className="flex items-center gap-2" dir="ltr">
                     <span className="text-emerald-400 font-bold">LYD</span>
                     <motion.input
-                      whileFocus={{ scale: 1.05, x: 10 }}
+                      aria-label="المبلغ بالدينار في السوق الموازي"
                       type="number"
                       value={convActiveField === 'parallel' ? convInputValue : (parallelAmount ? (parallelAmount % 1 === 0 ? parallelAmount : parallelAmount.toFixed(2)) : '')}
                       onChange={(e) => {
@@ -175,7 +171,7 @@ export const CurrencyConverterSection: React.FC<CurrencyConverterSectionProps> =
                   <div className="flex items-center gap-2" dir="ltr">
                     <span className="text-indigo-400 font-bold">LYD</span>
                     <motion.input
-                      whileFocus={{ scale: 1.05, x: 10 }}
+                      aria-label="المبلغ بالدينار بالسعر الرسمي"
                       type="number"
                       value={convActiveField === 'official' ? convInputValue : (officialAmount ? (officialAmount % 1 === 0 ? officialAmount : officialAmount.toFixed(2)) : '')}
                       onChange={(e) => {

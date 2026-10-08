@@ -15,7 +15,7 @@ export const AppToasts: React.FC<AppToastsProps> = ({ toasts, onRemoveToast, rem
     else if (onRemoveToast) onRemoveToast(id);
   };
   return (
-    <div className="fixed bottom-28 md:bottom-6 left-6 z-[200] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
+    <div aria-live="polite" aria-relevant="additions" className="fixed bottom-32 md:bottom-6 left-4 right-4 md:right-auto z-[200] flex flex-col gap-3 md:w-96 max-w-sm pointer-events-none">
       <AnimatePresence>
         {toasts.map(toast => (
           <motion.div
@@ -39,8 +39,9 @@ export const AppToasts: React.FC<AppToastsProps> = ({ toasts, onRemoveToast, rem
               <p className="text-xs text-slate-400 leading-relaxed">{toast.body}</p>
             </div>
             <button 
+              aria-label="إغلاق التنبيه"
               onClick={() => handleRemove(toast.id)}
-              className="text-zinc-600 hover:text-white transition-colors"
+              className="text-zinc-300 hover:text-white transition-colors min-w-8 min-h-8 flex items-center justify-center"
             >
               <X className="w-4 h-4" />
             </button>

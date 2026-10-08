@@ -30,7 +30,7 @@ export const GoldMetalsSection: React.FC<GoldMetalsSectionProps> = ({
         </div>
         <div>
           <h2 className="text-xl font-black text-white">المعادن الثمينة</h2>
-          <p className="text-xs text-slate-400 mt-0.5">أسعار الذهب والفضة لحظياً</p>
+          <p className="text-xs text-slate-400 mt-0.5">أسعار الذهب والفضة</p>
         </div>
       </div>
 
@@ -50,6 +50,8 @@ export const GoldMetalsSection: React.FC<GoldMetalsSectionProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">
           {(!rates || configTerms.length === 0) ? (
             Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
+          ) : !configTerms.some(t => METAL_IDS.includes(t.id) && !staleCurrencies.has(t.id)) ? (
+            <p role="status" className="col-span-full py-8 text-center text-sm text-slate-400">لا توجد أسعار معادن متاحة</p>
           ) : (
             configTerms.filter(t => METAL_IDS.includes(t.id) && !staleCurrencies.has(t.id))
               .map(term => {

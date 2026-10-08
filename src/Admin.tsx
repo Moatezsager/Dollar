@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { ThemeToggle } from './components/ui/ThemeToggle';
+import { useDialogAccessibility } from './hooks/useDialogAccessibility';
 import { AdminMessages } from "./components/AdminMessages";
 import { AdminDatabase } from "./components/AdminDatabase";
 import { AdminTelegram } from "./components/AdminTelegram";
@@ -13,7 +15,7 @@ import { AdminBroadcastLog } from "./components/AdminBroadcastLog";
 import { TelegramVisitsCard } from "./components/TelegramVisitsCard";
 import { AdminWhatsApp } from "./components/AdminWhatsApp";
 import { AdminWeeklyHarvest } from "./components/AdminWeeklyHarvest";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { Settings, Check, Edit2, Save, Plus, Trash2, ArrowRight, ShieldCheck, LogOut, X, Lock, Activity, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, ArrowUpRight, ArrowDownRight, CheckCircle2, RefreshCw, Layers, Globe, Zap, Search, ChevronDown, ChevronUp, Clock, Info, Building2, Coins, Send, Building, TrendingUp, Stethoscope, ListX, Trash, LayoutDashboard, Menu, BarChart3, Bell, Shield, Database, Link, Copy, Code2, Download, Pause, Play, Filter, XCircle, AlertCircle, Mail, MessageSquare, DownloadCloud, Sparkles, Monitor, Smartphone, Layout, Wifi, AppWindow , MapPin , LineChart, Radio } from 'lucide-react';
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -205,6 +207,7 @@ export default function Admin() {
   const [success, setSuccess] = useState("");
   const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'cbl' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'weekly-harvest'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const sidebarRef = useDialogAccessibility(isSidebarOpen, () => setIsSidebarOpen(false));
   const [isAuthorizedDevice, setIsAuthorizedDevice] = useState(true);
 
       
@@ -581,11 +584,9 @@ export default function Admin() {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans selection:bg-emerald-500/30" dir="rtl">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/10 blur-[120px] rounded-full"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full"></div>
-        </div>
+      <MotionConfig reducedMotion="user">
+      <div className="admin-shell min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans selection:bg-emerald-500/30" dir="rtl">
+        <div className="absolute top-4 left-4"><ThemeToggle /></div>
 
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
@@ -594,10 +595,9 @@ export default function Admin() {
         >
           <div className="flex justify-center mb-8">
             <div className="relative">
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500 to-blue-600 flex items-center justify-center shadow-2xl shadow-emerald-500/20 rotate-3 hover:rotate-0 transition-transform duration-500">
+              <div className="w-14 h-14 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
                 <Lock className="w-10 h-10 text-white" />
               </div>
-              <div className="absolute -top-2 -right-2 w-6 h-6 bg-emerald-500 rounded-full border-4 border-[#0a0a0a] animate-ping opacity-20"></div>
             </div>
           </div>
 
@@ -610,6 +610,8 @@ export default function Admin() {
             <div className="relative group">
               <input
                 type="password"
+                aria-label="مفتاح الوصول الإداري"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -636,7 +638,6 @@ export default function Admin() {
               disabled={loading}
               className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 text-black font-black py-5 rounded-2xl transition-all shadow-xl shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-3 group overflow-hidden relative"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
               {loading ? (
                 <RefreshCw className="w-6 h-6 animate-spin" />
               ) : (
@@ -649,12 +650,13 @@ export default function Admin() {
           </form>
         </motion.div>
       </div>
+      </MotionConfig>
     );
   }
 
   if (!config) {
     return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans" dir="rtl">
+      <div className="admin-shell min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans" dir="rtl">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 text-emerald-500 animate-spin mx-auto mb-4" />
           <p className="text-slate-500 text-sm">جاري تحميل الإعدادات...</p>
@@ -664,7 +666,8 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white flex font-sans selection:bg-emerald-500/30 overflow-hidden" dir="rtl">
+    <MotionConfig reducedMotion="user">
+    <div className="admin-shell min-h-screen bg-[#020617] text-white flex font-sans selection:bg-emerald-500/30 overflow-hidden" dir="rtl">
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex flex-col w-72 shrink-0 bg-[#080808] border-l border-slate-800/60 relative z-[60] pt-safe pb-safe overflow-y-auto">
         <div className="p-8">
@@ -687,6 +690,7 @@ export default function Admin() {
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id as any)}
+                      aria-current={activeTab === item.id ? 'page' : undefined}
                       className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all group ${
                         activeTab === item.id 
                           ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' 
@@ -736,12 +740,14 @@ export default function Admin() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-dvh overflow-hidden">
         {/* Top Header */}
         <header className="h-[calc(5rem+env(safe-area-inset-top))] bg-[#020617]/80 backdrop-blur-2xl border-b border-slate-800/60 flex items-center justify-between px-6 shrink-0 relative z-50 pt-safe">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(true)}
+              aria-label="فتح قائمة الإدارة"
+              aria-expanded={isSidebarOpen}
               className="lg:hidden p-2.5 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-all"
             >
               <Menu className="w-6 h-6" />
@@ -760,6 +766,7 @@ export default function Admin() {
           </div>
 
           <div className="flex items-center gap-3">
+             <ThemeToggle />
              <TelegramStatus />
              <div className="w-px h-6 bg-white/10 mx-2 hidden sm:block"></div>
              <button
@@ -784,7 +791,12 @@ export default function Admin() {
                 onClick={() => setIsSidebarOpen(false)}
                 className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] lg:hidden"
               />
-              <motion.aside 
+              <motion.div
+                ref={sidebarRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label="قائمة الإدارة"
+                tabIndex={-1}
                 initial={{ x: '100%' }}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
@@ -795,7 +807,7 @@ export default function Admin() {
                     <ShieldCheck className="w-8 h-8 text-emerald-500" />
                     <span className="font-black text-xl">القائمة</span>
                   </div>
-                  <button onClick={() => setIsSidebarOpen(false)} className="p-2 rounded-xl bg-white/5">
+                  <button aria-label="إغلاق قائمة الإدارة" onClick={() => setIsSidebarOpen(false)} className="p-2 rounded-xl bg-white/5">
                     <X className="w-6 h-6" />
                   </button>
                 </div>
@@ -808,6 +820,7 @@ export default function Admin() {
                         {group.items.map(item => (
                           <button
                             key={item.id}
+                            aria-current={activeTab === item.id ? 'page' : undefined}
                             onClick={() => {
                               setActiveTab(item.id as any);
                               setIsSidebarOpen(false);
@@ -836,7 +849,7 @@ export default function Admin() {
                     تسجيل الخروج
                   </button>
                 </div>
-              </motion.aside>
+              </motion.div>
             </>
           )}
         </AnimatePresence>
@@ -1259,5 +1272,6 @@ export default function Admin() {
       </AnimatePresence>
     </div>
   </div>
+    </MotionConfig>
   );
 }

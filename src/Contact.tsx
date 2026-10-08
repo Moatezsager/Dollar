@@ -46,7 +46,7 @@ export const Contact = ({ onBack }: { onBack?: () => void }) => {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="max-w-3xl mx-auto px-4 sm:px-6 py-8 pb-32 sm:py-16 sm:pb-16 space-y-6 sm:space-y-8"
+      className="content-page max-w-3xl mx-auto px-4 sm:px-6 py-8 pb-32 sm:py-12 sm:pb-16 space-y-6 sm:space-y-8"
     >
       {onBack && (
         <button 
@@ -106,7 +106,7 @@ export const Contact = ({ onBack }: { onBack?: () => void }) => {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
             {status === 'error' && (
-              <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-3 text-rose-400 text-sm">
+              <div role="alert" className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-3 text-rose-400 text-sm">
                 <AlertCircle className="w-5 h-5 shrink-0" />
                 <p>{errorMessage}</p>
               </div>
@@ -119,6 +119,8 @@ export const Contact = ({ onBack }: { onBack?: () => void }) => {
               </label>
               <input
                 type="text"
+                aria-label="الاسم (اختياري)"
+                autoComplete="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="اسمك الكريم"
@@ -133,6 +135,8 @@ export const Contact = ({ onBack }: { onBack?: () => void }) => {
               </label>
               <input
                 type="email"
+                aria-label="البريد الإلكتروني"
+                autoComplete="email"
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -149,6 +153,8 @@ export const Contact = ({ onBack }: { onBack?: () => void }) => {
               </label>
               <input
                 type="tel"
+                aria-label="رقم الهاتف (واتساب)"
+                autoComplete="tel"
                 required
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -164,6 +170,7 @@ export const Contact = ({ onBack }: { onBack?: () => void }) => {
                 الرسالة
               </label>
               <textarea
+                aria-label="الرسالة"
                 required
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}

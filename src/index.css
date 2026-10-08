@@ -1,29 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
+@import "./styles/design-system.css";
 
 @theme {
-  --font-sans: "Inter", "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
 
 body {
-  font-family: "Inter", "Cairo", sans-serif;
+  font-family: "Cairo", "Inter", sans-serif;
   
-  /* Ultra-Premium Dark Mode Background */
-  background-color: #050505;
-  background-image: 
-    radial-gradient(ellipse at top right, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom left, rgba(59, 130, 246, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.05) 0%, transparent 60%),
-    linear-gradient(to bottom, #050505 0%, #09090b 100%);
-  background-attachment: fixed;
-  color: #ffffff;
+  background: var(--page);
+  color: var(--ink);
   
   /* Native App Feel */
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
   
@@ -37,13 +28,53 @@ input, textarea {
   user-select: auto;
 }
 
-/* Hide scrollbars globally but keep scrolling functional */
+/* Visible scroll affordances for charts and dialogs. */
 ::-webkit-scrollbar {
-  display: none;
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 6px;
 }
 * {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 3px;
+}
+button, a { touch-action: manipulation; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+[dir="rtl"] * { letter-spacing: 0 !important; }
+.dashboard-content .text-slate-500 { color: #94a3b8; }
+.rate-card { width: 100%; text-align: start; }
+.dollar-cards > button { text-align: start; }
+.dashboard-content button:not(.rate-card) { min-height: 44px; }
+.dashboard-content .dollar-cards [class*="text-lg"] { font-size: 1.5rem; }
+[role="dialog"] button { min-height: 44px; }
+[role="dialog"] .text-slate-500 { color: #94a3b8; }
+[data-font-size="large"] .dashboard-content :is(.text-xs, .text-sm),
+[data-font-size="large"] .dollar-cards [class*="text-["] {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.dollar-cards [class*="text-[8"],
+.dollar-cards [class*="text-[9"],
+.dollar-cards [class*="text-[10"],
+.dollar-cards [class*="text-[11"] {
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+html { scroll-padding-top: 100px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .pb-safe {
@@ -62,7 +93,6 @@ input, textarea {
 /* Compact Mode */
 [data-compact="true"] .group.p-2\.5 {
   padding: 0.5rem !important;
-  margin: -0.5rem !important;
 }
 [data-compact="true"] .group.p-2\.5 .text-2xl {
   font-size: 1.25rem !important;
@@ -217,7 +247,6 @@ input, textarea {
 
 .premium-border {
   position: relative;
-  border-radius: inherit;
 }
 .premium-border::before {
   content: "";

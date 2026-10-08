@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   AreaChart,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Rates, CURRENCIES } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
+import { useDialogAccessibility } from '../../hooks/useDialogAccessibility';
 
 interface CurrencyChartModalProps {
   selectedRate: { code: string; name: string; market: 'official' | 'parallel' } | null;
@@ -64,6 +65,14 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
 }) => {
   const [modalCalcAmount, setModalCalcAmount] = useState<number>(100);
   const [copiedModalRate, setCopiedModalRate] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const [showHistoryTable, setShowHistoryTable] = useState(false);
+  const dialogRef = useDialogAccessibility(!!selectedRate, () => setSelectedRate(null));
+  useEffect(() => {
+    setCopiedModalRate(false);
+    setCopyError(false);
+    setShowHistoryTable(false);
+  }, [selectedRate?.code, selectedRate?.market]);
 
   return (
     <AnimatePresence>
@@ -72,14 +81,18 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
         const decimals = selectedRate.market === 'official' ? 4 : (selectedRate.code === 'EGP' || selectedRate.code === 'TRY' ? 3 : 2);
         const spreadDiff = Math.max(0, chartStats.max - chartStats.min);
 
-        const handleCopyRate = () => {
+        const handleCopyRate = async () => {
           triggerHaptic(8);
           const textToCopy = `${selectedRate.name} (${selectedRate.market === 'parallel' ? 'السوق الموازي' : 'السوق الرسمي'}): ${currentRate.toFixed(decimals)} د.ل`;
-          if (navigator?.clipboard?.writeText) {
-            navigator.clipboard.writeText(textToCopy).catch(() => {});
+          try {
+            await navigator.clipboard.writeText(textToCopy);
+            setCopyError(false);
+            setCopiedModalRate(true);
+            setTimeout(() => setCopiedModalRate(false), 2000);
+          } catch {
+            setCopiedModalRate(false);
+            setCopyError(true);
           }
-          setCopiedModalRate(true);
-          setTimeout(() => setCopiedModalRate(false), 2000);
         };
 
         return (
@@ -93,6 +106,11 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 25 }}
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="currency-dialog-title"
+              tabIndex={-1}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 25 }}
               transition={{ duration: 0.22, ease: "easeOut" }}
@@ -117,7 +135,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                   </div>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-base sm:text-xl font-black text-white tracking-tight leading-tight truncate">
+                      <h3 id="currency-dialog-title" className="text-base sm:text-xl font-bold text-white leading-relaxed break-words">
                         {selectedRate.name}
                       </h3>
                       <span className="text-[10px] sm:text-xs font-mono font-bold text-slate-300 bg-white/10 px-1.5 py-0.5 rounded-md border border-white/10">
@@ -134,7 +152,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                           <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${selectedRate.market === 'parallel' ? 'bg-emerald-400' : 'bg-blue-400'}`}></span>
                           <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${selectedRate.market === 'parallel' ? 'bg-emerald-500' : 'bg-blue-500'}`}></span>
                         </span>
-                        {selectedRate.market === 'parallel' ? 'السوق الموازي (الكاش)' : 'المصرف المركزي (الرسمي)'}
+                        {selectedRate.market === 'parallel' ? 'السوق الموازي' : 'المصرف المركزي (الرسمي)'}
                       </span>
                     </div>
                   </div>
@@ -146,7 +164,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                       triggerHaptic(6);
                       setSelectedRate(null);
                     }}
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:scale-95 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-all shrink-0"
+                    className="w-11 h-11 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:scale-95 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
                     title="إغلاق (Esc)"
                     aria-label="إغلاق"
                   >
@@ -160,10 +178,10 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                 {/* Price & Range Filter Bar */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-white/[0.06]">
                   <div className="flex flex-col">
-                    <span className="text-[11px] sm:text-xs text-slate-400 font-semibold mb-0.5">سعر الصرف اللحظي</span>
+                    <span className="text-xs text-slate-300 font-semibold mb-0.5">سعر الصرف المتاح</span>
                     <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
                       <span className="text-3xl sm:text-4xl lg:text-5xl font-mono font-black text-white tracking-tight tabular-nums">
-                        {currentRate.toFixed(decimals)}
+                        {currentRate > 0 ? currentRate.toFixed(decimals) : '—'}
                       </span>
                       <span className="text-xs sm:text-sm font-bold text-slate-300 bg-slate-800/80 px-2 py-0.5 rounded-md border border-white/10 shadow-inner">د.ل</span>
                       {chartStats.change !== 0 && (
@@ -182,6 +200,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                     {(['24h', '7d', 'all'] as const).map((range) => (
                       <button
                         key={range}
+                        aria-pressed={chartRange === range}
                         onClick={() => {
                           setChartRange(range);
                           triggerHaptic(5);
@@ -216,12 +235,16 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                         />
                         <XAxis 
                           dataKey="time" 
-                          hide 
+                          tick={{ fontSize: 11, fill: '#94a3b8' }}
+                          tickFormatter={(time) => format(new Date(time), chartRange === '24h' ? 'HH:mm' : 'dd/MM HH:mm', { locale: ar })}
+                          minTickGap={40}
+                          axisLine={false}
+                          tickLine={false}
                         />
                         <YAxis 
                           domain={[(dataMin: number) => dataMin - (dataMin * 0.005), (dataMax: number) => dataMax + (dataMax * 0.005)]} 
                           orientation="right"
-                          tick={{ fontSize: 10, fill: '#64748b', fontFamily: 'monospace' }}
+                          tick={{ fontSize: 12, fill: '#94a3b8', fontFamily: 'monospace' }}
                           axisLine={false}
                           tickLine={false}
                           tickFormatter={(val) => val.toFixed(decimals)}
@@ -269,6 +292,17 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                     </div>
                   )}
                 </div>
+
+                {chartData.length > 0 && <details onToggle={(event) => setShowHistoryTable(event.currentTarget.open)} className="border-y border-white/10 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-300">القراءات التاريخية</summary>
+                  {showHistoryTable && <div className="max-h-52 overflow-auto mt-3">
+                    <table className="w-full text-sm text-right">
+                      <caption className="sr-only">سجل سعر {selectedRate.name} للفترة المحددة بالدينار الليبي</caption>
+                      <thead className="text-slate-300"><tr><th scope="col" className="p-2">التاريخ والوقت</th><th scope="col" className="p-2">السعر (د.ل)</th></tr></thead>
+                      <tbody>{chartData.map((point, index) => <tr key={`${point.time}-${index}`} className="border-t border-white/5"><td className="p-2 text-slate-300"><time dateTime={point.time}>{new Date(point.time).toLocaleString('ar-LY')}</time></td><td dir="ltr" className="p-2 font-mono text-white text-right">{point.value.toFixed(decimals)}</td></tr>)}</tbody>
+                    </table>
+                  </div>}
+                </details>}
 
                 {/* Period Performance Summary Grid */}
                 <div className="space-y-2">
@@ -377,16 +411,18 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                   </span>
-                  <span className="truncate">تحديث لحظي مباشر من السوق المالي</span>
+                  <span className="truncate">آخر بيانات السعر المتاحة</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={handleCopyRate}
+                    disabled={currentRate <= 0}
+                    aria-label="نسخ السعر"
                     className="px-3 sm:px-4 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-white/10 transition-all flex items-center gap-1.5 shadow-sm"
                     title="نسخ السعر"
                   >
                     {copiedModalRate ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                    <span>{copiedModalRate ? 'تم النسخ!' : 'نسخ'}</span>
+                    <span role="status">{copyError ? 'تعذر النسخ' : copiedModalRate ? 'تم النسخ!' : 'نسخ'}</span>
                   </button>
                   <button
                     onClick={(e) => {
@@ -396,6 +432,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                     }}
                     className="px-3 sm:px-4 py-1.5 bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-white/10 transition-all flex items-center gap-1.5 shadow-sm"
                     title="مشاركة بطاقة السعر"
+                    disabled={currentRate <= 0}
                   >
                     <Share2 className="w-3.5 h-3.5 text-emerald-400" />
                     <span className="hidden sm:inline">مشاركة</span>

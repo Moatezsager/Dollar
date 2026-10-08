@@ -1,7 +1,7 @@
 import React from "react";
 
 export const RateSkeleton = () => (
-  <div className="flex flex-col p-2.5 rounded-2xl skeleton-pulse -m-2.5">
+  <div aria-hidden="true" className="flex flex-col p-4 sm:p-5 min-h-[160px] sm:min-h-[190px] rounded-lg border border-white/10 skeleton-pulse">
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-white/5" />

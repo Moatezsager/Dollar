@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   Clock,
   ArrowUpRight,
@@ -13,12 +13,13 @@ import {
   AreaChart,
   Area,
   YAxis,
+  XAxis,
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
-import { Rates, CurrencyItem, METAL_IDS } from "../../types/rates";
+import { Rates, CurrencyItem, HistoryPoint, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { RateCell } from "../RateCell";
 import { RateSkeleton } from "../ui/RateSkeleton";
@@ -26,6 +27,7 @@ import { RateSkeleton } from "../ui/RateSkeleton";
 interface MainRatesGridProps {
   activeTab: string;
   rates: Rates | null;
+  history: HistoryPoint[];
   configTerms: any[];
   dynamicCurrencies: CurrencyItem[];
   staleCurrencies: Set<string>;
@@ -57,6 +59,7 @@ interface MainRatesGridProps {
 export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   activeTab,
   rates,
+  history,
   configTerms,
   dynamicCurrencies,
   staleCurrencies,
@@ -79,6 +82,8 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   toggleSection,
   setSelectedRate,
 }) => {
+  const [chartTimeframe, setChartTimeframe] = useState<'today' | 'week' | 'month'>('today');
+
   const cleanArabicDistance = (rawStr: string) => {
     if (!rawStr) return 'منذ قليل';
     let cleaned = rawStr.replace(/تقريباً|تقريبا|حوالي/g, '').replace(/\s+/g, ' ').trim();
@@ -112,17 +117,60 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
     }
   };
 
+  // Dynamic Chart Data and Statistics based on selected timeframe
+  const { filteredChartData, filteredChartStats } = useMemo(() => {
+    const now = Date.now();
+    let cutoffMs = now - 24 * 60 * 60 * 1000;
+    if (chartTimeframe === 'week') {
+      cutoffMs = now - 7 * 24 * 60 * 60 * 1000;
+    } else if (chartTimeframe === 'month') {
+      cutoffMs = now - 30 * 24 * 60 * 60 * 1000;
+    }
+
+    const rawPoints = (history || [])
+      .filter((h) => {
+        if (!h.time) return false;
+        const t = new Date(h.time).getTime();
+        return !isNaN(t) && t >= cutoffMs;
+      })
+      .map((h) => ({
+        time: new Date(h.time).toISOString(),
+        value: Number(h.usdParallel || h.ratesParallel?.USD || 0)
+      }))
+      .filter((p) => p.value > 0);
+
+    rawPoints.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+    const points = rawPoints;
+    if (points.length < 2) {
+      return { filteredChartData: [], filteredChartStats: { high: 0, low: 0, avg: 0, changeVal: 0, changePercent: 0, prevVal: 0 } };
+    }
+
+    const values = points.map((p) => p.value);
+    const high = Math.max(...values);
+    const low = Math.min(...values);
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const firstVal = points[0].value;
+    const lastVal = points[points.length - 1].value;
+    const changeVal = lastVal - firstVal;
+    const changePercent = firstVal > 0 ? (changeVal / firstVal) * 100 : 0;
+
+    return {
+      filteredChartData: points,
+      filteredChartStats: { high, low, avg, changeVal, changePercent, prevVal: firstVal }
+    };
+  }, [history, chartTimeframe, usdRate, prevUsdRate]);
   return (
-    <div className={activeTab === 'main' ? 'space-y-3 sm:space-y-5' : 'hidden md:block md:space-y-8'}>
+    <div id="rates-section" className={`rates-dashboard ${activeTab === 'main' ? 'space-y-4 sm:space-y-5' : 'hidden md:block md:space-y-8'}`}>
       {/* Sub-Header: Minimalist Modern Financial Bar */}
-      <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/50 border border-white/[0.06] backdrop-blur-sm">
+      <div className="rates-meta flex flex-wrap items-center justify-between gap-2 py-3 border-b border-slate-800">
         <div className="flex items-center gap-2 min-w-0">
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.9)]"></span>
           </span>
           <h2 className="text-xs sm:text-sm font-black text-white tracking-wide">
-            سعر الدولار
+            أسعار العملات
           </h2>
           <span className="text-white/20 text-xs">|</span>
           <div className="flex items-center gap-1 text-[11px] sm:text-xs text-slate-400 font-medium truncate">
@@ -134,13 +182,13 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 
         <div className="flex items-center gap-1 shrink-0">
           <span className="text-[10px] sm:text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shadow-sm">
-            مباشر
+            {rates?.lastUpdated ? 'آخر بيانات متاحة' : 'بانتظار البيانات'}
           </span>
         </div>
       </div>
 
       {/* 3 Dollar Cards Grid (Side-by-Side in 3 Columns) */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3.5">
+      <div className="primary-rates dollar-cards grid grid-cols-2 gap-2.5 sm:gap-3">
         {/* 1. كرت الموازي (كاش) */}
         {(() => {
           const rawDiff = usdRate - prevUsdRate;
@@ -151,8 +199,12 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 
           return (
             <div 
+              role="button"
+              tabIndex={0}
+              aria-label="عرض تفاصيل الدولار النقدي في السوق الموازي"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
               onClick={() => setSelectedRate({ code: 'USD', name: 'دولار أمريكي (كاش موازي)', market: 'parallel' })}
-              className={`bg-[#0c1322] hover:bg-[#101a2e] border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-2.5 sm:p-3.5 min-h-[160px] sm:min-h-[180px] flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] select-none relative group overflow-hidden ${
+              className={`primary-rate-card bg-[#0c1322] hover:bg-[#101a2e] border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-2.5 sm:p-3.5 min-h-[160px] sm:min-h-[180px] flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] select-none relative group overflow-hidden ${
                 usdFlash === 'up' ? 'ring-2 ring-emerald-500/40 bg-emerald-500/5' : usdFlash === 'down' ? 'ring-2 ring-rose-500/40 bg-rose-500/5' : ''
               }`}
             >
@@ -171,7 +223,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="my-auto py-1.5 flex flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-baseline gap-1">
                   <span className={`text-lg sm:text-2xl font-black font-mono tracking-tight tabular-nums ${priceColor}`}>
-                    {usdRate > 0 ? usdRate.toFixed(2) : '9.55'}
+                    {usdRate > 0 ? usdRate.toFixed(2) : '—'}
                   </span>
                   <span className="text-[9px] sm:text-xs font-bold text-slate-400">د.ل</span>
                 </div>
@@ -199,7 +251,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="pt-1.5 sm:pt-2 border-t border-white/[0.07] flex flex-col gap-0.5 text-[9px] sm:text-xs text-slate-400 mt-auto">
                 <div className="flex items-center justify-between font-mono">
                   <span className="text-slate-500 font-sans text-[8.5px] sm:text-[10.5px]">السابق:</span>
-                  <span dir="ltr" className="text-slate-300 font-bold">{prevUsdRate > 0 ? prevUsdRate.toFixed(2) : '9.53'}</span>
+                  <span dir="ltr" className="text-slate-300 font-bold">{prevUsdRate > 0 ? prevUsdRate.toFixed(2) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-500 font-sans text-[8px] sm:text-[10px]">
                   <span className="flex items-center gap-0.5 text-slate-500">
@@ -223,8 +275,12 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 
           return (
             <div 
+              role="button"
+              tabIndex={0}
+              aria-label="عرض تفاصيل الدولار بالصكوك"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
               onClick={() => setSelectedRate({ code: 'USD_CHECKS', name: 'دولار أمريكي (صكوك)', market: 'parallel' })}
-              className={`bg-[#0c1322] hover:bg-[#101a2e] border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-2.5 sm:p-3.5 min-h-[160px] sm:min-h-[180px] flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] select-none relative group overflow-hidden ${
+              className={`primary-rate-card bg-[#0c1322] hover:bg-[#101a2e] border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-2.5 sm:p-3.5 min-h-[160px] sm:min-h-[180px] flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] select-none relative group overflow-hidden ${
                 usdChecksFlash === 'up' ? 'ring-2 ring-emerald-500/40 bg-emerald-500/5' : usdChecksFlash === 'down' ? 'ring-2 ring-rose-500/40 bg-rose-500/5' : ''
               }`}
             >
@@ -241,7 +297,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="my-auto py-1.5 flex flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-baseline gap-1">
                   <span className={`text-lg sm:text-2xl font-black font-mono tracking-tight tabular-nums ${priceColor}`}>
-                    {usdChecksRate > 0 ? usdChecksRate.toFixed(2) : '9.78'}
+                    {usdChecksRate > 0 ? usdChecksRate.toFixed(2) : '—'}
                   </span>
                   <span className="text-[9px] sm:text-xs font-bold text-slate-400">د.ل</span>
                 </div>
@@ -268,7 +324,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="pt-1.5 sm:pt-2 border-t border-white/[0.07] flex flex-col gap-0.5 text-[9px] sm:text-xs text-slate-400 mt-auto">
                 <div className="flex items-center justify-between font-mono">
                   <span className="text-slate-500 font-sans text-[8.5px] sm:text-[10.5px]">السابق:</span>
-                  <span dir="ltr" className="text-slate-300 font-bold">{prevUsdChecksRate > 0 ? prevUsdChecksRate.toFixed(2) : '9.80'}</span>
+                  <span dir="ltr" className="text-slate-300 font-bold">{prevUsdChecksRate > 0 ? prevUsdChecksRate.toFixed(2) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-500 font-sans text-[8px] sm:text-[10px]">
                   <span className="flex items-center gap-0.5 text-slate-500">
@@ -292,8 +348,12 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 
           return (
             <div 
+              role="button"
+              tabIndex={0}
+              aria-label="عرض تفاصيل الدولار الرسمي"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
               onClick={() => setSelectedRate({ code: 'USD', name: 'دولار أمريكي (رسمي)', market: 'official' })}
-              className={`bg-[#0c1322] hover:bg-[#101a2e] border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-2.5 sm:p-3.5 min-h-[160px] sm:min-h-[180px] flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] select-none relative group overflow-hidden ${
+              className={`primary-rate-card bg-[#0c1322] hover:bg-[#101a2e] border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-2.5 sm:p-3.5 min-h-[160px] sm:min-h-[180px] flex flex-col justify-between cursor-pointer transition-all duration-200 shadow-sm hover:shadow-lg active:scale-[0.98] select-none relative group overflow-hidden ${
                 officialUsdFlash === 'up' ? 'ring-2 ring-emerald-500/40 bg-emerald-500/5' : officialUsdFlash === 'down' ? 'ring-2 ring-rose-500/40 bg-rose-500/5' : ''
               }`}
             >
@@ -310,7 +370,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="my-auto py-1.5 flex flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-baseline gap-1">
                   <span className={`text-lg sm:text-2xl font-black font-mono tracking-tight tabular-nums ${priceColor}`}>
-                    {officialUsdRate > 0 ? officialUsdRate.toFixed(2) : '6.41'}
+                    {officialUsdRate > 0 ? officialUsdRate.toFixed(2) : '—'}
                   </span>
                   <span className="text-[9px] sm:text-xs font-bold text-slate-400">د.ل</span>
                 </div>
@@ -337,7 +397,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="pt-1.5 sm:pt-2 border-t border-white/[0.07] flex flex-col gap-0.5 text-[9px] sm:text-xs text-slate-400 mt-auto">
                 <div className="flex items-center justify-between font-mono">
                   <span className="text-slate-500 font-sans text-[8.5px] sm:text-[10.5px]">السابق:</span>
-                  <span dir="ltr" className="text-slate-300 font-bold">{prevOfficialUsdRate > 0 ? prevOfficialUsdRate.toFixed(2) : '6.41'}</span>
+                  <span dir="ltr" className="text-slate-300 font-bold">{prevOfficialUsdRate > 0 ? prevOfficialUsdRate.toFixed(2) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-500 font-sans text-[8px] sm:text-[10px]">
                   <span className="flex items-center gap-0.5 text-slate-500">
@@ -350,36 +410,76 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
             </div>
           );
         })()}
+        {rates && configTerms.find(term => term.id === 'EUR' && !staleCurrencies.has(term.id)) && (() => {
+          const euro = configTerms.find(term => term.id === 'EUR')!;
+          return (
+            <div className="eur-feature" key="parallel-EUR">
+              <RateCell
+                term={euro}
+                rate={rates.parallel?.EUR || 0}
+                prevRate={rates.previousParallel?.EUR || rates.parallel?.EUR || 0}
+                trend={trends24h.EUR?.parallel}
+                lastChangedDate={rates.lastChanged?.parallel?.EUR || rates.lastUpdated}
+                onClick={() => setSelectedRate({ code: 'EUR', name: euro.name, market: 'parallel' })}
+              />
+            </div>
+          );
+        })()}
       </div>
 
-      {/* Unified 24-Hour Movement & Analytics Card */}
-      <div className="bg-[#0c1322] border border-slate-800/80 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.06]">
+      {/* Unified Movement & Analytics Card */}
+      <div className="usd-chart bg-[#0c1322] border border-slate-800/80 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 shrink-0 flex items-center justify-center">
               <FlagIcon flagCode="us" name="US" className="w-full h-full" />
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-bold text-white tracking-wide">حركة الدولار (24 ساعة)</span>
+                <span className="text-sm sm:text-base font-bold text-white tracking-wide">حركة الدولار ({chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? 'أسبوع' : 'شهر'})</span>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/5">USD/LYD</span>
               </div>
-              <span className="text-xs text-slate-400 font-medium">سوق النقد الموازي · تحديث فوري</span>
+              <span className="text-xs text-slate-400 font-medium">السوق الموازي · دينار ليبي لكل دولار</span>
             </div>
           </div>
         </div>
 
-        {/* Sparkline Interactive Chart */}
-        <div className="h-28 sm:h-36 w-full opacity-95 my-2">
+        {/* Interactive Chart */}
+        <div className="h-48 sm:h-52 w-full my-1" role="group" aria-label="حركة سعر الدولار مقابل الدينار الليبي">
+          {filteredChartData.length < 2 ? (
+            <div role="status" className="h-full flex items-center justify-center text-sm text-slate-300">لا توجد بيانات تاريخية كافية لهذه الفترة</div>
+          ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={usdSparklineData} margin={{ top: 8, right: 4, left: 4, bottom: 4 }}>
+            <AreaChart data={filteredChartData} margin={{ top: 8, right: 4, left: 4, bottom: 4 }}>
               <defs>
                 <linearGradient id="figmaSparkline" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} stopOpacity={0.35}/>
                   <stop offset="95%" stopColor={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} stopOpacity={0.01}/>
                 </linearGradient>
               </defs>
-              <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} hide />
+              <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} orientation="right" width={42} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => value.toFixed(2)} />
+              <XAxis
+                dataKey="time"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#94a3b8", fontSize: 12 }}
+                tickFormatter={(timeStr) => {
+                  try {
+                    const d = new Date(timeStr);
+                    if (isNaN(d.getTime())) return '';
+                    if (chartTimeframe === 'today') {
+                      return format(d, 'HH:mm', { locale: ar });
+                    } else if (chartTimeframe === 'week') {
+                      return format(d, 'EEE', { locale: ar });
+                    } else {
+                      return format(d, 'dd MMM', { locale: ar });
+                    }
+                  } catch {
+                    return '';
+                  }
+                }}
+                minTickGap={30}
+              />
               <Tooltip
                 contentStyle={{ 
                   backgroundColor: "#070c18", 
@@ -411,39 +511,82 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               />
             </AreaChart>
           </ResponsiveContainer>
+          )}
         </div>
 
-        {/* Bottom 4 Key Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 mt-2 border-t border-white/[0.06] text-center">
+        {/* 3 Timeframe Filter Buttons Underneath the Chart (اليوم، أسبوع، شهر) */}
+        <div className="flex items-center justify-center my-3">
+          <div className="inline-flex p-1 bg-slate-900/90 rounded-xl border border-white/[0.08] shadow-inner gap-1">
+            <button
+              type="button"
+              onClick={() => setChartTimeframe('today')}
+              aria-pressed={chartTimeframe === 'today'}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                chartTimeframe === 'today'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              اليوم
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartTimeframe('week')}
+              aria-pressed={chartTimeframe === 'week'}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                chartTimeframe === 'week'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              أسبوع
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartTimeframe('month')}
+              aria-pressed={chartTimeframe === 'month'}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
+                chartTimeframe === 'month'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              شهر
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom 4 Key Stats Row Dynamically Linked to Selected Timeframe */}
+        <div className={filteredChartData.length >= 2 ? 'grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 mt-1 border-t border-white/[0.06] text-center' : 'hidden'}>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أعلى سعر اليوم</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أعلى سعر الفترة</span>
             <span className="text-base sm:text-lg font-black font-mono text-emerald-400 tabular-nums">
-              {usd24hStats.high.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.high.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
             </span>
           </div>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أدنى سعر اليوم</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أدنى سعر الفترة</span>
             <span className="text-base sm:text-lg font-black font-mono text-rose-400 tabular-nums">
-              {usd24hStats.low.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.low.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
             </span>
           </div>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
             <span className="block text-[11px] text-slate-400 font-medium mb-0.5">متوسط التداول</span>
             <span className="text-base sm:text-lg font-black font-mono text-slate-200 tabular-nums">
-              {usd24hStats.avg.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.avg.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
             </span>
           </div>
           <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">الإغلاق السابق</span>
+            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">التغير خلال الفترة</span>
             <span className="text-base sm:text-lg font-black font-mono text-slate-400 tabular-nums">
-              {prevUsdRate > 0 ? prevUsdRate.toFixed(2) : '9.53'} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
+              {filteredChartStats.changePercent.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">%</span>
             </span>
           </div>
         </div>
       </div>
 
       {/* Section: أسعار السوق الموازي */}
-      <div>
+      <div className="parallel-rates">
         <div className="flex items-center justify-between mb-3.5">
           <h2 className="text-base sm:text-lg font-black text-white tracking-wide">
             أسعار السوق الموازي
@@ -460,11 +603,11 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
         </div>
 
         {/* Foreign Currency Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
           {(!rates || configTerms.length === 0) ? (
             Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
           ) : (
-            configTerms.filter(t => t.id !== "USD" && t.id !== "OFFICIAL_USD" && !t.id.startsWith("USD_") && !METAL_IDS.includes(t.id) && !staleCurrencies.has(t.id))
+            configTerms.filter(t => t.id !== "USD" && t.id !== "EUR" && t.id !== "OFFICIAL_USD" && !t.id.startsWith("USD_") && !METAL_IDS.includes(t.id) && !staleCurrencies.has(t.id))
               .slice(0, expandedSections.foreign ? undefined : 6)
               .map(term => {
                 const rate = rates?.parallel[term.id] || 0;
@@ -486,7 +629,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
       </div>
 
       {/* Collapsible Checks & Transfers Sections */}
-      <section id="main-rates-grid" className="space-y-6 pt-4 border-t border-slate-800/60">
+      <section id="main-rates-grid" className="settlement-rates space-y-6 pt-4 border-t border-slate-800/60">
         {/* Bank Checks Group */}
         <div id="checks-grid">
           <div className="flex items-center justify-between mb-6 cursor-pointer group" onClick={() => toggleSection('checks')}>
@@ -503,7 +646,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.checks ? 'rotate-180' : ''}`} />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {(!rates || configTerms.length === 0) ? (
               Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
             ) : (
@@ -545,7 +688,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.transfers ? 'rotate-180' : ''}`} />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {(!rates || configTerms.length === 0) ? (
               Array(5).fill(0).map((_, i) => <RateSkeleton key={i} />)
             ) : (
@@ -574,7 +717,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
       </section>
 
       {/* Official Market Table */}
-      <section id="official-rates-grid">
+      <section id="official-rates-grid" className="official-rates">
         <div className="flex items-center justify-between mb-6 cursor-pointer group" onClick={() => toggleSection('official')}>
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-indigo-500/5 border border-indigo-500/10 flex items-center justify-center text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.1)] group-hover:scale-105 transition-transform duration-300">
@@ -589,7 +732,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
             <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${expandedSections.official ? 'rotate-180' : ''}`} />
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {(!rates || dynamicCurrencies.length === 0) ? (
             Array(6).fill(0).map((_, i) => <RateSkeleton key={i} />)
           ) : (

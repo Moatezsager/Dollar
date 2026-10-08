@@ -15,6 +15,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ isOffline, appStat
       <AnimatePresence>
         {(isOffline || appStatus?.status === 'stale') && (
           <motion.div 
+            role="status"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -24,7 +25,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ isOffline, appStat
                 : 'bg-amber-500 border-amber-400 text-black'
             }`}
           >
-            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-full ${isOffline ? 'bg-white/20' : 'bg-black/10'} animate-pulse`}>
                   {isOffline ? <WifiOff className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}

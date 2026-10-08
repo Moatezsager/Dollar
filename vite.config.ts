@@ -67,6 +67,18 @@ export default defineConfig(({mode}) => {
     server: {
       allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true',
+      // Vite-only previews read public data from the configured Web server.
+      proxy: env.APP_URL ? {
+        '^/api/(rates|history|config|status|stats/active)(?:\\?|$)': {
+          target: env.APP_URL,
+          changeOrigin: true,
+        },
+        '/socket.io': {
+          target: env.APP_URL,
+          changeOrigin: true,
+          ws: true,
+        },
+      } : undefined,
     },
     build: {
       target: 'es2020',

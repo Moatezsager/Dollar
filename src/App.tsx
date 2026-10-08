@@ -355,18 +355,14 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <MotionConfig transition={animationsEnabled ? undefined : { duration: 0 }}>
+      <MotionConfig reducedMotion="user" transition={animationsEnabled ? undefined : { duration: 0 }}>
         <div 
-          className={`min-h-screen bg-transparent text-white font-sans selection:bg-emerald-500/20 relative overflow-hidden transition-all duration-300 ${
+          className={`app-shell min-h-screen bg-transparent text-white font-sans selection:bg-emerald-500/20 relative overflow-hidden transition-all duration-300 ${
             fontSizePreference === 'small' ? 'text-xs' : fontSizePreference === 'large' ? 'text-base' : 'text-sm'
           }`} 
           dir="rtl"
+          data-font-size={fontSizePreference}
         >
-          {/* Ambient Background Glows */}
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-500/5 rounded-full blur-[150px] pointer-events-none" />
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay" />
 
           {/* Installation Prompts & Banners */}
           <InstallPrompt />
@@ -376,9 +372,6 @@ export default function App() {
           {/* App Tour */}
           <AppTour runTour={runTour} setRunTour={setRunTour} triggerHaptic={triggerHaptic} />
 
-          {/* Atmospheric Fixed Backgrounds */}
-          <div className="fixed top-[-10%] left-[-10%] w-[500px] h-[500px] bg-emerald-600/10 blur-[120px] rounded-full pointer-events-none" />
-          <div className="fixed bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
 
           {/* Floating Telegram & Facebook Action Buttons (Desktop Only) */}
           <FloatingSocialButtons isInstallPromptVisible={isInstallPromptVisible} />
@@ -410,8 +403,10 @@ export default function App() {
             isRefreshing={isRefreshing}
           />
 
+          {currentPage === 'dashboard' && <a href="#dashboard-main" className="fixed top-2 right-2 z-[1100] -translate-y-24 focus:translate-y-0 bg-emerald-300 text-black px-4 py-3 rounded-lg font-semibold">انتقل إلى الأسعار</a>}
           {/* Main Top Header */}
           <Header
+            showSectionNav={currentPage === 'dashboard'}
             isRefreshing={isRefreshing}
             lastFetchTime={lastFetchTime}
             showSearchModal={showSearchModal}
@@ -466,12 +461,15 @@ export default function App() {
                 style={{ y: pullY }}
                 data-compact={compactMode}
                 data-animations={animationsEnabled}
-                className="max-w-7xl mx-auto px-3.5 sm:px-6 pt-2.5 sm:pt-6 pb-24 md:pb-16 relative z-10"
+                id="dashboard-main"
+                tabIndex={-1}
+                className="dashboard-content max-w-7xl mx-auto px-3.5 sm:px-6 pt-2.5 sm:pt-6 pb-32 md:pb-16 relative z-10"
               >
                 {/* ===================== TAB: MAIN ===================== */}
                 <MainRatesGrid
                   activeTab={activeTab}
                   rates={rates}
+                  history={history}
                   configTerms={configTerms}
                   dynamicCurrencies={dynamicCurrencies}
                   staleCurrencies={staleCurrencies}
@@ -558,7 +556,7 @@ export default function App() {
           {/* Mobile Bottom Navigation Bar */}
           <MobileNav
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={(tab) => { setCurrentPage('dashboard'); setActiveTab(tab); }}
             triggerHaptic={triggerHaptic}
           />
 

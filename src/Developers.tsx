@@ -46,7 +46,7 @@ print_r($data);
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-16 space-y-12"
+      className="content-page max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8"
     >
       {onBack && (
         <button 
@@ -109,7 +109,7 @@ print_r($data);
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-black/50 p-4 rounded-2xl border border-white/5">
             <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 font-bold rounded-lg text-sm w-fit">GET</span>
-            <code className="flex-1 text-zinc-300 font-mono text-sm sm:text-base text-left" dir="ltr">
+            <code className="flex-1 min-w-0 break-all text-zinc-300 font-mono text-sm sm:text-base text-left" dir="ltr">
               https://dollar-price-qp14.onrender.com/api/public/rates
             </code>
             <button 

@@ -11,12 +11,11 @@ import {
 } from "./server/services/maintenance.service";
 import { 
   initializeRatesFromDB, 
-  loadLatestRatesFromSupabase, 
+  loadLatestRatesFromSupabase,
   logErrorArabic 
 } from "./server/services/db.service";
 import { loadConfigFromSupabase } from "./server/config";
 import { loadRecentBroadcastTimestamps } from "./server/services/social.service";
-import { initStatsIfEmpty } from "./server/services/reporting.service";
 import { rates } from "./server/state";
 
 // ─── Environment Validation on Bootstrap ───
@@ -25,6 +24,7 @@ if (process.env.NODE_ENV === "production") {
     { name: "ADMIN_PASSWORD", minLen: 8, isCritical: true },
     { name: "API_HMAC_SECRET", minLen: 32, isCritical: false },
     { name: "CRON_SECRET", minLen: 16, isCritical: false },
+    { name: "WORKER_INTERNAL_SECRET", minLen: 16, isCritical: false },
   ];
 
   for (const check of SECURITY_CHECKS) {
@@ -33,9 +33,13 @@ if (process.env.NODE_ENV === "production") {
       if (check.isCritical) {
         console.warn(`⚠️ [SECURITY WARNING] '${check.name}' is missing or shorter than ${check.minLen} chars. Please configure it in Render environment settings.`);
       } else {
-        console.warn(`ℹ️ [CONFIG NOTICE] '${check.name}' is not set yet in Render. Advanced server-to-server security features will require this variable.`);
+        console.warn(`ℹ️ [CONFIG NOTICE] '${check.name}' is not set. Some features may be unavailable.`);
       }
     }
+  }
+
+  if (!process.env.WORKER_URL) {
+    console.warn(`⚠️ [CONFIG NOTICE] 'WORKER_URL' is not set. Admin refresh buttons and real-time Worker notifications will not work.`);
   }
 }
 
@@ -52,8 +56,9 @@ process.on("uncaughtException", async (error) => {
 });
 
 // ─── Graceful Shutdown ───
+// Web Server is now lightweight — no Telegram or WhatsApp connections to close.
 const gracefulShutdown = async () => {
-  console.log("[WebServer] Shutting down gracefully...");
+  console.log("[Server] Shutting down gracefully...");
   process.exit(0);
 };
 
@@ -62,43 +67,43 @@ process.on("SIGINT", gracefulShutdown);
 
 // ─── Server Startup ───
 async function startServer() {
+  console.log("==========================================");
+  console.log("🚀 Starting Web Server (Visitor-Facing)");
+  console.log("   Role: UI, Socket.IO, API, Admin Panel");
+  console.log("==========================================");
+
+  // 1. Initial database and configuration loading
+  await initializeRatesFromDB();
+  await loadConfigFromSupabase();
+  await loadBroadcastStateFromStorageAndSupabase();
+
+  // 2. Initialize HTTP server and Socket.IO
   const PORT = Number(process.env.PORT) || 3000;
-
-  // 1. Initialize Express App, HTTP Server and Socket.IO
-  const app = await createApp(null as any);
+  const dummyServer = createServer();
+  const io = initSocketIO(dummyServer);
+  const app = await createApp(io);
   const server = createServer(app);
-  const io = initSocketIO(server);
 
-  // 2. Start listening IMMEDIATELY so Render and health scanners detect open port without blocking
+  // Re-attach socket.io to the actual HTTP server handling requests
+  io.attach(server);
+
+  // 3. Initialize lightweight background tasks and (no-op) cron schedulers
+  initCronSchedulers();
+  initBackgroundTasks(PORT);
+
+  // 4. Start listening
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`[WebServer] ✅ Server running on port ${PORT} (http://0.0.0.0:${PORT})`);
+    console.log(`[Server] ✅ Web Server running on http://localhost:${PORT}`);
 
-    // 3. Perform database synchronization and start schedulers in background
+    // Load latest rates from Supabase on startup (populated by Worker Server)
     (async () => {
       try {
-        console.log("[Startup] Initializing rates and configurations from Supabase...");
-        await Promise.allSettled([
-          initializeRatesFromDB(),
-          loadConfigFromSupabase(),
-          loadBroadcastStateFromStorageAndSupabase(),
-        ]);
-
-        // Initialize background schedulers and cron jobs
-        initCronSchedulers();
-        initBackgroundTasks(PORT);
-
         await loadLatestRatesFromSupabase();
         await loadRecentBroadcastTimestamps();
-        for (const key in rates.parallel) {
-          if (rates.parallel[key] > 0) {
-            initStatsIfEmpty(key, rates.parallel[key]);
-          }
-        }
-
-        console.log("[Startup] ✅ Rates successfully initialized and synchronized.");
         broadcastRatesUpdate(rates);
+        console.log("[Startup] ✅ Rates loaded from Supabase and broadcast to Socket.IO clients.");
       } catch (err) {
-        console.error("[Startup] Error during background database initialization:", err);
+        console.error("[Startup] Failed to load initial rates from Supabase:", err);
       }
     })();
   });
@@ -108,3 +113,5 @@ startServer().catch((err) => {
   console.error("Failed to start server:", err);
   process.exit(1);
 });
+
+

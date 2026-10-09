@@ -9,6 +9,7 @@ import {
   forwardVisitorMessageToTelegram,
   getOrInitTelegramManager
 } from '../../services/social.service';
+import { sendCriticalErrorAlert } from '../../services/alert.service';
 
 const router = express.Router();
 const tempClients: Record<string, { client: TelegramClient, apiId: number, apiHash: string }> = {};
@@ -326,6 +327,28 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
     });
   } catch (err: any) {
     res.status(500).json({ connected: false, error: err.message || "فشل الاتصال بخوادم تيليجرام" });
+  }
+});
+
+// Test critical error alert
+router.post('/telegram/test-error-alert', async (req: express.Request, res: express.Response) => {
+  try {
+    const success = await sendCriticalErrorAlert({
+      title: "تنبيه تجريبي | فحص نظام الإنذار الحرج",
+      context: "سيرفر التطبيق (System Diagnostics)",
+      severity: "critical",
+      description: "هذا فحص تجريبي للتأكد من وصول التنبيهات الحرجة والمهمة فقط إلى حسابك بشكل منسق واحترافي.",
+      technicalDetails: "Simulated Error: ECONNRESET on worker ping check (HTTP 500)",
+      actionHint: "لا يلزم أي إجراء، السيرفر يعمل بكفاءة تامة وهذا مجرد فحص للتنسيق الذكي."
+    });
+
+    if (success) {
+      res.json({ success: true, message: "تم إرسال تنبيه تجريبي للأخطاء الحرجة إلى حسابك في تيليجرام بنجاح 🚨" });
+    } else {
+      res.status(500).json({ success: false, error: "تعذر إرسال التنبيه، تأكد من توكن البوت وحسابك" });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || "فشل إرسال التنبيه" });
   }
 });
 

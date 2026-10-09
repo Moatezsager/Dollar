@@ -20,7 +20,12 @@ export function clearDbCache() {
   lastRatesFetchTime = 0;
 }
 
+import { checkAndAlertIfCritical } from './alert.service';
+
 export async function logErrorArabic(message: string, context = "النظام", stack?: string, url?: string) {
+  // Fire background alert for critical system issues
+  checkAndAlertIfCritical(message, context, { stack, url }).catch(() => {});
+
   if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
     console.error(`[ArabicLog] ${context}: ${message}`);
     return;

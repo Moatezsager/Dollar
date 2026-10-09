@@ -1,6 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { adminToken, safeCompare } from '../../middleware/auth';
+import { sendCriticalErrorAlert } from '../../services/alert.service';
 
 const router = express.Router();
 
@@ -13,6 +14,16 @@ const adminLoginLimiter = rateLimit({
   handler: (req: express.Request, res: express.Response) => {
     const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown') as string;
     console.warn(`[Admin Login Rate Limit] Limit exceeded for IP: ${ip}`);
+
+    sendCriticalErrorAlert({
+      title: "درع الأمان | تنبيه أمني للوحة التحكم",
+      context: "أمان لوحة التحكم (Admin Auth)",
+      severity: "security",
+      description: "رصد تكرار محاولات إدخال كلمة مرور خاطئة وتجاوز الحد المسموح (5 محاولات فاشلة). تم حظر العنوان مؤقتاً.",
+      ip,
+      actionHint: "إذا لم تكن أنت من يحاول الدخول، تحقق من أمان حسابك وسجلات الدخول."
+    }).catch(() => {});
+
     res.status(429).json({ success: false, message: "محاولات كثيرة، حاول بعد قليل" });
   }
 });

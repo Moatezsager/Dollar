@@ -27,7 +27,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.3.1",
     "firebase": "^12.19.0",
-    "helmet": "^8.1.0",
+    "helmet": "^8.3.0",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "input": "^1.0.1",

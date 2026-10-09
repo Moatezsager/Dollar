@@ -5,6 +5,7 @@ import { userLogs } from '../services/maintenance.service';
 import { getAppBuildSignature, serverStartTime } from '../utils/version';
 import { obfuscateData } from '../utils/helpers';
 import { Rates } from '../types';
+import { rates } from '../state';
 
 let ioInstance: SocketIOServer | null = null;
 let onlineUsers = 0;
@@ -129,6 +130,13 @@ export function initSocketIO(server: HttpServer): SocketIOServer {
         version: getAppBuildSignature(),
         serverStartTime: serverStartTime.getTime()
       });
+    } catch (e) {}
+
+    // Immediately push latest rates over socket for sub-second real-time render
+    try {
+      if (rates && rates.lastUpdated) {
+        socket.emit('rates_update', { rates: obfuscateData(rates) });
+      }
     } catch (e) {}
 
     const rawIp = (req.headers["x-forwarded-for"] || req.connection?.remoteAddress || "") as string;

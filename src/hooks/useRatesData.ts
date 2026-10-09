@@ -399,7 +399,51 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
         socket.on('rates_update', (data: any) => {
           const decodedRates = decodeData<Rates>(data?.rates);
-          if (!decodedRates || !applyRates(decodedRates)) return;
+          if (!decodedRates) return;
+
+          const currentRates = ratesRef.current;
+          if (currentRates && Date.parse(decodedRates.lastUpdated) > Date.parse(currentRates.lastUpdated)) {
+            const currenciesToCheck = Object.keys(decodedRates.parallel);
+            const changes: { code: string; name: string; oldPrice: number; newPrice: number; priority: number }[] = [];
+            const priorityIds = ["USD", "USD_JBANK", "USD_CHECKS", "EUR", "GOLD"];
+
+            currenciesToCheck.forEach(code => {
+              const oldPrice = currentRates.parallel[code];
+              const newPrice = decodedRates.parallel[code];
+
+              if (oldPrice && newPrice && Math.abs(oldPrice - newPrice) >= thresholdRef.current) {
+                if (lastNotifiedRef.current[code] !== newPrice) {
+                  const term = configTermsRef.current.find(t => t.id === code);
+                  const name = term ? term.name : code;
+                  const priority = priorityIds.indexOf(code);
+
+                  changes.push({
+                    code,
+                    name,
+                    oldPrice,
+                    newPrice,
+                    priority: priority === -1 ? 999 : priority
+                  });
+                  lastNotifiedRef.current[code] = newPrice;
+                }
+              }
+            });
+
+            if (changes.length > 0) {
+              changes.sort((a, b) => a.priority - b.priority);
+              const maxIndividual = 3;
+              const toNotify = changes.slice(0, maxIndividual);
+              for (const change of toNotify) {
+                showPriceNotification(change.code, change.name, change.oldPrice, change.newPrice).catch(() => {});
+              }
+              if (changes.length > maxIndividual) {
+                const remaining = changes.length - maxIndividual;
+                addToast("📊 تحديثات أسعار إضافية", `تم رصد تغيرات في ${remaining} عملات وأصناف أخرى في السوق.`, "info");
+              }
+            }
+          }
+
+          if (!applyRates(decodedRates)) return;
           socketRevisionRef.current++;
           appendRateHistory(decodedRates);
           setLoading(false);

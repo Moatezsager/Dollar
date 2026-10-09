@@ -106,16 +106,12 @@ export let rates: Rates = {
     USD_AB: 11.55,
     USD_WB: 11.58,
   },
-  lastUpdated: new Date().toISOString(),
+  lastUpdated: "",
   lastChanged: {
     official: {},
     parallel: {},
   },
 };
-
-// Initialize lastChanged with current time
-Object.keys(rates.official).forEach(key => rates.lastChanged.official[key] = rates.lastUpdated);
-Object.keys(rates.parallel).forEach(key => rates.lastChanged.parallel[key] = rates.lastUpdated);
 
 export let history: HistoryPoint[] = [];
 const now = new Date();

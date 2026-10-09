@@ -92,13 +92,17 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
           if (market === 'official') {
              rates.official = { ...rates.official, ...latestRecord.rates };
              rates.lastUpdated = latestRecord.recorded_at;
-             rates.lastChanged.official = latestRecord.recorded_at;
+             if (currency) {
+               rates.lastChanged.official[currency] = latestRecord.recorded_at;
+             }
           } else {
              const oldVal = rates.parallel[currency] || existing.rates?.[currency] || parseFloat(value);
              const newVal = parseFloat(value);
              rates.parallel = { ...rates.parallel, ...latestRecord.rates };
              rates.lastUpdated = latestRecord.recorded_at;
-             rates.lastChanged.parallel = latestRecord.recorded_at;
+             if (currency) {
+               rates.lastChanged.parallel[currency] = latestRecord.recorded_at;
+             }
              
              const term = appConfig.terms.find(t => t.id === currency);
              if (term && Math.abs(newVal - oldVal) > 0.0001) {
@@ -156,11 +160,15 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
           if (market === 'official') {
              rates.official = { ...rates.official, ...latestRecord.rates };
              rates.lastUpdated = latestRecord.recorded_at;
-             rates.lastChanged.official = latestRecord.recorded_at;
+             for (const key in latestRecord.rates) {
+               rates.lastChanged.official[key] = latestRecord.recorded_at;
+             }
           } else {
              rates.parallel = { ...rates.parallel, ...latestRecord.rates };
              rates.lastUpdated = latestRecord.recorded_at;
-             rates.lastChanged.parallel = latestRecord.recorded_at;
+             for (const key in latestRecord.rates) {
+               rates.lastChanged.parallel[key] = latestRecord.recorded_at;
+             }
           }
           deps.broadcastRatesUpdate(rates);
         }

@@ -6,6 +6,7 @@ import { rates } from '../../state';
 import {
   broadcastOfficialRates,
   broadcastRateChanges,
+  forwardVisitorMessageToTelegram,
   getOrInitTelegramManager
 } from '../../services/social.service';
 
@@ -257,6 +258,31 @@ router.post('/weekly-harvest/send-telegram', async (req: express.Request, res: e
   } catch (err: any) {
     console.error("[WeeklyHarvest] Send Telegram exception:", err);
     res.status(500).json({ success: false, error: err.message || "حدث خطأ أثناء إرسال الصورة" });
+  }
+});
+
+// Telegram test contact message
+router.post('/telegram/test-contact', async (req: express.Request, res: express.Response) => {
+  try {
+    const success = await forwardVisitorMessageToTelegram({
+      id: 0,
+      name: 'رسالة فحص تجريبية',
+      email: 'test@example.com',
+      phone: '0910000000',
+      message: 'هذه رسالة تجريبية للتأكد من وصول رسائل اتصل بنا إلى حسابك في تيليجرام بنجاح ✅',
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1',
+      userAgent: (req.headers['user-agent'] as string) || 'Admin Console',
+    });
+
+    if (success) {
+      res.json({ success: true, message: "تم إرسال رسالة تجريبية بنجاح إلى حسابك في تيليجرام (الرسائل المحفوظة - Saved Messages) 📬" });
+    } else {
+      const manager = getOrInitTelegramManager();
+      res.status(500).json({ success: false, error: manager.lastError || "تعذر إرسال الرسالة إلى تيليجرام" });
+    }
+  } catch (err: any) {
+    console.error("Telegram test contact error:", err);
+    res.status(500).json({ success: false, error: err.message || "فشل إرسال رسالة الاختبار" });
   }
 });
 

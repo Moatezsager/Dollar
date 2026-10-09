@@ -203,7 +203,7 @@ export class TelegramManager {
         this.isAuthRevoked = true;
         this.lastError = "تم إبطال جلسة تيليجرام (AUTH_KEY_DUPLICATED) من سيرفرات تيليجرام بسبب تشغيلها في مكان آخر أو إعادة تشغيل التطبيق. يرجى تجديد تسجيل الدخول من لوحة التحكم أو استخدام Bot Token.";
         console.warn("[TelegramManager] Telegram session active elsewhere or duplicate auth key (AUTH_KEY_DUPLICATED). Switched to public web channel scraper (no session required).");
-        cooldownDuration = 24 * 60 * 60 * 1000;
+        cooldownDuration = 5 * 60 * 1000;
       } else {
         console.error("[TelegramManager] Connection failed:", errorMsg);
         this.lastError = errorMsg;
@@ -297,11 +297,20 @@ export class TelegramManager {
     if (!token) return false;
 
     let target = channelUsername.trim();
+    if (target === 'me') {
+      const adminChat = (process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "").trim();
+      if (adminChat) {
+        target = adminChat;
+      } else {
+        // Bot API cannot send to 'me' without a known numeric chat ID
+        return false;
+      }
+    }
     if (target.includes('t.me/')) {
       target = target.split('t.me/')[1].split('/')[0].split('?')[0];
     }
     target = target.replace('@', '').trim();
-    if (!target.startsWith('-100') && !target.startsWith('@')) {
+    if (!target.startsWith('-100') && !target.startsWith('@') && !/^-?\d+$/.test(target)) {
       target = '@' + target;
     }
 
@@ -368,7 +377,9 @@ export class TelegramManager {
         console.log(`[TelegramManager] Successfully sent message via Telegram Bot API to ${channelUsername}`);
         return true;
       }
-      console.warn(`[TelegramManager] Bot API send failed (${this.lastError}), attempting MTProto user account...`);
+      if (channelUsername !== 'me') {
+        console.warn(`[TelegramManager] Bot API send failed (${this.lastError}), attempting MTProto user account...`);
+      }
     }
 
     // 2. MTProto user account

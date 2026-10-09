@@ -124,13 +124,18 @@ router.post("/messages", messageRateLimiter, async (req: express.Request, res: e
       userAgent,
       referrer
     }).then(delivered => {
-      if (delivered && messageId) {
+      if (messageId) {
         try {
-          db.prepare("UPDATE messages SET status = 'sent_to_telegram' WHERE id = ?").run(messageId);
+          db.prepare("UPDATE messages SET status = ? WHERE id = ?").run(delivered ? 'sent_to_telegram' : 'telegram_failed', messageId);
         } catch (e) {}
       }
     }).catch(err => {
       console.error("Failed to forward visitor message to Telegram Saved Messages:", err);
+      if (messageId) {
+        try {
+          db.prepare("UPDATE messages SET status = 'telegram_failed' WHERE id = ?").run(messageId);
+        } catch (e) {}
+      }
     });
     
     res.json({ success: true, message: "تم إرسال رسالتك بنجاح. سيتم الرد عليك في أقل من 24 ساعة." });

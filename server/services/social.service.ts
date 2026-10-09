@@ -142,10 +142,10 @@ let retryEngineTimer: NodeJS.Timeout | null = null;
 
 
 export function getOrInitTelegramManager(): TelegramManager {
-  const apiId = Number(process.env.TELEGRAM_API_ID || appConfig.telegramApiId || 0);
-  const apiHash = process.env.TELEGRAM_API_HASH || appConfig.telegramApiHash || "";
-  const sessionString = process.env.TELEGRAM_SESSION || process.env.TG_SESSION_V2 || appConfig.telegramSessionString || "";
-  const botToken = process.env.TELEGRAM_BOT_TOKEN || appConfig.telegramBotToken || "";
+  const apiId = Number(appConfig.telegramApiId || process.env.TELEGRAM_API_ID || 0);
+  const apiHash = (appConfig.telegramApiHash || process.env.TELEGRAM_API_HASH || "").trim();
+  const sessionString = (appConfig.telegramSessionString || process.env.TELEGRAM_SESSION || process.env.TG_SESSION_V2 || "").trim();
+  const botToken = (appConfig.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "").trim();
   
   const manager = getTelegramManager(apiId, apiHash, sessionString, botToken);
   setTelegramManager(manager);

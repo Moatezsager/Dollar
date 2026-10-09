@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
-import { Globe, RefreshCw, Send, CheckCircle2, Sparkles } from 'lucide-react';
+import { Globe, RefreshCw, Send, CheckCircle2, Sparkles, Mail } from 'lucide-react';
 import { TelegramDetailedStatus } from "./TelegramDetailedStatus";
 import { TelegramVisitsCard } from "./TelegramVisitsCard";
 
@@ -321,6 +321,28 @@ export function AdminTelegram({ token, config, setConfig, setError, setSuccess, 
                 className="px-6 py-3 sm:py-2 w-full sm:w-auto rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-colors flex items-center justify-center text-sm sm:text-base"
               >
                 إرسال رسالة اختبارية
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/admin/telegram/test-contact", {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setSuccess(data.message || "تم إرسال رسالة تجريبية من نموذج اتصل بنا إلى حسابك في تيليجرام بنجاح!");
+                    } else {
+                      setError(data.error || "فشل إرسال رسالة الاختبار");
+                    }
+                  } catch (err: any) {
+                    setError("فشل في الاتصال بالخادم");
+                  }
+                }}
+                className="px-6 py-3 sm:py-2 w-full sm:w-auto rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-bold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                <Mail className="w-4 h-4" />
+                فحص وصول "اتصل بنا"
               </button>
               <button
                 onClick={handleSave}

@@ -57,7 +57,14 @@ export async function loadLatestRatesFromSupabase() {
     if (parallelData && parallelData.length > 0) {
       const latest = parallelData[0];
       rates.parallel = { ...rates.parallel, ...latest.rates, USD: latest.usd };
-      rates.lastUpdated = latest.recorded_at;
+      if (latest.recorded_at && (!rates.lastUpdated || new Date(latest.recorded_at) > new Date(rates.lastUpdated))) {
+        rates.lastUpdated = latest.recorded_at;
+      }
+      for (const code in rates.parallel) {
+        if (!rates.lastChanged.parallel[code] && latest.recorded_at) {
+          rates.lastChanged.parallel[code] = latest.recorded_at;
+        }
+      }
       console.log("[Startup] Successfully loaded latest parallel rates from", latest.recorded_at);
       await syncCheckRates("بدء تشغيل السيرفر");
     }
@@ -72,6 +79,14 @@ export async function loadLatestRatesFromSupabase() {
     if (officialData && officialData.length > 0) {
       const latest = officialData[0];
       rates.official = { ...rates.official, ...latest.rates, USD: latest.usd };
+      if (latest.recorded_at && (!rates.lastUpdated || new Date(latest.recorded_at) > new Date(rates.lastUpdated))) {
+        rates.lastUpdated = latest.recorded_at;
+      }
+      for (const code in rates.official) {
+        if (!rates.lastChanged.official[code] && latest.recorded_at) {
+          rates.lastChanged.official[code] = latest.recorded_at;
+        }
+      }
       console.log("[Startup] Successfully loaded latest official rates from", latest.recorded_at);
     }
   } catch (err) {
@@ -143,47 +158,121 @@ export async function initializeRatesFromDB(force = false) {
             parallel: { ...rates.lastChanged.parallel, ...(latestRow.last_changed.parallel || {}) }
           };
         }
-        rates.lastUpdated = latestRow.recorded_at || new Date().toISOString();
+        if (latestRow.recorded_at && (!rates.lastUpdated || new Date(latestRow.recorded_at) > new Date(rates.lastUpdated))) {
+          rates.lastUpdated = latestRow.recorded_at;
+        }
         
-        const findPrev = (curr: RateMap, isP: boolean) => {
+        const findPrevAndLastChanged = (curr: RateMap, isP: boolean) => {
           const prev: RateMap = { ...curr };
           for (const code in curr) {
-            const diff = data.find((row: any) => {
+            const currentVal = curr[code];
+            let diffRow: any = null;
+            let earliestRowWithCurrentVal: any = latestRow;
+
+            for (let i = 0; i < data.length; i++) {
+              const row = data[i];
               const r = isP ? row.rates_parallel : row.rates_official;
-              return r && isSignificantChange(r[code], curr[code]);
-            });
-            if (diff) {
-              const r = isP ? (diff as any).rates_parallel : (diff as any).rates_official;
-              prev[code] = r[code];
+              const rowVal = r ? r[code] : undefined;
+              if (rowVal !== undefined && isSignificantChange(rowVal, currentVal)) {
+                diffRow = row;
+                break;
+              }
+              if (row.recorded_at) {
+                earliestRowWithCurrentVal = row;
+              }
+            }
+
+            if (diffRow) {
+              const r = isP ? diffRow.rates_parallel : diffRow.rates_official;
+              if (r && r[code] !== undefined) prev[code] = r[code];
+            }
+
+            const targetMap = isP ? rates.lastChanged.parallel : rates.lastChanged.official;
+            if (!targetMap[code] && earliestRowWithCurrentVal?.recorded_at) {
+              targetMap[code] = earliestRowWithCurrentVal.recorded_at;
             }
           }
           return prev;
         };
-        rates.previousParallel = findPrev(rates.parallel, true);
-        rates.previousOfficial = findPrev(rates.official, false);
+        rates.previousParallel = findPrevAndLastChanged(rates.parallel, true);
+        rates.previousOfficial = findPrevAndLastChanged(rates.official, false);
       }
     } else {
       if (parallelData && parallelData.length > 0) {
         const latest = parallelData[0];
         if (latest.rates) rates.parallel = { ...rates.parallel, ...latest.rates };
-        if (latest.last_changed) rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latest.last_changed };
-        rates.lastUpdated = latest.recorded_at;
+        if (latest.usd) rates.parallel.USD = latest.usd;
+        if (latest.last_changed && typeof latest.last_changed === 'object') {
+          rates.lastChanged.parallel = { ...rates.lastChanged.parallel, ...latest.last_changed };
+        }
+        if (latest.recorded_at && (!rates.lastUpdated || new Date(latest.recorded_at) > new Date(rates.lastUpdated))) {
+          rates.lastUpdated = latest.recorded_at;
+        }
         
         for (const code in rates.parallel) {
-          const diff = parallelData.find(r => r.rates && isSignificantChange(r.rates[code], rates.parallel[code]));
-          if (diff) rates.previousParallel[code] = diff.rates[code];
+          const currentVal = rates.parallel[code];
+          let prevDiffRow: any = null;
+          let earliestRowWithCurrentVal: any = latest;
+
+          for (let i = 0; i < parallelData.length; i++) {
+            const row = parallelData[i];
+            const rowVal = row.rates ? row.rates[code] : (code === 'USD' ? row.usd : undefined);
+            if (rowVal !== undefined && isSignificantChange(rowVal, currentVal)) {
+              prevDiffRow = row;
+              break;
+            }
+            if (row.recorded_at) {
+              earliestRowWithCurrentVal = row;
+            }
+          }
+
+          if (prevDiffRow) {
+            const prevVal = prevDiffRow.rates ? prevDiffRow.rates[code] : (code === 'USD' ? prevDiffRow.usd : undefined);
+            if (prevVal !== undefined) rates.previousParallel[code] = prevVal;
+          }
+
+          if (!rates.lastChanged.parallel[code] && earliestRowWithCurrentVal?.recorded_at) {
+            rates.lastChanged.parallel[code] = earliestRowWithCurrentVal.recorded_at;
+          }
         }
       }
 
       if (officialData && officialData.length > 0) {
         const latest = officialData[0];
         if (latest.rates) rates.official = { ...rates.official, ...latest.rates };
-        for (const code in rates.official) {
-          const diff = officialData.find(r => r.rates && isSignificantChange(r.rates[code], rates.official[code]));
-          if (diff) rates.previousOfficial[code] = diff.rates[code];
+        if (latest.usd) rates.official.USD = latest.usd;
+        if (latest.last_changed && typeof latest.last_changed === 'object') {
+          rates.lastChanged.official = { ...rates.lastChanged.official, ...latest.last_changed };
         }
-        if (new Date(latest.recorded_at) > new Date(rates.lastUpdated)) {
-           rates.lastUpdated = latest.recorded_at;
+        if (latest.recorded_at && (!rates.lastUpdated || new Date(latest.recorded_at) > new Date(rates.lastUpdated))) {
+          rates.lastUpdated = latest.recorded_at;
+        }
+
+        for (const code in rates.official) {
+          const currentVal = rates.official[code];
+          let prevDiffRow: any = null;
+          let earliestRowWithCurrentVal: any = latest;
+
+          for (let i = 0; i < officialData.length; i++) {
+            const row = officialData[i];
+            const rowVal = row.rates ? row.rates[code] : (code === 'USD' ? row.usd : undefined);
+            if (rowVal !== undefined && isSignificantChange(rowVal, currentVal)) {
+              prevDiffRow = row;
+              break;
+            }
+            if (row.recorded_at) {
+              earliestRowWithCurrentVal = row;
+            }
+          }
+
+          if (prevDiffRow) {
+            const prevVal = prevDiffRow.rates ? prevDiffRow.rates[code] : (code === 'USD' ? prevDiffRow.usd : undefined);
+            if (prevVal !== undefined) rates.previousOfficial[code] = prevVal;
+          }
+
+          if (!rates.lastChanged.official[code] && earliestRowWithCurrentVal?.recorded_at) {
+            rates.lastChanged.official[code] = earliestRowWithCurrentVal.recorded_at;
+          }
         }
       }
     }

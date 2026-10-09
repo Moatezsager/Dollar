@@ -41,6 +41,7 @@ export interface AppConfig {
   telegramApiHash?: string;
   telegramSessionString?: string;
   telegramBotToken?: string;
+  telegramAdminChatId?: string;
   telegramPostChannel?: string;
   telegramAutoPost?: boolean;
   telegramTemplateStyle?: string;

@@ -212,7 +212,7 @@ export function AdminTelegram({ token, config, setConfig, setError, setSuccess, 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-bold text-slate-400">توكن بوت تيليجرام (Telegram Bot Token - خيار النشر الفائق الاستقرار ⚡)</label>
-                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">اختياري وموصى به</span>
+                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">متصل عبر البوت</span>
               </div>
               <input
                 type="text"
@@ -223,8 +223,63 @@ export function AdminTelegram({ token, config, setConfig, setError, setSuccess, 
                 dir="ltr"
               />
               <p className="text-xs text-slate-500 mt-2">
-                أنشئ بوتاً في ثوانٍ من @BotFather ثم أضفه كـ مشرف (Admin) في قناتك وضع التوكن هنا. يعمل عبر HTTP REST رسمي ولا ينقطع أبداً ولا يتأثر بتسجيل الخروج.
+                البوت يعمل عبر بروتوكول HTTP REST الرسمي بدون جلسات MTProto ولا يتعرض لأي انقطاع أو تكرار مفاتيح.
               </p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-bold text-slate-400">معرف المحادثة الخاص بك (Admin Chat ID - لاستلام رسائل اتصل بنا)</label>
+                <span className="text-xs text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20">خاص بالرسائل</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={config?.telegramAdminChatId || ''}
+                  onChange={(e) => setConfig({ ...config, telegramAdminChatId: e.target.value })}
+                  placeholder="مثال: 123456789 (معرف شاتك مع البوت)"
+                  className="flex-1 bg-black/40 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500/50 font-mono text-sm"
+                  dir="ltr"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError("");
+                    try {
+                      const res = await fetch("/api/admin/telegram/bot-status", {
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      const data = await res.json();
+                      if (data.connected && data.detectedChatId) {
+                        setConfig({ ...config, telegramAdminChatId: data.detectedChatId });
+                        setSuccess(`تم التقاط معرف حسابك بنجاح (${data.detectedChatUser || data.detectedChatId})`);
+                      } else if (data.connected) {
+                        setError("لم يتم العثور على رسائل حديثة. افتح @dollar99_bot في تيليجرام واضغط Start أو أرسل له رسالة ثم أعد المحاولة.");
+                      } else {
+                        setError(data.error || "تعذر فحص البوت");
+                      }
+                    } catch (e: any) {
+                      setError("فشل فحص البوت");
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap"
+                >
+                  التقاط معرفي تلقائياً 🔍
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                افتح البوت <b>@dollar99_bot</b> في تيليجرام واضغط <b>Start</b> أو أرسل له أي رسالة، ثم اضغط على زر "التقاط معرفي تلقائياً" ليتم حفظه واستلام الرسائل عليه مباشرة.
+              </p>
+            </div>
+
+            {/* Render instructions card */}
+            <div className="p-4 rounded-xl border border-sky-500/20 bg-sky-500/5 text-xs text-slate-300 leading-relaxed">
+              <p className="font-bold text-sky-400 mb-1">🔗 لربط البوت مع سيرفر Render:</p>
+              <p>في لوحة تحكم Render الخاصة بمشروعك (Environment Variables)، أضف المتغير التالي:</p>
+              <code className="block my-2 p-2 rounded bg-black/60 text-emerald-400 font-mono select-all text-[11px]" dir="ltr">
+                TELEGRAM_BOT_TOKEN = {config?.telegramBotToken || '8790045173:AAF3GeZTUjH-hpcV0-hd3Wecyl2RsqC8RHM'}
+              </code>
+              <p>وللنشر في قناتك، تأكد من إضافة <b>@dollar99_bot</b> كمشرف (Admin) في قناتك مع صلاحية "نشر الرسائل".</p>
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-400 mb-2">تنسيق رسالة النشر (قالب النشر تلقائي/تجريبي)</label>

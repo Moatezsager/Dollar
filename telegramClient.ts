@@ -79,6 +79,7 @@ export class TelegramManager {
   private apiHash: string;
   private sessionString: string;
   public botToken?: string;
+  public adminChatId?: string;
   private isConnecting = false;
   private connectPromise: Promise<TelegramClient | null> | null = null;
   private cooldownUntil = 0;
@@ -86,20 +87,22 @@ export class TelegramManager {
   public lastError: string = "";
   public isAuthRevoked = false;
 
-  constructor(apiId: number, apiHash: string, sessionString: string, botToken?: string) {
+  constructor(apiId: number, apiHash: string, sessionString: string, botToken?: string, adminChatId?: string) {
     this.apiId = apiId;
     this.apiHash = apiHash;
     this.sessionString = sessionString;
     this.botToken = botToken;
+    this.adminChatId = adminChatId;
   }
 
-  public updateCredentials(apiId: number, apiHash: string, sessionString: string, botToken?: string) {
-    if (this.apiId !== apiId || this.apiHash !== apiHash || this.sessionString !== sessionString || this.botToken !== botToken) {
+  public updateCredentials(apiId: number, apiHash: string, sessionString: string, botToken?: string, adminChatId?: string) {
+    if (this.apiId !== apiId || this.apiHash !== apiHash || this.sessionString !== sessionString || this.botToken !== botToken || this.adminChatId !== adminChatId) {
       console.log("[TelegramManager] Credentials updated, resetting client state.");
       this.apiId = apiId;
       this.apiHash = apiHash;
       this.sessionString = sessionString;
       this.botToken = botToken;
+      this.adminChatId = adminChatId;
       this.isAuthRevoked = false;
       this.lastError = "";
       if (this.client) {
@@ -298,7 +301,23 @@ export class TelegramManager {
 
     let target = channelUsername.trim();
     if (target === 'me') {
-      const adminChat = (process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "").trim();
+      let adminChat = (this.adminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "").trim();
+      if (!adminChat) {
+        // Try auto-detecting chat ID from bot getUpdates if user interacted with the bot
+        try {
+          const updRes = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`);
+          const upd: any = await updRes.json();
+          if (upd.ok && Array.isArray(upd.result) && upd.result.length > 0) {
+            const lastMsg = [...upd.result].reverse().find((u: any) => u.message?.chat?.id || u.channel_post?.chat?.id);
+            if (lastMsg) {
+              adminChat = String(lastMsg.message?.chat?.id || lastMsg.channel_post?.chat?.id);
+              this.adminChatId = adminChat;
+              console.log(`[TelegramManager] Auto-detected Telegram admin chat ID from bot updates: ${adminChat}`);
+            }
+          }
+        } catch (e) {}
+      }
+
       if (adminChat) {
         target = adminChat;
       } else {
@@ -562,13 +581,14 @@ export const getTelegramManager = (
   apiId: number,
   apiHash: string,
   sessionString: string,
-  botToken?: string
+  botToken?: string,
+  adminChatId?: string
 ): TelegramManager => {
   if (!managerInstance) {
-    managerInstance = new TelegramManager(apiId, apiHash, sessionString, botToken);
+    managerInstance = new TelegramManager(apiId, apiHash, sessionString, botToken, adminChatId);
   } else {
     // Update credentials if they changed
-    managerInstance.updateCredentials(apiId, apiHash, sessionString, botToken);
+    managerInstance.updateCredentials(apiId, apiHash, sessionString, botToken, adminChatId);
   }
   return managerInstance;
 };

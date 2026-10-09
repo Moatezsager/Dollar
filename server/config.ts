@@ -67,13 +67,13 @@ export function updateAppConfig(newConfig: Partial<AppConfig>) {
   }
   Object.assign(appConfig, newConfig);
 
-  // Preserve critical authentication credentials
-  if (!appConfig.telegramSessionString && preservedTelegram) appConfig.telegramSessionString = preservedTelegram;
-  if (!appConfig.telegramApiId && preservedTelegramApiId) appConfig.telegramApiId = preservedTelegramApiId;
-  if (!appConfig.telegramApiHash && preservedTelegramApiHash) appConfig.telegramApiHash = preservedTelegramApiHash;
-  if (!appConfig.telegramBotToken && preservedTelegramBotToken) appConfig.telegramBotToken = preservedTelegramBotToken;
-  if (!appConfig.facebookAccessToken && preservedFbToken) appConfig.facebookAccessToken = preservedFbToken;
-  if (!appConfig.whatsappAuth && preservedWhatsappAuth) appConfig.whatsappAuth = preservedWhatsappAuth;
+  // Preserve critical authentication credentials only if omitted in newConfig
+  if (newConfig.telegramSessionString === undefined && preservedTelegram) appConfig.telegramSessionString = preservedTelegram;
+  if (newConfig.telegramApiId === undefined && preservedTelegramApiId) appConfig.telegramApiId = preservedTelegramApiId;
+  if (newConfig.telegramApiHash === undefined && preservedTelegramApiHash) appConfig.telegramApiHash = preservedTelegramApiHash;
+  if (newConfig.telegramBotToken === undefined && preservedTelegramBotToken) appConfig.telegramBotToken = preservedTelegramBotToken;
+  if (newConfig.facebookAccessToken === undefined && preservedFbToken) appConfig.facebookAccessToken = preservedFbToken;
+  if (newConfig.whatsappAuth === undefined && preservedWhatsappAuth) appConfig.whatsappAuth = preservedWhatsappAuth;
 }
 
 export let telegramManager: TelegramManager | null = null;

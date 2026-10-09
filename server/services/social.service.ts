@@ -146,8 +146,9 @@ export function getOrInitTelegramManager(): TelegramManager {
   const apiHash = (appConfig.telegramApiHash || process.env.TELEGRAM_API_HASH || "").trim();
   const sessionString = (appConfig.telegramSessionString || process.env.TELEGRAM_SESSION || process.env.TG_SESSION_V2 || "").trim();
   const botToken = (appConfig.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  const adminChatId = (appConfig.telegramAdminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "").trim();
   
-  const manager = getTelegramManager(apiId, apiHash, sessionString, botToken);
+  const manager = getTelegramManager(apiId, apiHash, sessionString, botToken, adminChatId);
   setTelegramManager(manager);
   return manager;
 }

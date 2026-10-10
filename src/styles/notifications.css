@@ -1,5 +1,33 @@
 /* Notification controls share the existing light/dark design tokens. */
 @media screen {
+  .update-notice { position: fixed; right: max(24px, env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 210; width: min(416px, calc(100vw - 32px)); padding: 16px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 32px #0003; }
+  .update-notice-header { display: flex; align-items: center; gap: 10px; min-width: 0; margin-bottom: 12px; }
+  .update-notice-header img { width: 38px; height: 38px; object-fit: contain; flex-shrink: 0; border-radius: 6px; }
+  .update-notice-header > div { flex: 1; min-width: 0; }
+  .update-notice h2 { font-size: 15px; font-weight: 750; line-height: 1.7; overflow-wrap: anywhere; }
+  .update-notice-dismiss { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border-radius: 6px; color: var(--muted-ink); }
+  .update-notice-dismiss:hover { background: var(--surface-raised); color: var(--ink); }
+  .update-notice-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .update-notice-countdown { min-width: 0; display: flex; flex-direction: column; gap: 2px; color: var(--muted-ink); font-size: 13px; line-height: 1.7; }
+  .update-notice-time { display: flex; align-items: baseline; gap: 5px; }
+  .update-notice-time output { color: var(--positive); font-size: 21px; line-height: 1.2; font-weight: 750; font-variant-numeric: tabular-nums; min-width: 1.4ch; }
+  .update-notice-primary { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 44px; min-width: 136px; flex-shrink: 0; padding: 10px 14px; border-radius: 6px; color: var(--page); background: var(--positive); font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+  .update-notice-primary:hover { opacity: .9; }
+  .update-notice button:disabled { cursor: wait; opacity: .6; }
+  .update-notice button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+  .update-notice-progress { height: 3px; margin-top: 16px; background: var(--surface-raised); overflow: hidden; border-radius: 2px; }
+  .update-notice-progress span { display: block; height: 100%; width: 100%; background: var(--positive); transform-origin: right; transition: transform 1s linear; }
+  .update-notice-spinner { animation: update-notice-spin 1s linear infinite; }
+  @keyframes update-notice-spin { to { transform: rotate(360deg); } }
+  @media (max-width: 767px) {
+    .update-notice { right: 12px; bottom: calc(88px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
+    .update-notice-actions { gap: 12px; }
+    .update-notice-primary { min-width: 120px; padding-inline: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .update-notice-progress span { transition: none; }
+    .update-notice-spinner { animation: none; }
+  }
   .app-toast { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 14px; box-shadow: 0 6px 20px #0002; }
   .app-toast h4 { font-size: 14px; font-weight: 700; line-height: 1.6; margin-bottom: 4px; overflow-wrap: anywhere; }
   .app-toast p { color: var(--muted-ink); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }

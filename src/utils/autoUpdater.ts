@@ -97,8 +97,8 @@ export async function processIncomingVersion(serverVersion: string, autoReload =
     localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
     notifyUpdateListeners(serverVersion);
 
-    if (autoReload) {
-      // Delay briefly so any listeners or banners can show
+    // The banner owns its visible countdown; keep the fallback for pages without it.
+    if (autoReload && updateListeners.size === 0) {
       setTimeout(async () => {
         await purgeAllCachesAndReload();
       }, 1500);

@@ -1,98 +1,81 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, Sparkles, X } from 'lucide-react';
-import { onUpdateAvailable, purgeAllCachesAndReload } from '../utils/autoUpdater';
+import React, {useEffect, useRef, useState} from 'react';
+import {AnimatePresence, motion, useReducedMotion} from 'motion/react';
+import {RefreshCw, X} from 'lucide-react';
+import {onUpdateAvailable, purgeAllCachesAndReload} from '../utils/autoUpdater';
+
+const UPDATE_DELAY = 3;
 
 export const AutoUpdateBanner: React.FC = () => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(UPDATE_DELAY);
   const [isUpdating, setIsUpdating] = useState(false);
+  const updatingRef = useRef(false);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    const unsubscribe = onUpdateAvailable(() => {
-      setUpdateAvailable(true);
-    });
-
-    const handleCustomEvent = () => {
-      setUpdateAvailable(true);
-    };
-
-    window.addEventListener('dinar:update-available', handleCustomEvent);
-
+    const showUpdate = () => setUpdateAvailable(true);
+    const unsubscribe = onUpdateAvailable(showUpdate);
+    window.addEventListener('dinar:update-available', showUpdate);
     return () => {
       unsubscribe();
-      window.removeEventListener('dinar:update-available', handleCustomEvent);
+      window.removeEventListener('dinar:update-available', showUpdate);
     };
   }, []);
 
   useEffect(() => {
     if (!updateAvailable || isUpdating) return;
-
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          triggerUpdate();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
+    const timer = setInterval(() => setCountdown(previous => Math.max(0, previous - 1)), 1000);
     return () => clearInterval(timer);
   }, [updateAvailable, isUpdating]);
 
   const triggerUpdate = async () => {
+    if (updatingRef.current) return;
+    updatingRef.current = true;
     setIsUpdating(true);
     await purgeAllCachesAndReload();
   };
 
-  return (
-    <AnimatePresence>
-      {updateAvailable && (
-        <motion.div
-          initial={{ opacity: 0, y: -40, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -40, scale: 0.95 }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[92%] max-w-md"
-        >
-          <div className="bg-slate-900/95 backdrop-blur-xl border border-emerald-500/40 shadow-2xl shadow-emerald-500/10 rounded-2xl p-4 text-white flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                <RefreshCw className={`w-5 h-5 ${isUpdating ? 'animate-spin' : ''}`} />
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-bold text-white">تحديث جديد للواجهة!</span>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                </div>
-                <span className="text-xs text-slate-400">
-                  {isUpdating ? 'جاري مسح الكاش وتحديث الصفحة...' : `التحديث التلقائي خلال ${countdown} ثوانٍ`}
-                </span>
-              </div>
-            </div>
+  useEffect(() => {
+    if (updateAvailable && countdown === 0) triggerUpdate();
+  }, [updateAvailable, countdown]);
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={triggerUpdate}
-                disabled={isUpdating}
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all active:scale-95 shadow-md flex items-center gap-1.5 shrink-0"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-                <span>تحديث الآن</span>
-              </button>
+  const dismiss = () => {
+    setUpdateAvailable(false);
+    setCountdown(UPDATE_DELAY);
+  };
 
-              <button
-                onClick={() => setUpdateAvailable(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-                title="إغلاق التنبيه"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+  return <AnimatePresence>
+    {updateAvailable && <motion.aside
+      className="update-notice" dir="rtl" aria-labelledby="update-notice-title"
+      initial={{opacity: 0, y: reduceMotion ? 0 : 12}}
+      animate={{opacity: 1, y: 0}}
+      exit={{opacity: 0, y: reduceMotion ? 0 : 8}}
+      transition={{duration: reduceMotion ? 0 : 0.18}}
+    >
+      <div className="update-notice-header">
+        <img src="/icon-192.png" alt="" width={38} height={38} />
+        <div role="status" aria-atomic="true">
+          <h2 id="update-notice-title">{isUpdating ? 'جارٍ تحديث الواجهة' : 'تحديث جديد للواجهة'}</h2>
+        </div>
+        <button type="button" className="update-notice-dismiss" aria-label="إغلاق تنبيه التحديث"
+          title="إغلاق تنبيه التحديث" disabled={isUpdating} onClick={dismiss}><X size={19} aria-hidden="true" /></button>
+      </div>
+      <div className="update-notice-actions">
+        <p className="update-notice-countdown">
+          {isUpdating ? 'يُطبّق التحديث الآن…' : <>
+            <span>التحديث التلقائي خلال</span>
+            <span className="update-notice-time"><output aria-live="off">{countdown}</output><span>{countdown === 1 ? 'ثانية' : 'ثوانٍ'}</span></span>
+          </>}
+        </p>
+        <button type="button" className="update-notice-primary" onClick={triggerUpdate} disabled={isUpdating}>
+          <RefreshCw size={18} className={isUpdating ? 'update-notice-spinner' : ''} aria-hidden="true" />
+          <span>{isUpdating ? 'جارٍ التحديث' : 'تحديث الآن'}</span>
+        </button>
+      </div>
+      {!isUpdating && <div className="update-notice-progress" role="progressbar" aria-label="الوقت المتبقي للتحديث"
+        aria-valuemin={0} aria-valuemax={UPDATE_DELAY} aria-valuenow={countdown} aria-valuetext={countdown + (countdown === 1 ? ' ثانية' : ' ثوانٍ')}>
+        <span style={{transform: 'scaleX(' + countdown / UPDATE_DELAY + ')'}} />
+      </div>}
+    </motion.aside>}
+  </AnimatePresence>;
 };

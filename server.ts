@@ -79,13 +79,9 @@ async function startServer() {
 
   // 2. Initialize HTTP server and Socket.IO
   const PORT = Number(process.env.PORT) || 3000;
-  const dummyServer = createServer();
-  const io = initSocketIO(dummyServer);
-  const app = await createApp(io);
+  const app = await createApp(null as any);
   const server = createServer(app);
-
-  // Re-attach socket.io to the actual HTTP server handling requests
-  io.attach(server);
+  const io = initSocketIO(server);
 
   // 3. Initialize lightweight background tasks and (no-op) cron schedulers
   initCronSchedulers();

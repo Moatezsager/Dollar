@@ -373,7 +373,7 @@ async function main() {
       console.log(`PASS ${width}x${height}: layout, navigation, keyboard dialogs, search, empty data`);
       if (width === 320 || width === 1440 || width === 1920) {
         await page.goto(new URL('/admin-panel-secure', page.url()).href);
-        await page.getByRole('textbox', { name: 'مفتاح الوصول الإداري', exact: true }).waitFor();
+        await page.getByLabel('كلمة مرور الإدارة', { exact: true }).waitFor();
         await page.getByRole('button', { name: 'الوضع الفاتح', exact: true }).click();
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Admin login overflow');
         await page.screenshot({ path: path.join(output, `admin-login-${width}.png`) });

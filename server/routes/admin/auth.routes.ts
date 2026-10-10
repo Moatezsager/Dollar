@@ -1,6 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import { adminToken, safeCompare } from '../../middleware/auth';
+import crypto from 'crypto';
+import { adminToken, tokenCreatedAt, setAdminToken, safeCompare } from '../../middleware/auth';
 import { sendCriticalErrorAlert } from '../../services/alert.service';
 
 const router = express.Router();
@@ -33,6 +34,9 @@ router.post('/login', adminLoginLimiter, async (req: express.Request, res: expre
   const { password } = req.body;
   const effectiveAdminPassword = process.env.ADMIN_PASSWORD;
   if (effectiveAdminPassword && safeCompare(password, effectiveAdminPassword)) {
+    if (Date.now() - tokenCreatedAt > 24 * 60 * 60 * 1000) {
+      setAdminToken(crypto.randomBytes(32).toString('hex'));
+    }
     res.json({ success: true, token: adminToken });
   } else {
     // Add random delay (50-200ms) on auth failure to prevent timing and enumeration attacks

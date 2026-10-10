@@ -13,6 +13,7 @@ import aiRouter from './ai.routes';
 import whatsappRouter from './whatsapp.routes';
 import { createAdminSystemRouter } from './system.routes';
 import logsRouter from './logs.routes';
+import pushRouter from './push.routes';
 
 export interface AdminRouterDeps {
   io?: any;
@@ -35,6 +36,8 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
   // 2. Authentication Middleware - Protect all subsequent admin endpoints
   router.use(requireAdmin);
+
+  router.use('/', pushRouter);
 
   // 3. Messages management
   router.use('/', messagesRouter);

@@ -2,6 +2,7 @@ import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
+import { NOTIFICATION_ICON, NOTIFICATION_BADGE, isQuietTime, safeNotificationUrl } from '../shared/notifications';
 
 // Clean up old caches
 cleanupOutdatedCaches();
@@ -74,67 +75,52 @@ registerRoute(
 
 // ============================================================
 const APP_NAME = 'مؤشر الدينار';
-const APP_URL  = 'https://dollar-price-qp14.onrender.com';
-const ICON_URL = '/icons/icon-192.png';
-const BADGE_URL = '/icons/badge-72.png';
-// ----------------------------------------------------------------
-// حدث استقبال الإشعار من السيرفر
-// ----------------------------------------------------------------
-self.addEventListener('push', function (event) {
-  if (!event.data) return;
-  let data;
-  try {
-    data = event.data.json();
-  } catch (e) {
-    data = { title: APP_NAME, body: event.data.text(), url: '/' };
-  }
-  const title = data.title || APP_NAME;
-  const body  = data.body  || 'تحديث جديد للأسعار';
-  const url   = data.url   || '/';
-  const tag   = data.tag   || 'dinar-update-' + Date.now();
+
+async function updateNotificationBadge() {
+  if (!self.navigator.setAppBadge) return;
+  const notifications = await self.registration.getNotifications();
+  if (notifications.length) await self.navigator.setAppBadge(notifications.length);
+  else await self.navigator.clearAppBadge?.();
+}
+
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data?.json() || {}; }
+  catch { data = {body: event.data?.text() || ''}; }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
+  const kind = ['rates', 'announcement', 'test'].includes(data.kind) ? data.kind : 'rates';
+  const title = typeof data.title === 'string' ? data.title.slice(0, 60) : APP_NAME;
+  const body = typeof data.body === 'string' ? data.body.slice(0, 240) : 'مستجدات مهمة من مؤشر الدينار';
   const options = {
-    body,
-    icon:             data.icon  || ICON_URL,
-    badge:            data.badge || BADGE_URL,
-    tag,
-    renotify:         true,           // يُصوِّت حتى لو نفس الـ tag
-    requireInteraction: false,        // لا يبقى مفتوحاً على Android
-    silent:           false,
-    vibrate:          [200, 100, 200],
-    timestamp:        Date.now(),
-    dir:              'rtl',
-    lang:             'ar',
-    data: {
-      url:     url.startsWith('http') ? url : APP_URL + url,
-      tag,
-      sentAt:  Date.now()
-    },
-    actions: [
-      { action: 'open', title: 'فتح التطبيق' }
-    ]
+    body, icon: NOTIFICATION_ICON, badge: NOTIFICATION_BADGE,
+    tag: kind === 'rates' ? 'dinar-rates-digest' : 'dinar-' + kind,
+    renotify: false, requireInteraction: false,
+    silent: data.silent === true || isQuietTime(),
+    timestamp: Number.isFinite(data.sentAt) ? data.sentAt : Date.now(),
+    dir: 'rtl', lang: 'ar',
+    data: {url: safeNotificationUrl(data.url, self.location.origin), kind},
+    actions: [{action: 'open', title: 'فتح مؤشر الدينار'}],
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(self.registration.showNotification(title || APP_NAME, options).then(() => updateNotificationBadge()).catch(() => {}));
 });
 
-self.addEventListener('notificationclick', function(event) {
+self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const urlToOpen = event.notification.data.url;
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
-      let matchingClient = null;
-      for (let i = 0; i < windowClients.length; i++) {
-        const windowClient = windowClients[i];
-        if (windowClient.url.includes(APP_URL) || windowClient.url.includes(self.location.origin)) {
-          matchingClient = windowClient;
-          break;
-        }
-      }
-      if (matchingClient) {
-        return matchingClient.focus();
-      } else {
-        return clients.openWindow(urlToOpen);
-      }
-    })
-  );
+  const target = safeNotificationUrl(event.notification.data?.url, self.location.origin);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
+    const existing = windows.find(client => {
+      const url = new URL(client.url);
+      return url.origin === self.location.origin && !/^\/admin(?:\/|$|-)/.test(url.pathname);
+    });
+    if (existing) {
+      if (existing.url !== target) await existing.navigate(target);
+      await existing.focus();
+    } else await self.clients.openWindow(target);
+    await updateNotificationBadge();
+  })());
+});
+
+self.addEventListener('notificationclose', event => {
+  event.waitUntil(updateNotificationBadge().catch(() => {}));
 });

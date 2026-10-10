@@ -9,7 +9,7 @@ export function useAppSettings() {
 
   const [soundEnabled, setSoundEnabled] = useState(() => {
     const saved = safeStorage.getItem('soundEnabled');
-    return saved !== null ? saved === 'true' : true;
+    return saved !== null ? saved === 'true' : false;
   });
 
   const [animationsEnabled, setAnimationsEnabled] = useState(() => {

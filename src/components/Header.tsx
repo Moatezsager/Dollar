@@ -14,6 +14,7 @@ import {
   Mail,
   Settings2,
   Clock,
+  LockKeyhole,
 } from "lucide-react";
 import { safeStorage } from "../utils/storage";
 import { ThemeToggle } from './ui/ThemeToggle';
@@ -88,11 +89,11 @@ export const Header: React.FC<HeaderProps> = ({
         <a href="/" aria-label="مؤشر الدينار، الرئيسية"
           className="header-brand flex items-center gap-2 sm:gap-3 select-none min-w-0"
           onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
             event.preventDefault();
             triggerHaptic(8);
             setCurrentPage('dashboard');
           }}
-          onDoubleClick={() => window.location.href = '/admin-panel-secure'}
           title="مؤشر الدينار | الرئيسية"
         >
           {/* Logo */}
@@ -311,6 +312,15 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
                       <span className="font-semibold">الإعدادات والتنبيهات</span>
                     </button>
+                    <div className="h-px bg-white/[0.08] my-1 mx-2" />
+                    <a href="/admin"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-white/10 text-zinc-300 flex items-center justify-center shrink-0">
+                        <LockKeyhole className="w-4 h-4" aria-hidden="true" />
+                      </div>
+                      <span className="font-semibold">دخول الإدارة</span>
+                    </a>
                   </div>
                 </motion.div>
               )}

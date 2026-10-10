@@ -1,172 +1,111 @@
-import React, { useState, useEffect } from "react";
-import { motion } from "motion/react";
-import { Mail, RefreshCw, Trash2, MessageSquare } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Mail, RefreshCw, Trash2, MessageSquare, Search } from 'lucide-react';
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 
-interface AdminMessagesProps {
-  token: string;
-}
+const messageDate = (value: string) => {
+  const normalized = (value || '').replace(' ', 'T');
+  const date = new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(normalized) ? normalized : normalized + 'Z');
+  return Number.isFinite(date.getTime()) ? formatDistanceToNow(date, { addSuffix: true, locale: ar }) : 'تاريخ غير متاح';
+};
+const whatsappNumber = (value: string) => {
+  let phone = (value || '').replace(/[^0-9]/g, '');
+  if (phone.startsWith('00')) phone = phone.slice(2);
+  if (phone.startsWith('0') && phone.length === 10) phone = '218' + phone.slice(1);
+  else if (phone.startsWith('9') && phone.length === 9) phone = '218' + phone;
+  return phone;
+};
 
-export function AdminMessages({ token }: AdminMessagesProps) {
+export function AdminMessages({ token }: { token: string }) {
   const [messages, setMessages] = useState<any[]>([]);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [limit, setLimit] = useState(50);
+  const unread = messages.filter(message => !['read', 'replied'].includes(message.status)).length;
+  const filtered = useMemo(() => messages.filter(message => {
+    const status = ['read', 'replied'].includes(message.status) ? message.status : 'new';
+    const searchable = [message.name, message.email, message.phone, message.message].join(' ').toLowerCase();
+    return (filter === 'all' || filter === status || filter === message.status) && searchable.includes(query.trim().toLowerCase());
+  }), [messages, query, filter]);
+  useEffect(() => setLimit(50), [query, filter]);
 
-  const fetchMessages = async () => {
-    if (!token) return;
-    setMessagesLoading(true);
+  const fetchMessages = async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError('');
     try {
-      const res = await fetch('/api/admin/messages', {
-        headers: { 'Authorization': `Bearer ${token}` }
+      const response = await fetch('/api/admin/messages', {
+        headers: { Authorization: `Bearer ${token}` }, signal: signal || AbortSignal.timeout(10000),
       });
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setMessages(data);
-      }
-    } catch (err) {
-      setError("خطأ في جلب الرسائل");
-    } finally {
-      setMessagesLoading(false);
-    }
+      const result = await response.json();
+      if (!response.ok || !Array.isArray(result)) throw new Error(result.error || 'تعذر تحميل الرسائل.');
+      setMessages(result);
+    } catch (error: any) { if (error.name !== 'AbortError') setError(error.message || 'تعذر الاتصال.'); }
+    finally { setLoading(false); }
   };
-
-  const handleUpdateMessageStatus = async (id: number, status: string) => {
-    if (!token) return;
-    try {
-      const res = await fetch(`/api/admin/messages/${id}/status`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        fetchMessages();
-      }
-    } catch (err) {
-      setError("خطأ في تحديث حالة الرسالة");
-    }
-  };
-
-  const handleDeleteMessage = async (id: number) => {
-    if (!token || !confirm('هل أنت متأكد من حذف هذه الرسالة؟')) return;
-    try {
-      const res = await fetch(`/api/admin/messages/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchMessages();
-      }
-    } catch (err) {
-      setError("خطأ في حذف الرسالة");
-    }
-  };
-
   useEffect(() => {
-    fetchMessages();
+    const controller = new AbortController();
+    fetchMessages(controller.signal);
+    return () => controller.abort();
   }, [token]);
 
-  return (
-    <motion.div 
-      key="messages"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="space-y-6"
-    >
-      <section className="glass-panel-heavy premium-border border border-slate-700/50 rounded-[2.5rem] overflow-hidden shadow-2xl">
-        <div className="p-8 border-b border-slate-800/60 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
-              <Mail className="w-6 h-6 text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-white mb-1">البريد الوارد</h2>
-              <p className="text-sm text-slate-400">إدارة رسائل واستفسارات المستخدمين</p>
-            </div>
-          </div>
-          <button
-            onClick={fetchMessages}
-            disabled={messagesLoading}
-            className="p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-5 h-5 ${messagesLoading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+  const updateMessage = async (id: number, status?: string) => {
+    if (status === undefined && !window.confirm('حذف هذه الرسالة نهائيًا؟')) return;
+    setBusy(id);
+    setError('');
+    try {
+      const response = await fetch(`/api/admin/messages/${id}${status === undefined ? '' : '/status'}`, {
+        method: status === undefined ? 'DELETE' : 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: status === undefined ? undefined : JSON.stringify({ status }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new Error('تعذر تطبيق الإجراء. لم تتغير الرسالة.');
+      setMessages(previous => status === undefined ? previous.filter(message => message.id !== id)
+        : previous.map(message => message.id === id ? { ...message, status } : message));
+    } catch (error: any) { setError(error.message || 'تعذر الاتصال.'); }
+    finally { setBusy(null); }
+  };
 
-        <div className="p-8">
-          {error && <div className="p-4 bg-red-500/10 text-red-400 rounded-xl mb-4">{error}</div>}
-          
-          {messages.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <Mail className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p>لا توجد رسائل واردة</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {messages.map(msg => (
-                <div key={msg.id} className={`p-6 rounded-2xl border transition-all ${msg.status === 'new' ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/5 border-slate-700/50'}`}>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-3 h-3 rounded-full ${msg.status === 'new' ? 'bg-emerald-500 animate-pulse' : msg.status === 'replied' ? 'bg-blue-500' : 'bg-zinc-500'}`} />
-                      <div>
-                        <h3 className="font-bold text-white">{msg.email}</h3>
-                        <p className="text-xs text-slate-400" dir="ltr">{msg.phone}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500">
-                        {formatDistanceToNow(new Date(msg.created_at), { addSuffix: true, locale: ar })}
-                      </span>
-                      <div className="h-4 w-px bg-white/10 mx-2"></div>
-                      <select
-                        value={msg.status}
-                        onChange={(e) => handleUpdateMessageStatus(msg.id, e.target.value)}
-                        className="bg-black/50 border border-slate-700/50 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
-                      >
-                        <option value="new">جديدة</option>
-                        <option value="read">مقروءة</option>
-                        <option value="replied">تم الرد</option>
-                      </select>
-                      <button
-                        onClick={() => handleDeleteMessage(msg.id)}
-                        className="p-1.5 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                        title="حذف الرسالة"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="bg-black/30 rounded-xl p-4 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-                    {msg.message}
-                  </div>
-                  <div className="mt-4 flex items-center gap-3">
-                    <a 
-                      href={`mailto:${msg.email}`}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-xl text-xs font-bold transition-colors"
-                    >
-                      <Mail className="w-4 h-4" />
-                      رد عبر الإيميل
-                    </a>
-                    <a 
-                      href={`https://wa.me/${msg.phone.replace(/[^0-9]/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-xl text-xs font-bold transition-colors"
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                      رد عبر واتساب
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+  return (
+    <div className="admin-messages">
+      <section className="admin-section">
+        <div className="admin-section-heading">
+          <div><h2>البريد الوارد</h2><p className="admin-muted">{messages.length} رسالة · {unread} لم تُقرأ</p></div>
+          <button type="button" className="admin-icon-button" aria-label="تحديث الرسائل" title="تحديث الرسائل" disabled={loading || busy !== null} onClick={() => fetchMessages()}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
         </div>
+        <div className="admin-message-toolbar">
+          <label className="admin-nav-search" style={{ marginBottom: 0 }}><Search size={18} /><input aria-label="البحث في رسائل الزوار" placeholder="الاسم أو البريد أو نص الرسالة" value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <select className="admin-filter-select" aria-label="تصفية الرسائل" value={filter} onChange={event => setFilter(event.target.value)}>
+            <option value="all">جميع الرسائل</option><option value="new">غير مقروءة</option><option value="read">مقروءة</option><option value="replied">تم الرد</option><option value="telegram_failed">تعذر إرسالها إلى Telegram</option>
+          </select>
+        </div>
+        {error && <p className="admin-inline-error" role="alert">{error}</p>}
+        {loading && messages.length === 0 ? <p className="admin-empty" role="status">جارٍ تحميل الرسائل…</p> : filtered.length === 0 ? <div className="admin-empty"><Mail size={32} /><p>{messages.length ? 'لا توجد رسائل تطابق البحث.' : 'لا توجد رسائل واردة.'}</p></div> : filtered.slice(0, limit).map(message => {
+          const status = ['read', 'replied'].includes(message.status) ? message.status : 'new';
+          const phone = whatsappNumber(message.phone);
+          return <article className="admin-message" key={message.id}>
+            <header><div><h3>{message.name || 'زائر'}</h3><div className="admin-message-meta"><span dir="ltr">{message.email}</span><span dir="ltr">{message.phone}</span></div></div><span className="admin-muted">{messageDate(message.created_at)}</span></header>
+            <p className="admin-message-body">{message.message}</p>
+            <div className="admin-message-meta">
+              <span>{status === 'new' ? 'غير مقروءة' : status === 'read' ? 'مقروءة' : 'تم الرد'}</span>
+              {message.status === 'sent_to_telegram' && <span>أُرسلت إلى Telegram</span>}
+              {message.status === 'telegram_failed' && <span className="admin-danger">تعذر إرسالها إلى Telegram · الرسالة محفوظة هنا</span>}
+            </div>
+            <div className="admin-message-actions">
+              {message.email && <a href={`mailto:${encodeURIComponent(message.email)}`} className="admin-secondary"><Mail size={16} />البريد</a>}
+              {phone && <a href={`https://wa.me/${phone}`} target="_blank" rel="noopener noreferrer" className="admin-secondary"><MessageSquare size={16} />WhatsApp</a>}
+              <select className="admin-filter-select" aria-label={`حالة رسالة ${message.name || message.email}`} value={status} disabled={busy !== null} onChange={event => updateMessage(message.id, event.target.value)}>
+                <option value="new">غير مقروءة</option><option value="read">مقروءة</option><option value="replied">تم الرد</option>
+              </select>
+              <button type="button" className="admin-icon-button admin-danger" aria-label={`حذف رسالة ${message.name || message.email}`} title="حذف الرسالة" disabled={busy !== null} onClick={() => updateMessage(message.id)}>{busy === message.id ? <RefreshCw size={17} className="animate-spin" /> : <Trash2 size={17} />}</button>
+            </div>
+          </article>;
+        })}
+        {filtered.length > limit && <button type="button" className="admin-secondary" onClick={() => setLimit(previous => previous + 50)}>عرض رسائل أقدم</button>}
       </section>
-    </motion.div>
+    </div>
   );
 }

@@ -91,7 +91,7 @@ router.post("/logs/error", async (req: express.Request, res: express.Response) =
   if (stack) console.error(`Stack: ${stack}`);
   console.error("-------------------\n");
 
-  await logErrorArabic(arabicMessage || message, context || "تطبيق العميل", stack, url);
+  await logErrorArabic(arabicMessage || message, context || "تطبيق العميل", stack, url, 'client');
 
   res.status(200).json({ success: true });
 });

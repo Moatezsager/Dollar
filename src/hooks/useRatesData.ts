@@ -5,6 +5,8 @@ import { safeStorage } from "../utils/storage";
 import { decodeData } from "../utils/security";
 import { processIncomingVersion } from "../utils/autoUpdater";
 import { logErrorToServer } from "../utils/logger";
+import { enablePush, disablePush, syncPushSubscription } from "../utils/pushNotifications";
+import { DEFAULT_PRICE_THRESHOLD, priceChanges, priceDigest, isQuietTime } from "../../shared/notifications";
 
 interface UseRatesDataOptions {
   playNotificationSound?: (type: 'up' | 'down') => void;
@@ -21,21 +23,22 @@ export function useRatesData(options?: UseRatesDataOptions) {
   const [appStatus, setAppStatus] = useState<AppStatus | null>(null);
   const [configTerms, setConfigTerms] = useState<any[]>([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [notificationThreshold, setNotificationThreshold] = useState(0.001);
-
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    try {
-      return typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted';
-    } catch {
-      return false;
-    }
+  const [notificationThreshold, setNotificationThreshold] = useState(() => {
+    const saved = Number(safeStorage.getItem('notificationThreshold'));
+    return saved >= 0.001 && saved <= 0.1 ? saved : DEFAULT_PRICE_THRESHOLD;
   });
-
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
+  const [inAppNotifications, setInAppNotifications] = useState(() => safeStorage.getItem('inAppNotifications') !== 'false');
+  const inAppRef = useRef(inAppNotifications);
+  const notificationBaseline = useRef<Rates | null>(null);
+  const digestSnapshot = useRef<Rates | null>(null);
+  const digestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ratesRef = useRef<Rates | null>(null);
   const historyRef = useRef<HistoryPoint[]>([]);
   const socketRevisionRef = useRef(0);
-  const thresholdRef = useRef<number>(0.001);
-  const lastNotifiedRef = useRef<Record<string, number>>({});
+  const thresholdRef = useRef<number>(notificationThreshold);
   const configTermsRef = useRef<any[]>([]);
 
   useEffect(() => {
@@ -89,7 +92,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
   const addToast = (title: string, body: string, type: 'up' | 'down' | 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts(prev => [...prev, { id, title, body, type }]);
+    setToasts(prev => [...prev.slice(-2), { id, title, body, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 5000);
@@ -99,72 +102,56 @@ export function useRatesData(options?: UseRatesDataOptions) {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const showPriceNotification = async (code: string, name: string, oldPrice: number, newPrice: number) => {
-    const diff = newPrice - oldPrice;
-    const absDiff = Math.abs(diff);
-    
-    // 1. Check threshold
-    if (absDiff < thresholdRef.current) return;
+  useEffect(() => {
+    inAppRef.current = inAppNotifications;
+    safeStorage.setItem('inAppNotifications', String(inAppNotifications));
+  }, [inAppNotifications]);
 
-    // 2. Prevent duplicate notifications
-    try {
-      const lastNotifyData = safeStorage.getItem(`last_notify_${code}`);
-      if (lastNotifyData) {
-        const { price, time } = JSON.parse(lastNotifyData);
-        const timeDiff = Date.now() - time;
-        if (price === newPrice && timeDiff < 10 * 60 * 1000) {
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Notification storage check failed", e);
+  useEffect(() => {
+    safeStorage.setItem('notificationThreshold', String(notificationThreshold));
+  }, [notificationThreshold]);
+
+  useEffect(() => {
+    let active = true;
+    syncPushSubscription().then(enabled => { if (active) setNotificationsEnabled(enabled); }).catch(() => {
+      if (active) setNotificationError('تعذر مزامنة اشتراك الإشعارات. يمكنك إعادة التفعيل من هنا.');
+    });
+    const checkPermission = () => {
+      if (typeof Notification === 'undefined' || Notification.permission !== 'granted') setNotificationsEnabled(false);
+    };
+    window.addEventListener('focus', checkPermission);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', checkPermission);
+      if (digestTimer.current) clearTimeout(digestTimer.current);
+      digestTimer.current = null;
+    };
+  }, []);
+
+  const queuePriceDigest = (previous: Rates | null, next: Rates) => {
+    if (!previous || Date.parse(next.lastUpdated) < Date.parse(previous.lastUpdated)) return;
+    notificationBaseline.current ||= previous;
+    if (!inAppRef.current || document.visibilityState !== 'visible') {
+      notificationBaseline.current = next;
+      digestSnapshot.current = null;
+      return;
     }
-
-    const direction = diff > 0 ? 'ارتفاع' : 'انخفاض';
-    const arrow = diff > 0 ? '📈' : '📉';
-    const title = `${arrow} ${direction} في سعر ${name}`;
-    const body = `السعر الجديد: ${newPrice.toFixed(2)} د.ل (تغير بمقدار ${diff > 0 ? '+' : ''}${diff.toFixed(2)})`;
-
-    try {
-      safeStorage.setItem(`last_notify_${code}`, JSON.stringify({
-        price: newPrice,
-        time: Date.now()
-      }));
-    } catch (e) {
-      console.warn("Failed to save notification state to storage", e);
-    }
-
-    // In-app toast & sound
-    addToast(title, body, diff > 0 ? 'up' : 'down');
-    if (options?.playNotificationSound) {
-      options.playNotificationSound(diff > 0 ? 'up' : 'down');
-    }
-
-    // Native notification
-    try {
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration) {
-          await registration.showNotification(title, {
-            body,
-            icon: 'https://flagcdn.com/w80/ly.png',
-            badge: 'https://flagcdn.com/w80/ly.png',
-            vibrate: [200, 100, 200],
-            tag: `price-change-${code}`,
-            renotify: true,
-            data: { url: 'https://dollar-price-qp14.onrender.com/' },
-            silent: false,
-            dir: 'rtl',
-            actions: [
-              { action: 'open', title: 'فتح التطبيق' }
-            ]
-          } as any);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to show notification:", err);
-      logErrorToServer(err, "useRatesData: showPriceNotification");
-    }
+    digestSnapshot.current = next;
+    if (!priceChanges(notificationBaseline.current, next, thresholdRef.current, configTermsRef.current).length || digestTimer.current) return;
+    const lastDigest = Number(safeStorage.getItem('last_inapp_digest')) || 0;
+    digestTimer.current = setTimeout(() => {
+      digestTimer.current = null;
+      const snapshot = digestSnapshot.current, baseline = notificationBaseline.current;
+      if (!snapshot || !baseline) return;
+      const changes = priceChanges(baseline, snapshot, thresholdRef.current, configTermsRef.current);
+      notificationBaseline.current = snapshot;
+      digestSnapshot.current = null;
+      if (!changes.length || !inAppRef.current || document.visibilityState !== 'visible') return;
+      const digest = priceDigest(changes);
+      addToast(digest.title, digest.body, 'info');
+      safeStorage.setItem('last_inapp_digest', String(Date.now()));
+      if (!isQuietTime()) options?.playNotificationSound?.(changes[0].newPrice > changes[0].oldPrice ? 'up' : 'down');
+    }, Math.max(10000, 30000 - (Date.now() - lastDigest)));
   };
 
   const fetchConfig = async () => {
@@ -224,85 +211,14 @@ export function useRatesData(options?: UseRatesDataOptions) {
         return;
       }
       
-      // Check for price changes to notify
-      let hasChanges = false;
       const currentRates = ratesRef.current;
       if (currentRates && (
         Date.parse(newRates.lastUpdated) < Date.parse(currentRates.lastUpdated) ||
         (socketRevision !== socketRevisionRef.current && Date.parse(newRates.lastUpdated) <= Date.parse(currentRates.lastUpdated))
       )) return;
-      
-      if (currentRates) {
-        const isNewer = new Date(newRates.lastUpdated).getTime() > new Date(currentRates.lastUpdated).getTime();
-        
-        if (isNewer) {
-          const currenciesToCheck = Object.keys(newRates.parallel);
-          const changes: { code: string; name: string; oldPrice: number; newPrice: number; priority: number }[] = [];
-          const priorityIds = ["USD", "USD_JBANK", "USD_CHECKS", "EUR", "GOLD"];
-          
-          currenciesToCheck.forEach(code => {
-            const oldPrice = currentRates.parallel[code];
-            const newPrice = newRates.parallel[code];
-            
-            if (oldPrice && newPrice && Math.abs(oldPrice - newPrice) >= thresholdRef.current) {
-              if (lastNotifiedRef.current[code] !== newPrice) {
-                const term = configTermsRef.current.find(t => t.id === code);
-                const name = term ? term.name : code;
-                const priority = priorityIds.indexOf(code);
-                
-                changes.push({ 
-                  code, 
-                  name, 
-                  oldPrice, 
-                  newPrice, 
-                  priority: priority === -1 ? 999 : priority 
-                });
-                lastNotifiedRef.current[code] = newPrice;
-              }
-            }
-          });
-
-          if (changes.length > 0) {
-            hasChanges = true;
-            changes.sort((a, b) => a.priority - b.priority);
-            
-            const maxIndividual = 3;
-            const toNotify = changes.slice(0, maxIndividual);
-            const remainingCount = changes.length - maxIndividual;
-            
-            for (const change of toNotify) {
-              showPriceNotification(change.code, change.name, change.oldPrice, change.newPrice).catch(err => {
-                console.error("Error showing notification:", err);
-              });
-            }
-            
-            if (remainingCount > 0) {
-              const summaryTitle = "📊 تحديثات أسعار إضافية";
-              const summaryBody = `بالإضافة للعملات الرئيسية، تم رصد تغيرات في أسعار ${remainingCount} عملات وأصناف أخرى في السوق.`;
-              addToast(summaryTitle, summaryBody, "info");
-              
-              try {
-                if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
-                  navigator.serviceWorker.ready.then(registration => {
-                    registration.showNotification(summaryTitle, {
-                      body: summaryBody,
-                      icon: 'https://flagcdn.com/w80/ly.png',
-                      badge: 'https://flagcdn.com/w80/ly.png',
-                      tag: 'price-change-summary',
-                      renotify: true,
-                      dir: 'rtl'
-                    } as any);
-                  }).catch(() => {});
-                }
-              } catch (err) {
-                console.error("Failed to show summary notification:", err);
-              }
-            }
-          }
-        }
-      }
 
       if (!applyRates(newRates)) return;
+      queuePriceDigest(currentRates, newRates);
       if (socketRevision === socketRevisionRef.current) {
         appendRateHistory(newRates, Array.isArray(newHistory) ? newHistory : historyRef.current);
       }
@@ -321,9 +237,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
         logErrorToServer(err, "useRatesData: fetchStatus");
       }
 
-      if (hasChanges) {
-        addToast("تم تحديث الأسعار", "تم رصد تغييرات جديدة في السوق وتحديث البيانات", "info");
-      }
+
     } catch (error) {
       const errName = error && typeof error === 'object' ? (error as any).name : '';
       const errMsg = error && typeof error === 'object' ? (error as any).message : '';
@@ -349,23 +263,23 @@ export function useRatesData(options?: UseRatesDataOptions) {
   };
 
   const requestNotificationPermission = async () => {
+    setNotificationBusy(true);
+    setNotificationError('');
     try {
-      if (typeof window === 'undefined' || !("Notification" in window) || typeof Notification === 'undefined') {
-        addToast("غير مدعوم", "متصفحك لا يدعم الإشعارات", "info");
-        return;
-      }
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        setNotificationsEnabled(true);
-        addToast("تم تفعيل التنبيهات", "ستصلك إشعارات عند تغير الأسعار الهامة", "info");
-      } else {
-        addToast("تم رفض التنبيهات", "يرجى تفعيل الإشعارات من إعدادات المتصفح", "info");
-      }
-    } catch (error) {
-      console.error("Error requesting notification permission:", error);
-      logErrorToServer(error, "useRatesData: requestNotificationPermission");
-      addToast("خطأ", "تعذر تفعيل الإشعارات", "info");
-    }
+      await enablePush();
+      setNotificationsEnabled(true);
+    } catch (error: any) { setNotificationError(error.message || 'تعذر تفعيل الإشعارات.'); }
+    finally { setNotificationBusy(false); }
+  };
+
+  const stopNotifications = async () => {
+    setNotificationBusy(true);
+    setNotificationError('');
+    try { await disablePush(); setNotificationsEnabled(false); }
+    catch (error: any) {
+      if (safeStorage.getItem('pushEnabled') === 'false') setNotificationsEnabled(false);
+      setNotificationError(error.message || 'تعذر إيقاف الإشعارات.');
+    } finally { setNotificationBusy(false); }
   };
 
   // Socket.io Real-time connection
@@ -402,48 +316,8 @@ export function useRatesData(options?: UseRatesDataOptions) {
           if (!decodedRates) return;
 
           const currentRates = ratesRef.current;
-          if (currentRates && Date.parse(decodedRates.lastUpdated) > Date.parse(currentRates.lastUpdated)) {
-            const currenciesToCheck = Object.keys(decodedRates.parallel);
-            const changes: { code: string; name: string; oldPrice: number; newPrice: number; priority: number }[] = [];
-            const priorityIds = ["USD", "USD_JBANK", "USD_CHECKS", "EUR", "GOLD"];
-
-            currenciesToCheck.forEach(code => {
-              const oldPrice = currentRates.parallel[code];
-              const newPrice = decodedRates.parallel[code];
-
-              if (oldPrice && newPrice && Math.abs(oldPrice - newPrice) >= thresholdRef.current) {
-                if (lastNotifiedRef.current[code] !== newPrice) {
-                  const term = configTermsRef.current.find(t => t.id === code);
-                  const name = term ? term.name : code;
-                  const priority = priorityIds.indexOf(code);
-
-                  changes.push({
-                    code,
-                    name,
-                    oldPrice,
-                    newPrice,
-                    priority: priority === -1 ? 999 : priority
-                  });
-                  lastNotifiedRef.current[code] = newPrice;
-                }
-              }
-            });
-
-            if (changes.length > 0) {
-              changes.sort((a, b) => a.priority - b.priority);
-              const maxIndividual = 3;
-              const toNotify = changes.slice(0, maxIndividual);
-              for (const change of toNotify) {
-                showPriceNotification(change.code, change.name, change.oldPrice, change.newPrice).catch(() => {});
-              }
-              if (changes.length > maxIndividual) {
-                const remaining = changes.length - maxIndividual;
-                addToast("📊 تحديثات أسعار إضافية", `تم رصد تغيرات في ${remaining} عملات وأصناف أخرى في السوق.`, "info");
-              }
-            }
-          }
-
           if (!applyRates(decodedRates)) return;
+          queuePriceDigest(currentRates, decodedRates);
           socketRevisionRef.current++;
           appendRateHistory(decodedRates);
           setLoading(false);
@@ -537,6 +411,11 @@ export function useRatesData(options?: UseRatesDataOptions) {
     addToast,
     removeToast,
     notificationsEnabled,
+    notificationBusy,
+    notificationError,
+    inAppNotifications,
+    setInAppNotifications,
+    stopNotifications,
     notificationThreshold,
     setNotificationThreshold,
     requestNotificationPermission,

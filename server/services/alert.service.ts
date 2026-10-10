@@ -14,6 +14,8 @@ export interface CriticalAlertOptions {
 // In-memory cache to debounce identical alerts (prevents flooding)
 const recentAlerts = new Map<string, number>();
 const ALERT_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes per unique alert signature
+let clientCrashWindow = 0;
+let clientCrashCount = 0;
 
 // Normal/benign patterns that MUST NEVER trigger alerts (pure noise)
 const IGNORED_PATTERNS = [
@@ -40,14 +42,14 @@ const IGNORED_PATTERNS = [
  */
 export async function sendCriticalErrorAlert(options: CriticalAlertOptions): Promise<boolean> {
   const token = (appConfig.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "").trim();
-  const chatId = (appConfig.telegramAdminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || "1419922760").trim();
+  const chatId = (appConfig.telegramAdminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "").trim();
 
   if (!token || !chatId) {
     return false;
   }
 
   // Create signature for deduplication
-  const signature = `${options.context}_${options.description.slice(0, 80)}`;
+  const signature = `${options.severity || 'critical'}_${options.context}_${options.description.slice(0, 80)}`;
   const now = Date.now();
   const lastSent = recentAlerts.get(signature) || 0;
   if (now - lastSent < ALERT_COOLDOWN_MS) {
@@ -63,6 +65,7 @@ export async function sendCriticalErrorAlert(options: CriticalAlertOptions): Pro
         recentAlerts.delete(key);
       }
     }
+    while (recentAlerts.size > 200) recentAlerts.delete(recentAlerts.keys().next().value!);
   }
 
   const timeStr = new Date().toLocaleString('ar-LY', { 
@@ -78,13 +81,16 @@ export async function sendCriticalErrorAlert(options: CriticalAlertOptions): Pro
     ? '⚠️ <b>مستوى التنبيه:</b> <code>تحذير هام (Warning)</code>'
     : '🔴 <b>مستوى الخطورة:</b> <code>حرج (Critical)</code>';
 
-  const escapeHtml = (text: string) => (text || '')
+  const escapeHtml = (text: string, limit = 1500) => (text || '')
+    .replaceAll(token, '[REDACTED]')
+    .replace(/\b(?:bot)?\d{6,}:[A-Za-z0-9_-]{20,}\b/g, '[REDACTED]')
+    .slice(0, limit)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
   const cleanTechDetails = options.technicalDetails
-    ? escapeHtml(options.technicalDetails.slice(0, 400))
+    ? escapeHtml(options.technicalDetails, 400)
     : '';
 
   const messageLines = [
@@ -94,7 +100,7 @@ export async function sendCriticalErrorAlert(options: CriticalAlertOptions): Pro
     `⚙️ <b>المكون:</b> ${escapeHtml(options.context)}`,
     `📝 <b>وصف المشكلة:</b> ${escapeHtml(options.description)}`,
     options.ip ? `📍 <b>عنوان الـ IP:</b> <code>${escapeHtml(options.ip)}</code>` : '',
-    options.url ? `🔗 <b>المسار:</b> <code>${escapeHtml(options.url)}</code>` : '',
+    options.url ? `🔗 <b>المسار:</b> <code>${escapeHtml(options.url.split('?')[0], 300)}</code>` : '',
     cleanTechDetails ? `━━━━━━━━━━━━━━━━━━━\n💻 <b>التفاصيل الفنية:</b>\n<blockquote>${cleanTechDetails}</blockquote>` : '',
     options.actionHint ? `💡 <b>الإجراء المقترح:</b> ${escapeHtml(options.actionHint)}` : '',
     '━━━━━━━━━━━━━━━━━━━',
@@ -106,6 +112,7 @@ export async function sendCriticalErrorAlert(options: CriticalAlertOptions): Pro
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
@@ -115,9 +122,14 @@ export async function sendCriticalErrorAlert(options: CriticalAlertOptions): Pro
       })
     });
     const data: any = await res.json();
-    return !!data.ok;
+    if (!res.ok || data.ok !== true) {
+      recentAlerts.delete(signature);
+      return false;
+    }
+    return true;
   } catch (err) {
-    console.error("[AlertService] Failed to dispatch Telegram alert:", err);
+    recentAlerts.delete(signature);
+    console.error("[AlertService] Failed to dispatch Telegram alert.");
     return false;
   }
 }
@@ -129,17 +141,28 @@ export async function checkAndAlertIfCritical(error: any, context = "النظا�
   const errMsg = typeof error === 'string' ? error : (error?.message || String(error));
   const stack = error?.stack || details?.stack || '';
 
-  // 1. Ignore benign/common client drops
-  if (IGNORED_PATTERNS.some(pattern => pattern.test(errMsg) || pattern.test(context))) {
+  // Client-reported context cannot establish a server/security incident.
+  const fromClient = details?.source === 'client';
+  const isFatalCrash = !fromClient && (/uncaughtexception|unhandledrejection|fatal|crash/i.test(context) || /fatal/i.test(errMsg));
+  const isDbFailure = !fromClient && /supabase|database|قاعدة البيانات|relation.*does not exist/i.test(errMsg)
+    && /fail|error|timeout|timed out|enotfound|permission|does not exist|فشل|تعذر|خطأ/i.test(errMsg)
+    && !errMsg.includes('dummy');
+  const isReactCrash = context.includes('ErrorBoundary');
+  const isSecurity = !fromClient && (context.includes('Security') || context.includes('Rate Limit'));
+  const isMemory = !fromClient && /out of memory|enospc/i.test(errMsg);
+
+  if (fromClient) {
+    if (!isReactCrash) return;
+    const now = Date.now();
+    if (now - clientCrashWindow > 5 * 60 * 1000) {
+      clientCrashWindow = now;
+      clientCrashCount = 0;
+    }
+    if (++clientCrashCount < 3) return;
+  } else if (!isFatalCrash && !isDbFailure && !isMemory
+    && IGNORED_PATTERNS.some(pattern => pattern.test(errMsg) || pattern.test(context))) {
     return;
   }
-
-  // 2. Identify critical triggers
-  const isFatalCrash = /uncaughtexception|unhandledrejection|fatal|crash/i.test(context) || /fatal/i.test(errMsg);
-  const isDbFailure = /supabase|database|relation.*does not exist|enotfound.*supabase/i.test(errMsg) && !errMsg.includes('dummy');
-  const isReactCrash = context.includes('ErrorBoundary');
-  const isSecurity = context.includes('Security') || context.includes('Rate Limit');
-  const isMemory = /out of memory|enospc/i.test(errMsg);
 
   if (isFatalCrash || isDbFailure || isReactCrash || isSecurity || isMemory) {
     let actionHint = "فحص سجلات السيرفر أو استقرار الخدمات السحابية.";
@@ -158,9 +181,9 @@ export async function checkAndAlertIfCritical(error: any, context = "النظا�
     await sendCriticalErrorAlert({
       title: isSecurity ? "درع الأمان | تنبيه أمني" : "تنبيه نظام حرج",
       context,
-      severity: isSecurity ? 'security' : isFatalCrash || isDbFailure ? 'critical' : 'warning',
+      severity: isSecurity ? 'security' : isFatalCrash || isDbFailure || isMemory ? 'critical' : 'warning',
       description,
-      technicalDetails: stack ? stack.slice(0, 400) : errMsg,
+      technicalDetails: stack || errMsg,
       actionHint,
       url: details?.url,
       ip: details?.ip

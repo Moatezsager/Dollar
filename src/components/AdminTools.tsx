@@ -179,7 +179,7 @@ export function AdminTools({ token, setError, setSuccess }: AdminToolsProps) {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-white">التحقق من صحة الربط</h3>
-                <p className="text-xs text-slate-500">فحص شامل لقاعدة البيانات وتليجرام والـ Regex</p>
+                <p className="text-xs text-slate-500">قراءة قاعدة البيانات وقواعد الاستخراج وإعداد البوت في Web</p>
               </div>
             </div>
             
@@ -206,8 +206,8 @@ export function AdminTools({ token, setError, setSuccess }: AdminToolsProps) {
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">تليجرام:</span>
-                      <span className={diagnosticsResult.telegram === 'ok' ? 'text-emerald-400' : 'text-rose-400'}>
-                        {diagnosticsResult.telegram === 'ok' ? 'متصل ✅' : 'غير متصل ❌'}
+                      <span className={diagnosticsResult.telegram === 'configured' ? 'text-[var(--muted-ink)]' : 'text-rose-400'}>
+                        {diagnosticsResult.telegram === 'configured' ? 'مهيأ؛ الاتصال يُفحص في قسم البوت' : 'غير مهيأ'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -217,7 +217,7 @@ export function AdminTools({ token, setError, setSuccess }: AdminToolsProps) {
                       </span>
                     </div>
                     <div className="pt-2 mt-2 border-t border-slate-700/50 text-center font-bold text-emerald-400">
-                      {diagnosticsResult.status === 'ok' ? 'الكل جاهز ✅' : 'يوجد أخطاء ❌'}
+                      {diagnosticsResult.status === 'ok' ? 'فحوصات Web المحلية سليمة' : 'تحتاج فحوصات Web إلى مراجعة'}
                     </div>
                   </div>
                 )}

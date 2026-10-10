@@ -88,6 +88,7 @@ export default function App() {
     addToast,
     removeToast,
     notificationsEnabled,
+    notificationBusy, notificationError, inAppNotifications, setInAppNotifications, stopNotifications,
     notificationThreshold,
     setNotificationThreshold,
     requestNotificationPermission,
@@ -346,7 +347,7 @@ export default function App() {
 
           {/* Installation Prompts & Banners */}
           <InstallPrompt />
-          <PushNotificationPrompt />
+          <PushNotificationPrompt onOpenSettings={() => { setSettingsTab('notifications'); setShowSettingsModal(true); }} />
           <AutoUpdateBanner />
 
           {/* App Tour */}
@@ -568,6 +569,11 @@ export default function App() {
             soundEnabled={soundEnabled}
             setSoundEnabled={setSoundEnabled}
             notificationsEnabled={notificationsEnabled}
+            notificationBusy={notificationBusy}
+            notificationError={notificationError}
+            inAppNotifications={inAppNotifications}
+            setInAppNotifications={setInAppNotifications}
+            stopNotifications={stopNotifications}
             requestNotificationPermission={requestNotificationPermission}
             notificationThreshold={notificationThreshold}
             setNotificationThreshold={setNotificationThreshold}

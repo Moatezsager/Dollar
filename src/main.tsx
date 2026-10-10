@@ -59,14 +59,12 @@ try {
 }
 
 const path = window.location.pathname;
+const isAdminPage = ['/admin', '/admin/', '/admin-panel-secure', '/admin-panel-secure/'].includes(path);
 
 if (path === '/setup-device-auth-8899') {
-  try {
-    safeStorage.setItem('admin_device_token', 'authorized_device_token_xyz');
-  } catch (e) {
-    console.warn("Storage not available", e);
-  }
-  window.location.href = '/admin-panel-secure';
+  // Keep old bookmarks working without granting client-side device authorization.
+  safeStorage.removeItem('admin_device_token');
+  window.location.replace('/admin');
 }
 
 const rootEl = document.getElementById('root');
@@ -75,7 +73,7 @@ if (rootEl) {
     createRoot(rootEl).render(
       <StrictMode>
         <ErrorBoundary>
-          {path === '/admin-panel-secure' ? <Admin /> : <App />}
+          {isAdminPage ? <Admin /> : <App />}
         </ErrorBoundary>
       </StrictMode>,
     );

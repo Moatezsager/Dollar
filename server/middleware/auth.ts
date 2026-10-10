@@ -28,6 +28,11 @@ export function safeCompare(a?: string | null, b?: string | null): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+export function isAdminTokenValid(token: unknown): boolean {
+  return typeof token === 'string' && safeCompare(token, adminToken)
+    && Date.now() - tokenCreatedAt <= 24 * 60 * 60 * 1000;
+}
+
 export function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {

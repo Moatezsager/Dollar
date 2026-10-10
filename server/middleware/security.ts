@@ -71,9 +71,10 @@ export const userAgentMiddleware = (req: express.Request, res: express.Response,
 
 export const timeoutMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (req.path.startsWith('/api/')) {
-    res.setTimeout(5000, () => {
+    const limit = /^\/api\/(?:admin\/)?push\//.test(req.path) ? 15000 : 5000;
+    res.setTimeout(limit, () => {
       if (!res.headersSent) {
-        res.status(408).json({ success: false, error: "Request Timeout (5s limit exceeded)" });
+        res.status(408).json({ success: false, error: `Request Timeout (${limit / 1000}s limit exceeded)` });
       }
     });
   }

@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { AdminTelegramBot } from "./components/AdminTelegramBot";
+import { AdminNotifications } from './components/AdminNotifications';
+import "./styles/admin.css";
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { useDialogAccessibility } from './hooks/useDialogAccessibility';
 import { AdminMessages } from "./components/AdminMessages";
@@ -12,31 +15,30 @@ import { AdminLogs } from "./components/AdminLogs";
 import { AdminReport } from "./components/AdminReport";
 import { AdminTools } from "./components/AdminTools";
 import { AdminBroadcastLog } from "./components/AdminBroadcastLog";
-import { TelegramVisitsCard } from "./components/TelegramVisitsCard";
+
 import { AdminWhatsApp } from "./components/AdminWhatsApp";
 import { AdminWeeklyHarvest } from "./components/AdminWeeklyHarvest";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
-import { Settings, Check, Edit2, Save, Plus, Trash2, ArrowRight, ShieldCheck, LogOut, X, Lock, Activity, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, ArrowUpRight, ArrowDownRight, CheckCircle2, RefreshCw, Layers, Globe, Zap, Search, ChevronDown, ChevronUp, Clock, Info, Building2, Coins, Send, Building, TrendingUp, Stethoscope, ListX, Trash, LayoutDashboard, Menu, BarChart3, Bell, Shield, Database, Link, Copy, Code2, Download, Pause, Play, Filter, XCircle, AlertCircle, Mail, MessageSquare, DownloadCloud, Sparkles, Monitor, Smartphone, Layout, Wifi, AppWindow , MapPin , LineChart, Radio } from 'lucide-react';
+import { Eye, EyeOff, Settings, Edit2, Save, Trash2, ShieldCheck, LogOut, X, Lock, Users, Cpu, History as HistoryIcon, AlertTriangle, Terminal, ArrowLeftRight, CheckCircle2, RefreshCw, Globe, Zap, Search, Clock, Building2, Coins, Send, TrendingUp, LayoutDashboard, Menu, BarChart3, Bell, Database, Code2, Mail, MessageSquare, Smartphone, Radio } from 'lucide-react';
 import { format, formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { logErrorToServer } from "./utils/logger";
-import { FlagIcon } from "./components/FlagIcon";
-import { TelegramStatus } from "./components/TelegramStatus";
-import { TelegramPoster } from "./components/TelegramPoster";
+
 import { safeStorage } from "./utils/storage";
 import { decodeData } from "./utils/security";
 import { io } from "socket.io-client";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
+
 
 interface Stats {
   onlineUsers: number;
-  lastSuccessfulScrape: string;
-  minutesSinceLastScrape: number;
+  lastSuccessfulScrape: string | null;
+  lastRateUpdate?: string | null;
+  minutesSinceLastScrape: number | null;
   channelsCount: number;
   termsCount: number;
   serverUptime: number;
   serverStartTime: string;
-  dbConnected?: boolean;
+  dbConnected?: boolean | null;
   memoryUsage: { rss: number; heapUsed: number; heapTotal: number };
   installs?: { total: number; today: number };
   telegramVisits?: { total: number; today: number };
@@ -48,183 +50,52 @@ interface Stats {
   };
 }
 
-const extractKeywordsAndSuffix = (regex: string) => {
-  try {
-    const match = regex.match(/^\(\?\:(.+?)\)(.*)$/);
-    if (match) {
-      return {
-        keywords: match[1].split('|').filter(Boolean),
-        suffix: match[2]
-      };
-    }
-  } catch (e) {}
-  return { keywords: [], suffix: regex };
-};
 
-const RegexEditor = ({ regex, onChange }: { regex: string, onChange: (val: string) => void }) => {
-  const [mode, setMode] = useState<'bubbles' | 'raw'>('bubbles');
-  const [newWord, setNewWord] = useState('');
 
-  const parsed = useMemo(() => {
-    if (!regex.startsWith('(?:')) return null;
-    let depth = 0;
-    let alternatives = [];
-    let currentAlt = '';
-    let i = 3;
-    for (; i < regex.length; i++) {
-      const char = regex[i];
-      if (char === '\\') {
-        currentAlt += char + (regex[i+1] || '');
-        i++;
-        continue;
-      }
-      if (char === '(') depth++;
-      if (char === ')') depth--;
-      
-      if (depth < 0) {
-        alternatives.push(currentAlt);
-        break;
-      }
-      
-      if (char === '|' && depth === 0) {
-        alternatives.push(currentAlt);
-        currentAlt = '';
-      } else {
-        currentAlt += char;
-      }
-    }
-    
-    if (depth >= 0) return null;
-    
-    const suffix = regex.slice(i + 1);
-    return { alternatives, suffix };
-  }, [regex]);
 
-  useEffect(() => {
-    if (!parsed && mode === 'bubbles') {
-      setMode('raw');
-    }
-  }, [parsed, mode]);
-
-  const removeWord = (index: number) => {
-    if (!parsed) return;
-    const newAlts = [...parsed.alternatives];
-    newAlts.splice(index, 1);
-    onChange(`(?:${newAlts.join('|')})${parsed.suffix}`);
-  };
-
-  const addWord = () => {
-    if (!parsed || !newWord.trim()) return;
-    const newAlts = [...parsed.alternatives, newWord.trim()];
-    onChange(`(?:${newAlts.join('|')})${parsed.suffix}`);
-    setNewWord('');
-  };
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">محرر REGEX المتقدم</label>
-          <Info className="w-4 h-4 text-zinc-700 hover:text-emerald-400 cursor-help" />
-        </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setMode('bubbles')} 
-            className={`text-[10px] px-2 py-1 rounded-md transition-colors ${mode === 'bubbles' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
-            disabled={!parsed}
-          >
-            فقاعات
-          </button>
-          <button 
-            onClick={() => setMode('raw')} 
-            className={`text-[10px] px-2 py-1 rounded-md transition-colors ${mode === 'raw' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}
-          >
-            نص خام
-          </button>
-        </div>
-      </div>
-
-      {mode === 'bubbles' && parsed ? (
-        <div className="bg-black/40 border border-slate-700/50 rounded-xl p-4 flex flex-col gap-4">
-          <div className="flex flex-wrap gap-2">
-            {parsed.alternatives.map((alt, i) => (
-              <div key={i} className="flex items-center gap-1 bg-white/10 border border-slate-700/50 rounded-lg px-2 py-1 text-xs text-emerald-400 font-mono">
-                <span dir="ltr">{alt}</span>
-                <button 
-                  onClick={() => removeWord(i)}
-                  className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-rose-500/20 text-rose-400 transition-colors mr-1"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <input 
-              type="text" 
-              value={newWord}
-              onChange={(e) => setNewWord(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addWord()}
-              placeholder="إضافة كلمة جديدة..."
-              className="flex-1 bg-white/5 border border-slate-800/60 rounded-lg px-3 py-2 text-xs outline-none focus:border-emerald-500/30 text-white font-mono"
-              dir="ltr"
-            />
-            <button 
-              onClick={addWord}
-              className="px-3 py-2 bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors"
-            >
-              إضافة
-            </button>
-          </div>
-        </div>
-      ) : (
-        <textarea
-          value={regex}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full h-24 bg-transparent border border-slate-700/50 rounded-xl px-4 py-3 text-xs font-mono text-emerald-400 focus:border-emerald-500/50 outline-none resize-none leading-relaxed"
-          dir="ltr"
-        />
-      )}
-    </div>
-  );
-};
-
-import { TelegramDetailedStatus } from "./components/TelegramDetailedStatus";
 import { AdminCentralBank } from "./components/AdminCentralBank";
+
+const formatAdminDate = (value?: string | null) => value && Number.isFinite(Date.parse(value))
+  ? format(new Date(value), "dd MMM yyyy · HH:mm", { locale: ar }) : "غير متاح";
 
 export default function Admin() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [token, setToken] = useState(() => {
     return safeStorage.getItem("adminToken") || "";
   });
+  const [checkingSession, setCheckingSession] = useState(!!token);
   const [config, setConfig] = useState<any>(null);
+  const [savedConfig, setSavedConfig] = useState('');
   const [stats, setStats] = useState<Stats | null>(null);
-        const [systemReport, setSystemReport] = useState<any>(null);
-      const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'config' | 'cbl' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'weekly-harvest'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bot' | 'push' | 'config' | 'cbl' | 'logs' | 'ai' | 'changes' | 'telegram' | 'whatsapp' | 'broadcast-log' | 'tools' | 'api' | 'database' | 'messages' | 'report' | 'tracking' | 'weekly-harvest'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const sidebarRef = useDialogAccessibility(isSidebarOpen, () => setIsSidebarOpen(false));
-  const [isAuthorizedDevice, setIsAuthorizedDevice] = useState(true);
+
 
       
               
       
-      const [deviceFilter, setDeviceFilter] = useState<'all' | 'Mobile' | 'Desktop' | 'Tablet' | 'Bot'>('all');
-  const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
+
       
   
   
 
-  // Admin socket events
+  useEffect(() => {
+    if (!success) return;
+    const timeout = setTimeout(() => setSuccess(""), 5000);
+    return () => clearTimeout(timeout);
+  }, [success]);
 
   
   
   
-        const [recentChanges, setRecentChanges] = useState<any[]>([]);
+  const [recentChanges, setRecentChanges] = useState<any[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'checking'>('checking');
 
                     
@@ -246,63 +117,72 @@ export default function Admin() {
 
             
   useEffect(() => {
-    let deviceToken = safeStorage.getItem("admin_device_token");
-    
-    // In actual production, this would be a more complex check
-    if (safeStorage.getItem("is_dev") !== "true" && deviceToken !== "authorized_device_token_xyz") {
-      // Temporarily allowing if is_dev is set to true for easy initial setup
-      if (!deviceToken) {
-         console.warn("Device not authorized for admin panel");
-      }
-    }
-
-    if (token) {
-      fetchData().catch(() => {});
-      const interval = setInterval(() => {
-        fetchStats().catch(() => {});
-      }, 10000);
-      return () => clearInterval(interval);
-    }
+    if (!token) { setCheckingSession(false); return; }
+    let cancelled = false;
+    setCheckingSession(true);
+    fetchData().catch(() => {}).finally(() => { if (!cancelled) setCheckingSession(false); });
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchStats().catch(() => {});
+    }, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [token]);
 
   const navGroups = [
-    {
-      group: 'الرئيسية',
-      items: [
-        { id: 'dashboard', label: 'الرئيسية', icon: LayoutDashboard },
-        { id: 'cbl', label: 'مصرف ليبيا المركزي', icon: Building2 },
-        { id: 'config', label: 'إعدادات العملات', icon: Settings },
-      ]
-    },
-    {
-      group: 'البيانات والسجلات',
-      items: [
-        { id: 'weekly-harvest', label: 'حصاد الأسبوع (توليد الصور)', icon: BarChart3 },
-        { id: 'database', label: 'الأسعار السابقة', icon: Database },
-        { id: 'changes', label: 'حركة الأسعار', icon: HistoryIcon },
-        { id: 'messages', label: 'رسائل الزوار', icon: Mail },
-        { id: 'tracking', label: 'سجل الزوار الدقيق', icon: Users },
-      ]
-    },
-    {
-      group: 'تكامل الخدمات',
-      items: [
-        { id: 'telegram', label: 'تيليجرام', icon: Globe },
-        { id: 'whatsapp', label: 'واتساب', icon: MessageSquare },
-        { id: 'broadcast-log', label: 'سجل البث الاجتماعي', icon: Radio },
-        { id: 'ai', label: 'الذكاء الاصطناعي', icon: Zap },
-        { id: 'api', label: 'واجهة API', icon: Code2 },
-      ]
-    },
-    {
-      group: 'صيانة النظام',
-      items: [
-        { id: 'tools', label: 'أدوات السيرفر', icon: Cpu },
-        { id: 'report', label: 'حالة السيرفر', icon: Terminal },
-        { id: 'logs', label: 'سجل الأخطاء', icon: AlertTriangle },
-      ]
-    }
+    { group: 'المتابعة', items: [
+      { id: 'dashboard', label: 'نظرة عامة', icon: LayoutDashboard },
+      { id: 'messages', label: 'رسائل الزوار', icon: Mail },
+      { id: 'bot', label: 'البوت والتنبيهات', icon: Bell },
+      { id: 'push', label: 'إشعارات المستخدمين', icon: Smartphone },
+      { id: 'tracking', label: 'تحليلات الزوار', icon: Users },
+    ] },
+    { group: 'الأسعار والمحتوى', items: [
+      { id: 'cbl', label: 'المصرف المركزي', icon: Building2 },
+      { id: 'changes', label: 'حركة الأسعار', icon: HistoryIcon },
+      { id: 'database', label: 'سجل الأسعار', icon: Database },
+      { id: 'weekly-harvest', label: 'حصاد الأسبوع', icon: BarChart3 },
+      { id: 'config', label: 'العملات والمصادر', icon: Settings },
+    ] },
+    { group: 'التكاملات', items: [
+      { id: 'telegram', label: 'النشر الاجتماعي', icon: Send },
+      { id: 'whatsapp', label: 'WhatsApp · Worker', icon: MessageSquare },
+      { id: 'broadcast-log', label: 'سجل النشر', icon: Radio },
+      { id: 'ai', label: 'التحليل والاستخراج', icon: Zap },
+      { id: 'api', label: 'واجهة API', icon: Code2 },
+    ] },
+    { group: 'الصيانة', items: [
+      { id: 'report', label: 'تقرير Web', icon: Terminal },
+      { id: 'logs', label: 'سجل الأخطاء', icon: AlertTriangle },
+      { id: 'tools', label: 'أدوات متقدمة', icon: Cpu },
+    ] },
   ];
+  const currentPage = navGroups.flatMap(group => group.items).find(item => item.id === activeTab)!;
+  const [navSearch, setNavSearch] = useState('');
+  const dirtyConfig = config !== null && JSON.stringify(config) !== savedConfig;
+  const dirtyConfigRef = useRef(dirtyConfig);
+  dirtyConfigRef.current = dirtyConfig;
+  const renderNavigation = () => (
+    <nav className="admin-navigation" aria-label="أقسام الإدارة">
+      <label className="admin-nav-search">
+        <Search size={17} aria-hidden="true" />
+        <input aria-label="البحث في أقسام الإدارة" placeholder="ابحث عن قسم…" value={navSearch} onChange={event => setNavSearch(event.target.value)} />
+      </label>
+      {navGroups.map(group => {
+        const items = group.items.filter(item => item.label.toLowerCase().includes(navSearch.trim().toLowerCase()));
+        return items.length > 0 && (
+          <div className="admin-nav-group" key={group.group}>
+            <p>{group.group}</p>
+            {items.map(item => (
+              <button key={item.id} type="button" aria-current={activeTab === item.id ? 'page' : undefined}
+                onClick={() => { setActiveTab(item.id as typeof activeTab); setIsSidebarOpen(false); }}
+                className="admin-nav-item">
+                <item.icon size={19} aria-hidden="true" /><span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
+    </nav>
+  );
 
   useEffect(() => {
     if (!token) return;
@@ -312,9 +192,9 @@ export default function Admin() {
     const connect = () => {
       try {
         socket = io('/', {
-          query: { role: 'admin' },
+          auth: { token },
           transports: ['polling', 'websocket'],
-          reconnectionAttempts: 10,
+          reconnectionAttempts: Infinity,
           reconnectionDelay: 2000,
           timeout: 15000
         });
@@ -326,10 +206,16 @@ export default function Admin() {
         });
         
         socket.on('config_update', (data: any) => {
-          setConfig(data.config);
+          if (data.config?.channels && !dirtyConfigRef.current) {
+            setConfig(data.config);
+            setSavedConfig(JSON.stringify(data.config));
+          }
         });
 
+        socket.on('admin_auth_error', handleLogout);
+
         socket.on('connect_error', (err: any) => {
+          if (err?.message === 'ADMIN_UNAUTHORIZED') handleLogout();
           console.warn('Admin Socket.io connection notice:', err?.message || err);
         });
 
@@ -342,6 +228,7 @@ export default function Admin() {
 
     return () => {
       if (socket) {
+        socket.removeAllListeners();
         socket.disconnect();
       }
     };
@@ -362,14 +249,18 @@ export default function Admin() {
       });
       if (res.ok) {
         const data = await res.json();
-        setConfig(data);
+        if (!dirtyConfigRef.current) {
+          setConfig(data);
+          setSavedConfig(JSON.stringify(data));
+        }
         setIsLoggedIn(true);
+      } else if (res.status === 401 || res.status === 403) {
+        handleLogout();
       } else {
-        setIsLoggedIn(false);
-        safeStorage.removeItem("adminToken");
-        setToken("");
+        setError("تعذر تحميل إعدادات الإدارة. أعد المحاولة دون تغيير بيانات الدخول.");
       }
     } catch (err) {
+      setError("تعذر الاتصال لتحميل الإعدادات. أعد المحاولة لاحقًا.");
       logErrorToServer(err, "Admin.tsx: fetchConfig");
     }
   };
@@ -385,8 +276,7 @@ export default function Admin() {
         setConnectionStatus('online');
       } else {
         if (res.status === 401 || res.status === 403) {
-          setToken("");
-          safeStorage.removeItem("adminToken");
+          handleLogout();
         }
         setConnectionStatus('offline');
       }
@@ -402,7 +292,7 @@ export default function Admin() {
     }
   };
 
-  const [confirmClearChanges, setConfirmClearChanges] = useState(false);
+
 
   const fetchRecentChanges = async () => {
     try {
@@ -417,11 +307,8 @@ export default function Admin() {
   };
 
   const handleClearChanges = async () => {
-    if (!confirmClearChanges) {
-      setConfirmClearChanges(true);
-      setTimeout(() => setConfirmClearChanges(false), 3000);
-      return;
-    }
+    if (!window.confirm("مسح سجل تغيرات الأسعار؟ لا يمكن التراجع عن هذا الإجراء.")) return;
+    setLoading(true);
     try {
       const res = await fetch("/api/admin/recent-changes", {
         method: "DELETE",
@@ -430,11 +317,13 @@ export default function Admin() {
       if (res.ok) {
         setRecentChanges([]);
         setSuccess("تم تنظيف سجل التغيرات بنجاح");
-        setConfirmClearChanges(false);
-        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError("تعذر مسح السجل. لم تتغير البيانات.");
       }
     } catch (err) {
-      console.error(err);
+      setError("تعذر الاتصال لمسح السجل.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -443,23 +332,23 @@ export default function Admin() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/login", {
+      const res = await fetchWithTimeout("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password })
-      });
+      }, 15000);
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success && typeof data.token === "string" && data.token) {
         setToken(data.token);
         safeStorage.setItem("adminToken", data.token);
-        // Auto-authorize device on successful password login
-        safeStorage.setItem("admin_device_token", "authorized_device_token_xyz");
+        setPassword("");
+        setShowPassword(false);
         setIsLoggedIn(true);
       } else {
-        setError(data.message);
+        setError(data.message || "تعذر تسجيل الدخول. أعد المحاولة.");
       }
     } catch (err) {
-      setError("خطأ في الاتصال بالسيرفر");
+      setError("تعذر الاتصال بالخادم. أعد المحاولة لاحقًا.");
     }
     setLoading(false);
   };
@@ -478,16 +367,19 @@ export default function Admin() {
         body: JSON.stringify(config)
       });
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setSuccess("تم حفظ الإعدادات بنجاح وتحديث السيرفر!");
-        setTimeout(() => setSuccess(""), 3000);
+        setSavedConfig(JSON.stringify(config));
+        setLoading(false);
+        return true;
       } else {
-        setError(data.message);
+        setError(data.message || data.error || "تعذر حفظ الإعدادات.");
       }
     } catch (err) {
       setError("خطأ في عملية الحفظ");
     }
     setLoading(false);
+    return false;
   };
 
   const triggerRefresh = async () => {
@@ -499,9 +391,9 @@ export default function Admin() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess("تم تحديث البيانات بنجاح!");
+        setSuccess("قبل Worker طلب التحديث. ستظهر الأسعار عند اكتمال المعالجة والمزامنة.");
         fetchStats().catch(() => {});
-        setTimeout(() => setSuccess(""), 3000);
+
       } else {
         setError(data.message);
       }
@@ -511,7 +403,7 @@ export default function Admin() {
     setRefreshing(false);
   };
 
-  const [confirmCleanup, setConfirmCleanup] = useState(false);
+
   const [uptimeDisplay, setUptimeDisplay] = useState("");
 
   useEffect(() => {
@@ -539,11 +431,7 @@ export default function Admin() {
     return () => clearInterval(interval);
   }, [stats?.serverStartTime]);
   const handleCleanup = async () => {
-    if (!confirmCleanup) {
-      setConfirmCleanup(true);
-      setTimeout(() => setConfirmCleanup(false), 3000);
-      return;
-    }
+    if (!window.confirm("سيُنفذ أمر تنظيف السجلات القديمة. هل تريد المتابعة؟")) return;
     setLoading(true);
     try {
       const res = await fetch("/api/admin/cleanup", {
@@ -554,8 +442,8 @@ export default function Admin() {
       if (data.success) {
         setSuccess("تم تنظيف البيانات القديمة بنجاح!");
         fetchStats().catch(() => {});
-        setConfirmCleanup(false);
-        setTimeout(() => setSuccess(""), 3000);
+
+
       } else {
         setError(data.message);
       }
@@ -569,6 +457,12 @@ export default function Admin() {
     safeStorage.removeItem("adminToken");
     setToken("");
     setIsLoggedIn(false);
+    setConfig(null);
+    setSavedConfig('');
+    setPassword('');
+    setShowPassword(false);
+    setCheckingSession(false);
+    setIsSidebarOpen(false);
   };
 
   
@@ -582,86 +476,57 @@ export default function Admin() {
 
 
 
-  if (!isLoggedIn) {
+  if (checkingSession || (isLoggedIn && !config)) {
     return (
-      <MotionConfig reducedMotion="user">
-      <div className="admin-shell min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans selection:bg-emerald-500/30" dir="rtl">
-        <div className="absolute top-4 left-4"><ThemeToggle /></div>
-
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md bg-white/[0.03] backdrop-blur-3xl border border-slate-700/50 rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative z-10"
-        >
-          <div className="flex justify-center mb-8">
-            <div className="relative">
-              <div className="w-14 h-14 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                <Lock className="w-10 h-10 text-white" />
-              </div>
-            </div>
+      <div className="admin-shell admin-login-shell" dir="rtl">
+        <div className="admin-login-panel">
+          <h1>لوحة الإدارة</h1>
+          <p className="admin-muted" role="status">{loading || checkingSession ? 'جارٍ التحقق من الجلسة…' : 'تعذر تحميل إعدادات الإدارة.'}</p>
+          {error && <p className="admin-inline-error" role="alert">{error}</p>}
+          <div className="admin-login-links">
+            <a href="/" className="admin-secondary"><ArrowLeftRight size={17} />العودة للموقع</a>
+            {!loading && !checkingSession && <button type="button" className="admin-primary" onClick={() => fetchData().catch(() => {})}><RefreshCw size={17} />إعادة المحاولة</button>}
           </div>
-
-          <div className="text-center mb-10">
-            <h1 className="text-3xl font-black text-white mb-3 tracking-tight">الدخول الآمن</h1>
-            <p className="text-slate-500 text-sm leading-relaxed">يرجى إدخال مفتاح الوصول الإداري للمتابعة</p>
-          </div>
-          
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="relative group">
-              <input
-                type="password"
-                aria-label="مفتاح الوصول الإداري"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-black/40 border border-slate-700/50 rounded-2xl px-6 py-5 text-white focus:outline-none focus:border-emerald-500/50 focus:bg-black/60 transition-all text-center text-2xl tracking-[0.3em] font-mono placeholder:tracking-normal placeholder:font-sans placeholder:text-zinc-700"
-                dir="ltr"
-                required
-              />
-              <div className="absolute inset-0 rounded-2xl border border-emerald-500/0 group-focus-within:border-emerald-500/20 pointer-events-none transition-all"></div>
-            </div>
-
-            {error && (
-              <motion.div 
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="bg-rose-500/10 border border-rose-500/20 px-4 py-3 rounded-xl text-rose-400 text-sm text-center flex items-center justify-center gap-2"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                {error}
-              </motion.div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 text-black font-black py-5 rounded-2xl transition-all shadow-xl shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-3 group overflow-hidden relative"
-            >
-              {loading ? (
-                <RefreshCw className="w-6 h-6 animate-spin" />
-              ) : (
-                <>
-                  <span className="text-lg">فتح لوحة التحكم</span>
-                  <Zap className="w-5 h-5 group-hover:fill-current transition-all" />
-                </>
-              )}
-            </button>
-          </form>
-        </motion.div>
+        </div>
       </div>
-      </MotionConfig>
     );
   }
 
-  if (!config) {
+  if (!isLoggedIn) {
     return (
-      <div className="admin-shell min-h-screen bg-[#020617] flex items-center justify-center p-4 font-sans" dir="rtl">
-        <div className="text-center">
-          <RefreshCw className="w-12 h-12 text-emerald-500 animate-spin mx-auto mb-4" />
-          <p className="text-slate-500 text-sm">جاري تحميل الإعدادات...</p>
+      <MotionConfig reducedMotion="user">
+        <div className="admin-shell admin-login-shell" dir="rtl">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="admin-login-panel">
+            <div className="admin-login-top">
+              <a href="/" className="admin-text-button"><ArrowLeftRight size={17} />العودة للموقع</a>
+              <ThemeToggle />
+            </div>
+            <div className="admin-login-brand"><img src="/logo.png" width="44" height="44" alt="" /><span>مؤشر الدينار</span></div>
+            <h1>لوحة الإدارة</h1>
+            <p className="admin-muted">دخول خاص بإدارة المنصة</p>
+            <form onSubmit={handleLogin} className="admin-login-form" aria-busy={loading}>
+              <div className="admin-field">
+                <label htmlFor="admin-password">كلمة مرور الإدارة</label>
+                <div className="admin-password-input" dir="ltr">
+                  <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)}
+                    placeholder="أدخل كلمة المرور" disabled={loading} required aria-describedby={error ? 'admin-login-error' : undefined} />
+                  <button type="button" className="admin-password-toggle" disabled={loading}
+                    aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'} title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                    aria-pressed={showPassword} onClick={() => setShowPassword(previous => !previous)}>
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </div>
+              {error && <p id="admin-login-error" className="admin-inline-error" role="alert"><AlertTriangle size={17} aria-hidden="true" />{error}</p>}
+              <button type="submit" disabled={loading || !password.trim()} className="admin-primary admin-login-submit">
+                {loading ? <RefreshCw size={18} className="animate-spin" aria-hidden="true" /> : <Lock size={18} aria-hidden="true" />}
+                {loading ? 'جارٍ تسجيل الدخول…' : 'فتح لوحة التحكم'}
+              </button>
+            </form>
+          </motion.div>
         </div>
-      </div>
+      </MotionConfig>
     );
   }
 
@@ -669,396 +534,96 @@ export default function Admin() {
     <MotionConfig reducedMotion="user">
     <div className="admin-shell min-h-screen bg-[#020617] text-white flex font-sans selection:bg-emerald-500/30 overflow-hidden" dir="rtl">
       {/* Sidebar - Desktop */}
-      <aside className="hidden lg:flex flex-col w-72 shrink-0 bg-[#080808] border-l border-slate-800/60 relative z-[60] pt-safe pb-safe overflow-y-auto">
-        <div className="p-8">
-          <div className="flex items-center gap-4 mb-10">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-blue-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <ShieldCheck className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black tracking-tight text-white leading-tight">مركز الإدارة</h1>
-              <span className="text-emerald-500 text-[10px] font-bold uppercase tracking-widest">Version 4.0</span>
-            </div>
-          </div>
-
-          <nav className="space-y-6">
-            {navGroups.map((group, idx) => (
-              <div key={idx}>
-                <h3 className="text-[11px] font-bold text-slate-500 mb-3 px-4 uppercase tracking-widest">{group.group}</h3>
-                <div className="space-y-1.5">
-                  {group.items.map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id as any)}
-                      aria-current={activeTab === item.id ? 'page' : undefined}
-                      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all group ${
-                        activeTab === item.id 
-                          ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' 
-                          : 'text-slate-500 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'stroke-[2.5]' : 'group-hover:scale-110 transition-transform'}`} />
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </nav>
-        </div>
-
-        <div className="mt-auto p-6 border-t border-slate-800/60">
-           <div className="bg-white/5 rounded-2xl p-4 mb-4">
-              <div className="flex items-center gap-3 mb-3">
-                 <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                    <Database className="w-4 h-4 text-blue-400" />
-                 </div>
-                 <span className="text-xs font-bold text-slate-400">حالة النظام</span>
-              </div>
-              <div className="space-y-2">
-                 <div className="flex justify-between text-[10px]">
-                    <span className="text-slate-500">الاتصال:</span>
-                    <span className={connectionStatus === 'online' ? 'text-emerald-400' : 'text-rose-400'}>
-                       {connectionStatus === 'online' ? 'متصل' : 'منقطع'}
-                    </span>
-                 </div>
-                 <div className="flex justify-between text-[10px]">
-                    <span className="text-slate-500">الذاكرة:</span>
-                    <span className="text-blue-400">{stats?.memoryUsage ? `${Math.round(stats.memoryUsage.heapUsed / 1024 / 1024)}MB` : '...'}</span>
-                 </div>
-              </div>
-           </div>
-           
-           <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-rose-400 hover:bg-rose-500/10 transition-all border border-rose-500/10"
-           >
-             <LogOut className="w-5 h-5" />
-             تسجيل الخروج
-           </button>
+      <aside className="admin-sidebar">
+        <div className="admin-brand"><ShieldCheck size={25} aria-hidden="true" /><div><strong>Dollar Price</strong><span>لوحة الإدارة · Web</span></div></div>
+        {renderNavigation()}
+        <div className="admin-sidebar-footer">
+          <span className="admin-connection" data-state={connectionStatus}><span />{connectionStatus === 'online' ? 'Web متصل' : connectionStatus === 'checking' ? 'جارٍ التحقق' : 'تعذر الاتصال بـ Web'}</span>
+          <button type="button" className="admin-nav-item admin-danger" onClick={handleLogout}><LogOut size={18} aria-hidden="true" />تسجيل الخروج</button>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-dvh overflow-hidden">
         {/* Top Header */}
-        <header className="h-[calc(5rem+env(safe-area-inset-top))] bg-[#020617]/80 backdrop-blur-2xl border-b border-slate-800/60 flex items-center justify-between px-6 shrink-0 relative z-50 pt-safe">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              aria-label="فتح قائمة الإدارة"
-              aria-expanded={isSidebarOpen}
-              className="lg:hidden p-2.5 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-all"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            
-            <div className="hidden md:flex items-center gap-3">
-               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-slate-800/60 rounded-full">
-                  <div className={`w-2 h-2 rounded-full ${stats?.minutesSinceLastScrape && stats.minutesSinceLastScrape < 15 ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`}></div>
-                  <span className="text-[10px] font-bold text-slate-400">تيليجرام: {stats?.minutesSinceLastScrape ? `منذ ${stats.minutesSinceLastScrape}د` : '---'}</span>
-               </div>
-               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-slate-800/60 rounded-full">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="text-[10px] font-bold text-slate-400">المستخدمين: {stats?.onlineUsers || 0}</span>
-               </div>
-            </div>
+        <header className="admin-header">
+          <div className="admin-header-title">
+            <button type="button" onClick={() => setIsSidebarOpen(true)} aria-label="فتح قائمة الإدارة" aria-expanded={isSidebarOpen} className="admin-icon-button lg:hidden"><Menu size={21} /></button>
+            <div><span className="admin-muted">مركز الإدارة</span><h1>{currentPage.label}</h1></div>
           </div>
-
-          <div className="flex items-center gap-3">
-             <ThemeToggle />
-             <TelegramStatus />
-             <div className="w-px h-6 bg-white/10 mx-2 hidden sm:block"></div>
-             <button
-               onClick={handleSave}
-               disabled={loading}
-               className="px-5 py-2.5 rounded-xl bg-white text-black font-black flex items-center gap-2 hover:bg-emerald-400 transition-all active:scale-95 disabled:opacity-50 text-sm shadow-xl shadow-white/5"
-             >
-               <Save className="w-4 h-4" />
-               <span>حفظ التغييرات</span>
-             </button>
+          <div className="admin-header-actions">
+            <span className="admin-connection hidden sm:flex" data-state={connectionStatus}><span />{connectionStatus === 'online' ? 'Web متصل' : connectionStatus === 'checking' ? 'جارٍ التحقق' : 'غير متصل'}</span>
+            <button type="button" className="admin-icon-button" aria-label="تحديث بيانات اللوحة" title="تحديث بيانات اللوحة" disabled={loading} onClick={() => fetchData().catch(() => {})}><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
+            <ThemeToggle />
+            {dirtyConfig && <button type="button" onClick={handleSave} disabled={loading} className="admin-primary"><Save size={17} aria-hidden="true" /><span>حفظ</span></button>}
           </div>
         </header>
 
-        {/* Mobile Sidebar Overlay */}
         <AnimatePresence>
-          {isSidebarOpen && (
-            <>
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setIsSidebarOpen(false)}
-                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] lg:hidden"
-              />
-              <motion.div
-                ref={sidebarRef}
-                role="dialog"
-                aria-modal="true"
-                aria-label="قائمة الإدارة"
-                tabIndex={-1}
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                className="fixed top-0 right-0 bottom-0 w-80 bg-[#080808] z-[110] lg:hidden p-8 flex flex-col shadow-2xl pt-safe pb-safe overflow-y-auto"
-              >
-                <div className="flex items-center justify-between mb-10">
-                  <div className="flex items-center gap-3">
-                    <ShieldCheck className="w-8 h-8 text-emerald-500" />
-                    <span className="font-black text-xl">القائمة</span>
-                  </div>
-                  <button aria-label="إغلاق قائمة الإدارة" onClick={() => setIsSidebarOpen(false)} className="p-2 rounded-xl bg-white/5">
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-
-                <nav className="space-y-6">
-                  {navGroups.map((group, idx) => (
-                    <div key={idx}>
-                      <h3 className="text-[11px] font-bold text-slate-500 mb-3 px-4 uppercase tracking-widest">{group.group}</h3>
-                      <div className="space-y-2">
-                        {group.items.map(item => (
-                          <button
-                            key={item.id}
-                            aria-current={activeTab === item.id ? 'page' : undefined}
-                            onClick={() => {
-                              setActiveTab(item.id as any);
-                              setIsSidebarOpen(false);
-                            }}
-                            className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-bold transition-all ${
-                              activeTab === item.id 
-                                ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' 
-                                : 'text-slate-500 hover:text-white hover:bg-white/5'
-                            }`}
-                          >
-                            <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'stroke-[2.5]' : ''}`} />
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </nav>
-
-                <div className="mt-auto">
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-sm font-bold text-rose-400 bg-rose-500/5 border border-rose-500/10"
-                  >
-                    <LogOut className="w-5 h-5" />
-                    تسجيل الخروج
-                  </button>
-                </div>
-              </motion.div>
-            </>
-          )}
+          {isSidebarOpen && <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/70 z-[100] lg:hidden" />
+            <motion.div ref={sidebarRef} role="dialog" aria-modal="true" aria-label="قائمة الإدارة" tabIndex={-1}
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              className="admin-drawer lg:hidden">
+              <div className="admin-brand"><ShieldCheck size={24} /><strong>Dollar Price</strong><button type="button" className="admin-icon-button" aria-label="إغلاق قائمة الإدارة" onClick={() => setIsSidebarOpen(false)}><X size={20} /></button></div>
+              {renderNavigation()}
+              <button type="button" className="admin-nav-item admin-danger" onClick={handleLogout}><LogOut size={18} />تسجيل الخروج</button>
+            </motion.div>
+          </>}
         </AnimatePresence>
 
         {/* Content Viewport */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative pb-24 md:pb-8">
+        <main id="admin-content" className="admin-content" tabIndex={-1}>
+          {dirtyConfig && <div className="admin-draft-notice" role="status"><Edit2 size={16} aria-hidden="true" />توجد تغييرات لم تُحفظ بعد.</div>}
           <AnimatePresence mode="wait">
             {activeTab === 'api' && <AdminAPI token={token} config={config} setConfig={setConfig} />}
+          {activeTab === 'bot' && <AdminTelegramBot token={token} config={config} setConfig={setConfig} handleSave={handleSave} loading={loading} dirty={dirtyConfig} setError={setError} setSuccess={setSuccess} />}
+          {activeTab === 'push' && <AdminNotifications token={token} />}
           {activeTab === 'config' && <AdminConfig config={config} setConfig={setConfig} handleSave={handleSave} loading={loading} />}
           {activeTab === 'dashboard' && (
-            <motion.div 
-              key="dashboard"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6 md:space-y-8"
-            >
-              {/* Quick Actions Control Center - Perfect for Mobile */}
-              <section className="bg-white/[0.03] border border-slate-700/50 rounded-[2rem] p-6 shadow-2xl">
-                <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-6 px-1">التحكم السريع بالسيرفر</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                   <button 
-                     onClick={triggerRefresh}
-                     disabled={refreshing}
-                     className="flex flex-col items-center justify-center p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500 transition-all group active:scale-95"
-                   >
-                     <RefreshCw className={`w-6 h-6 text-emerald-400 group-hover:text-black mb-2 ${refreshing ? 'animate-spin' : ''}`} />
-                     <span className="text-[11px] font-black text-white group-hover:text-black">تحديث السوق</span>
-                   </button>
-                   <button 
-                     onClick={async () => {
-                        setLoading(true);
-                        try {
-                           const res = await fetch("/api/admin/refresh-official", {
-                             method: "POST",
-                             headers: { Authorization: `Bearer ${token}` }
-                           });
-                           if(res.ok) {
-                             setSuccess("تم تحديث السعر الرسمي");
-                             setTimeout(() => setSuccess(""), 3000);
-                           }
-                        } catch(e) {}
-                        setLoading(false);
-                     }}
-                     className="flex flex-col items-center justify-center p-4 rounded-3xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500 transition-all group active:scale-95"
-                   >
-                     <Building2 className="w-6 h-6 text-blue-400 group-hover:text-black mb-2" />
-                     <span className="text-[11px] font-black text-white group-hover:text-black">تحديث الرسمي</span>
-                   </button>
-                   <button 
-                     onClick={handleCleanup}
-                     className="flex flex-col items-center justify-center p-4 rounded-3xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500 transition-all group active:scale-95"
-                   >
-                     <Trash2 className="w-6 h-6 text-rose-400 group-hover:text-black mb-2" />
-                     <span className="text-[11px] font-black text-white group-hover:text-black">تنظيف الداتا</span>
-                   </button>
-                   <button 
-                     onClick={() => window.open(window.location.origin || '/', '_blank')}
-                     className="flex flex-col items-center justify-center p-4 rounded-3xl bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500 transition-all group active:scale-95"
-                   >
-                     <Globe className="w-6 h-6 text-amber-400 group-hover:text-black mb-2" />
-                     <span className="text-[11px] font-black text-white group-hover:text-black">عرض الموقع</span>
-                   </button>
+            <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="admin-overview">
+              <section className="admin-section">
+                <div className="admin-section-heading"><div><h2>ملخص التشغيل</h2><p className="admin-muted">Web · {connectionStatus === 'online' ? 'آخر اتصال ناجح' : 'بانتظار اتصال ناجح'}</p></div><a className="admin-secondary" href="/" target="_blank" rel="noopener noreferrer"><Globe size={17} />عرض الموقع</a></div>
+                <div className="admin-metrics">
+                  {[
+                    { label: 'الزوار الآن', value: stats?.onlineUsers ?? '—', icon: Users },
+                    { label: 'العملات والأصناف', value: stats?.termsCount ?? '—', icon: Coins },
+                    { label: 'ذاكرة Web', value: stats?.memoryUsage ? `${Math.round(stats.memoryUsage.heapUsed / 1024 / 1024)} MB` : '—', icon: Cpu },
+                    { label: 'تثبيت التطبيق اليوم', value: stats?.installs?.today ?? '—', icon: Smartphone },
+                  ].map(item => <div className="admin-metric" key={item.label}><item.icon size={19} aria-hidden="true" /><span>{item.label}</span><strong dir="auto">{item.value}</strong></div>)}
+                </div>
+                <dl className="admin-status-list">
+                  <div><dt>اتصال قاعدة البيانات</dt><dd className={stats?.dbConnected === false ? 'admin-danger' : ''}>{stats?.dbConnected === true ? 'تمت القراءة بنجاح' : stats?.dbConnected === false ? 'تعذر التحقق من القراءة' : 'غير متحقق'}</dd></div>
+                  <div><dt>آخر بيانات أسعار متاحة</dt><dd>{stats?.lastRateUpdate || stats?.lastSuccessfulScrape ? formatAdminDate(stats.lastRateUpdate || stats.lastSuccessfulScrape) : 'غير متاح'}</dd></div>
+                  <div><dt>مدة تشغيل Web</dt><dd>{uptimeDisplay || 'غير متاح'}</dd></div>
+                  <div><dt>خدمة Worker</dt><dd>تُراقب من لوحة Worker المستقلة</dd></div>
+                </dl>
+              </section>
+              <section className="admin-section">
+                <div className="admin-section-heading"><h2>إجراءات التشغيل</h2></div>
+                <div className="admin-quick-actions">
+                  <button type="button" className="admin-secondary" disabled={refreshing} onClick={triggerRefresh}><RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />طلب تحديث من Worker</button>
+                  <button type="button" className="admin-secondary" onClick={() => setActiveTab('cbl')}><Building2 size={18} />المصرف المركزي</button>
+                  <button type="button" className="admin-secondary" onClick={() => setActiveTab('bot')}><Bell size={18} />البوت والتنبيهات</button>
+                  <button type="button" className="admin-secondary" onClick={() => setActiveTab('messages')}><Mail size={18} />رسائل الزوار</button>
                 </div>
               </section>
-
-              {/* Server Status Hero Card */}
-              <div className="bg-gradient-to-br from-emerald-500/10 to-blue-600/10 border border-slate-700/50 rounded-[2rem] p-6 md:p-8 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
-                <div className="relative flex flex-col md:items-center lg:flex-row justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-white/5 flex items-center justify-center text-emerald-400 border border-slate-700/50 shadow-xl">
-                      <Cpu className="w-7 h-7 md:w-8 md:h-8" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg md:text-2xl font-black text-white mb-1">صحة النظام (Engine Status)</h2>
-                      <p className="text-slate-500 text-[10px] md:text-sm flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        سيرفر Render نشط ويعمل بكفاءة عالية
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-start lg:items-end gap-1 bg-black/20 p-4 rounded-2xl border border-slate-800/60 w-full lg:w-auto">
-                    <span className="text-slate-500 text-[9px] uppercase tracking-widest font-black">وقت التشغيل المتواصل</span>
-                    <span className="text-xl md:text-3xl font-black text-white font-mono tracking-tighter tabular-nums">{uptimeDisplay || "..."}</span>
-                    <div className="flex items-center gap-2 mt-1">
-                       <Clock className="w-3 h-3 text-zinc-600" />
-                       <span className="text-zinc-600 text-[9px] font-mono">آخر ريستارت: {stats?.serverStartTime ? format(new Date(stats.serverStartTime), "yyyy/MM/dd HH:mm", { locale: ar }) : "---"}</span>
-                    </div>
-                  </div>
+              <section className="admin-section">
+                <div className="admin-section-heading"><h2>سجلات البيانات</h2><button type="button" className="admin-text-button" onClick={() => setActiveTab('report')}>تقرير Web<ArrowLeftRight size={16} /></button></div>
+                <div className="admin-metrics">
+                  {[
+                    { label: 'أسعار السوق الموازي', value: stats?.dbStats?.parallelRatesCount, tab: 'database' },
+                    { label: 'الأسعار الرسمية', value: stats?.dbStats?.officialRatesCount, tab: 'database' },
+                    { label: 'تغيرات الأسعار', value: stats?.dbStats?.priceChangesCount, tab: 'changes' },
+                    { label: 'سجل الأخطاء', value: stats?.dbStats?.errorLogsCount, tab: 'logs' },
+                  ].map(item => <button type="button" className="admin-metric" key={item.label} onClick={() => setActiveTab(item.tab as typeof activeTab)}><span>{item.label}</span><strong>{item.value?.toLocaleString('ar-LY') ?? '—'}</strong></button>)}
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
-                {[
-                  { label: "زوار الآن", value: stats?.onlineUsers || 0, icon: Users, bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-400", indicator: "bg-emerald-500" },
-                  { label: "المصادر", value: stats?.channelsCount || 0, icon: Globe, bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-400", indicator: "bg-blue-500" },
-                  { label: "الأصول", value: stats?.termsCount || 0, icon: Layers, bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-400", indicator: "bg-purple-500" },
-                  { label: "تحويلات تليجرام", value: stats?.telegramVisits?.total || 0, icon: Send, bg: "bg-sky-500/10", border: "border-sky-500/20", text: "text-sky-400", indicator: "bg-sky-500" },
-                  { label: "الذاكرة", value: stats?.memoryUsage ? (stats.memoryUsage.heapUsed / 1024 / 1024).toFixed(0) + "MB" : "---", icon: Zap, bg: "bg-amber-500/10", border: "border-amber-500/20", text: "text-amber-400", indicator: "bg-amber-500" }
-                ].map((stat, i) => (
-                  <div key={i} className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] p-6 relative overflow-hidden group hover:bg-white/[0.04] transition-all">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center ${stat.text} border ${stat.border} shadow-lg`}>
-                        <stat.icon className="w-5 h-5" />
-                      </div>
-                      <div className={`w-1.5 h-1.5 rounded-full ${stat.indicator} animate-pulse`}></div>
-                    </div>
-                    <p className="text-slate-500 text-[11px] font-black uppercase tracking-wider mb-1">{stat.label}</p>
-                    <h3 className="text-2xl md:text-3xl font-black text-white font-mono">{stat.value}</h3>
-                  </div>
-                ))}
-              </div>
-
-              {/* Dedicated Telegram Link Tracking Card (Facebook Comments) */}
-              <TelegramVisitsCard token={token} />
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-                <section className="bg-white/[0.02] border border-slate-800/60 rounded-[2rem] p-6 md:p-8">
-                  <h2 className="text-lg md:text-xl font-black mb-6 md:mb-8 flex items-center gap-3">
-                    <Zap className="w-5 h-5 md:w-6 md:h-6 text-emerald-400" />
-                    كفاءة النظام (Performance)
-                  </h2>
-                  <div className="space-y-6">
-                    <div className="p-5 rounded-2xl bg-white/[0.03] border border-slate-800/60">
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="text-slate-500 text-xs md:text-sm">استهلاك الذاكرة (Memory)</span>
-                        <span className="text-white text-xs md:text-sm font-mono font-bold">
-                          {stats?.memoryUsage ? (stats.memoryUsage.heapUsed / 1024 / 1024).toFixed(1) : 0} MB
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: stats?.memoryUsage ? `${(stats.memoryUsage.heapUsed / stats.memoryUsage.heapTotal) * 100}%` : 0 }}
-                          className="h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="p-5 rounded-2xl bg-white/[0.03] border border-slate-800/60">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-slate-500 text-xs md:text-sm">حالة آخر تحديث تلقائي</span>
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${stats && stats.minutesSinceLastScrape > 720 ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                           {stats && stats.minutesSinceLastScrape > 720 ? 'Stale' : 'Active'}
-                        </span>
-                      </div>
-                      <p className="text-lg md:text-xl font-bold text-white mb-2">
-                         منذ {stats?.minutesSinceLastScrape || 0} دقيقة
-                      </p>
-                      <p className="text-[10px] md:text-xs text-zinc-600 font-mono">
-                        {stats?.lastSuccessfulScrape ? format(new Date(stats.lastSuccessfulScrape), "eeee dd MMMM - HH:mm", { locale: ar }) : "---"}
-                      </p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Database Stats */}
-                {stats?.dbStats && (
-                  <section className="glass-panel-heavy premium-border border border-slate-700/50 rounded-[2.5rem] p-6 md:p-8 shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] rounded-full pointer-events-none"></div>
-                    <div className="relative">
-                      <h2 className="text-lg md:text-xl font-black flex items-center gap-3 text-white mb-6 md:mb-8">
-                        <Layers className="w-5 h-5 md:w-6 md:h-6 text-emerald-400" />
-                        إحصائيات قاعدة البيانات
-                      </h2>
-                      
-                      <div className="grid grid-cols-2 gap-4 md:gap-6">
-                        <div className="bg-white/[0.02] border border-slate-800/60 p-4 md:p-6 rounded-3xl">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-2">سجلات الأسعار</p>
-                          <p className="text-xl md:text-2xl font-black text-white font-mono">{stats.dbStats.parallelRatesCount.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-white/[0.02] border border-slate-800/60 p-4 md:p-6 rounded-3xl">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-2">السعر الرسمي</p>
-                          <p className="text-xl md:text-2xl font-black text-white font-mono">{stats.dbStats.officialRatesCount.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-white/[0.02] border border-slate-800/60 p-4 md:p-6 rounded-3xl">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-2">سجل التغيرات</p>
-                          <p className="text-xl md:text-2xl font-black text-blue-400 font-mono">{stats.dbStats.priceChangesCount.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-white/[0.02] border border-slate-800/60 p-4 md:p-6 rounded-3xl">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-2">سجلات الأخطاء</p>
-                          <p className="text-xl md:text-2xl font-black text-rose-400 font-mono">{stats.dbStats.errorLogsCount.toLocaleString()}</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 md:mt-8 pt-6 md:pt-8 border-t border-slate-800/60">
-                        <button 
-                          onClick={handleCleanup}
-                          disabled={loading}
-                          className={`w-full py-3 md:py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all text-xs md:text-sm ${
-                            confirmCleanup 
-                              ? 'bg-rose-500 text-black shadow-lg shadow-rose-500/20' 
-                              : 'bg-white/5 text-slate-400 hover:text-white border border-slate-800/60'
-                          }`}
-                        >
-                          <Trash2 className="w-4 h-4 md:w-5 h-5" />
-                          {confirmCleanup ? 'تأكيد تنظيف البيانات؟' : 'تنظيف البيانات القديمة'}
-                        </button>
-                      </div>
-                    </div>
-                  </section>
-                )}
-
-                {/* Telegram Poster */}
-                <div className="mt-8">
-                  <TelegramPoster token={token} />
-                </div>
-              </div>
+              </section>
+              <details className="admin-advanced">
+                <summary>صيانة البيانات</summary>
+                <button type="button" className="admin-secondary admin-danger" disabled={loading} onClick={handleCleanup}><Trash2 size={17} />تنظيف السجلات القديمة</button>
+              </details>
             </motion.div>
           )}
 
@@ -1082,18 +647,16 @@ export default function Admin() {
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={handleClearChanges}
-                      className={`px-4 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 text-sm ${
-                        confirmClearChanges 
-                          ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20' 
-                          : 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/10'
-                      }`}
+                      disabled={loading}
+                      className="admin-secondary admin-danger"
                     >
                       <Trash2 className="w-4 h-4" />
-                      {confirmClearChanges ? 'تأكيد المسح؟' : 'تنظيف السجل'}
+                      مسح السجل
                     </button>
                     <button 
                       onClick={fetchRecentChanges}
-                      className="p-3 rounded-xl bg-white/5 text-slate-400 hover:text-white transition-all border border-slate-800/60"
+                      aria-label="تحديث حركة الأسعار" title="تحديث حركة الأسعار"
+                      className="admin-icon-button"
                     >
                       <RefreshCw className="w-5 h-5" />
                     </button>
@@ -1182,7 +745,7 @@ export default function Admin() {
           {activeTab === 'logs' && <AdminLogs token={token} setError={setError} setSuccess={setSuccess} />}
           {activeTab === 'ai' && <AdminAI token={token} config={config} setError={setError} setSuccess={setSuccess} triggerRefresh={triggerRefresh} decodeData={decodeData} />}
 
-          {activeTab === 'telegram' && <AdminTelegram token={token} config={config} setConfig={setConfig} setError={setError} setSuccess={setSuccess} handleSave={handleSave} />}
+          {activeTab === 'telegram' && <AdminTelegram token={token} config={config} setConfig={setConfig} setError={setError} setSuccess={setSuccess} onSaved={saved => { setConfig(saved); setSavedConfig(JSON.stringify(saved)); }} />}
 
           {activeTab === 'whatsapp' && <AdminWhatsApp token={token} fetchWithTimeout={fetchWithTimeout} setError={setError} setSuccess={setSuccess} />}
 
@@ -1195,49 +758,16 @@ export default function Admin() {
         </AnimatePresence>
       </main>
 
-      {/* Floating Status Bar - Bottom (Desktop Only) */}
-      <footer className="hidden md:flex fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-fit">
-         <div className="bg-black/80 backdrop-blur-2xl border border-slate-700/50 px-6 py-3 rounded-2xl flex items-center gap-6 shadow-2xl">
-            <div className="flex items-center gap-2">
-               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
-               <span className="text-[10px] font-black uppercase text-slate-400">System Ready</span>
-            </div>
-            <div className="w-px h-3 bg-slate-800"></div>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
-               <span className="uppercase text-zinc-600">Instance:</span>
-               <span className="text-emerald-500/70 font-bold">NODE_PROD_1</span>
-            </div>
-            <div className="w-px h-3 bg-slate-800"></div>
-             <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
-               <span className="uppercase text-zinc-600">Region:</span>
-               <span className="text-blue-500/70 font-bold">GER_FRA_01</span>
-            </div>
-         </div>
-      </footer>
-
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#080808]/90 backdrop-blur-xl border-t border-slate-700/50 z-[100] px-6 py-3 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.5)] pb-safe">
+      <nav className="admin-bottom-nav lg:hidden" aria-label="التنقل السريع">
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'الرئيسية' },
-          { id: 'database', icon: Database, label: 'البيانات' },
-          { id: 'config', icon: Settings, label: 'الإعدادات' },
-          { id: 'logs', icon: AlertTriangle, label: 'الأخطاء' },
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id as any)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === item.id 
-                ? 'text-emerald-400' 
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <div className={`p-2 rounded-xl ${activeTab === item.id ? 'bg-emerald-500/10' : 'bg-transparent'}`}>
-              <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'stroke-[2.5]' : ''}`} />
-            </div>
-            <span className="text-[10px] font-bold">{item.label}</span>
-          </button>
+          { id: 'messages', icon: Mail, label: 'الرسائل' },
+          { id: 'bot', icon: Bell, label: 'البوت' },
+        ].map(item => (
+          <button key={item.id} type="button" aria-current={activeTab === item.id ? 'page' : undefined}
+            onClick={() => setActiveTab(item.id as typeof activeTab)}><item.icon size={20} aria-hidden="true" /><span>{item.label}</span></button>
         ))}
+        <button type="button" aria-label="جميع أقسام الإدارة" aria-expanded={isSidebarOpen} onClick={() => setIsSidebarOpen(true)}><Menu size={20} aria-hidden="true" /><span>الأقسام</span></button>
       </nav>
 
       {/* Full-screen success/error messages over overlay */}
@@ -1258,10 +788,11 @@ export default function Admin() {
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${success ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
                    {success ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
                 </div>
-                <span className="font-bold text-sm tracking-tight">{success || error}</span>
+                <span role={error ? 'alert' : 'status'} className="font-bold text-sm tracking-tight">{error || success}</span>
               </div>
               <button 
                 onClick={() => { setSuccess(""); setError(""); }}
+                aria-label="إغلاق الإشعار"
                 className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all"
               >
                 <X className="w-4 h-4" />

@@ -129,12 +129,18 @@ async function main() {
     snapshot = makeRates(20000, 9.9, 10.6, 6.5, 10.0);
     io.emit('rates_update', { rates: JSON.stringify(snapshot) });
     await cash.getByText('9.90', { exact: true }).waitFor();
+    snapshot = makeRates(20000, 9.95, 10.65, 6.5, 10.0);
+    io.emit('rates_update', { rates: snapshot });
+    await cash.getByText('9.95', { exact: true }).waitFor();
     pendingResponse();
     io.emit('rates_update', { rates: initial });
     io.emit('rates_update', { rates: { parallel: 'invalid', lastUpdated: 'invalid' } });
     await page.waitForTimeout(500);
-    assert(await cash.getByText('9.90', { exact: true }).isVisible(), 'Old or malformed events must be ignored');
+    assert(await cash.getByText('9.95', { exact: true }).isVisible(), 'Old or malformed events must be ignored');
     assert.equal(io.sockets.sockets.size, 1, 'React rerenders must not create extra subscriptions');
+    await page.getByRole('heading',{name:'ملخص تغيّرات الأسعار المهمة',exact:true}).waitFor({timeout:20000});
+    assert.equal(await page.getByRole('heading',{name:'ملخص تغيّرات الأسعار المهمة',exact:true}).count(),1,'One summary, not a toast per currency');
+    assert((await page.locator('.app-toast').innerText()).includes('9.95'),'Same-timestamp accepted changes must appear in the latest digest');
 
     await context.setOffline(true);
     for (const socket of io.sockets.sockets.values()) socket.conn.close();

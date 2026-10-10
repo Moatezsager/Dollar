@@ -759,7 +759,7 @@ export async function broadcastToSocialMedia(message: string, isTest: boolean = 
   }
 }
 
-import { sendPushNotificationToAll } from './push.service';
+
 
 export let lastOfficialBroadcastDate = "";
 (async () => {
@@ -1326,17 +1326,7 @@ export async function executeBroadcast(
   }
 
 
-  // SEND PUSH NOTIFICATION
-  if (!isTest) {
-    const mainUpdates = updates.filter(u => u.id === 'USD' || u.id === 'EUR' || u.id === 'GOLD_CAST_24' || u.id === 'GOLD_CAST_18').slice(0, 2);
-    if (mainUpdates.length > 0) {
-      const pushTitle = 'تحديث جديد لأسعار السوق';
-      const pushBody = mainUpdates.map(u => `${u.name}: ${u.newVal.toFixed(3)}`).join(' | ');
-      sendPushNotificationToAll(pushTitle, pushBody);
-    } else {
-      sendPushNotificationToAll('تحديث جديد', 'تم تحديث أسعار السوق الموازي');
-    }
-  }
+  // Price Push is handled once by the Web rates broadcaster, separately from social publishing.
 }
 
 // ───────────────────────────────────────────────────────────────────────────

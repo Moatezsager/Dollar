@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React from "react";
+import { pushSupport } from '../../utils/pushNotifications';
 import { motion, AnimatePresence } from "motion/react";
 import { Settings2, X, RefreshCw, CheckCircle2, Bell, Palette, Volume2, Smartphone } from "lucide-react";
 import { safeStorage } from "../../utils/storage";
@@ -16,6 +17,11 @@ interface SettingsModalProps {
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
   notificationsEnabled: boolean;
+  notificationBusy: boolean;
+  notificationError: string;
+  inAppNotifications: boolean;
+  setInAppNotifications: (enabled: boolean) => void;
+  stopNotifications: () => void;
   requestNotificationPermission: () => void;
   notificationThreshold: number;
   setNotificationThreshold: (val: number) => void;
@@ -33,21 +39,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   showSettingsModal, setShowSettingsModal, settingsTab, setSettingsTab,
   hapticEnabled, setHapticEnabled, soundEnabled, setSoundEnabled,
   notificationsEnabled, requestNotificationPermission, notificationThreshold, setNotificationThreshold,
+  notificationBusy, notificationError, inAppNotifications, setInAppNotifications, stopNotifications,
   compactMode, setCompactMode, animationsEnabled, setAnimationsEnabled,
   fontSizePreference, setFontSizePreference, triggerHaptic, addToast,
 }) => {
   const dialogRef = useDialogAccessibility(showSettingsModal, () => setShowSettingsModal(false));
-  const notificationPermission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+  const support = pushSupport();
   const tabs = [
     { id: 'general', label: 'عام', icon: Settings2 },
     { id: 'notifications', label: 'التنبيهات', icon: Bell },
     { id: 'appearance', label: 'المظهر', icon: Palette },
   ] as const;
-
-  useEffect(() => {
-    const saved = Number(safeStorage.getItem('notificationThreshold'));
-    if (Number.isFinite(saved) && saved >= 0.001 && saved <= 0.1) setNotificationThreshold(saved);
-  }, [setNotificationThreshold]);
 
   return (
     <AnimatePresence>
@@ -131,19 +133,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="settings-permission">
                     {notificationsEnabled ? <CheckCircle2 aria-hidden="true" /> : <Bell aria-hidden="true" />}
                     <div className="settings-copy">
-                      <h3>إشعارات المتصفح</h3>
-                      <p>{notificationPermission === 'unsupported' ? 'غير مدعومة في هذا المتصفح' :
-                        notificationPermission === 'denied' ? 'محظورة من إعدادات المتصفح' :
+                      <h3>إشعارات الجهاز</h3>
+                      <p>{support === 'install' ? 'تحتاج إضافة الموقع إلى الشاشة الرئيسية' :
+                        support === 'unsupported' ? 'غير مدعومة على هذا الجهاز' :
+                        support === 'denied' ? 'محظورة؛ غيّر الإذن من إعدادات الموقع في المتصفح' :
                         notificationsEnabled ? 'مفعّلة على هذا الجهاز' : 'لم يتم تفعيلها بعد'}</p>
                     </div>
-                    {!notificationsEnabled && notificationPermission === 'default' && (
-                      <button className="settings-enable" onClick={requestNotificationPermission}>تفعيل</button>
+                    {(support === 'supported' || notificationsEnabled) && (
+                      <button className="settings-enable" disabled={notificationBusy}
+                        onClick={notificationsEnabled ? stopNotifications : requestNotificationPermission}>
+                        {notificationBusy ? 'جارٍ الحفظ…' : notificationsEnabled ? 'إيقاف' : 'تفعيل'}</button>
                     )}
                   </div>
                   <div className="settings-threshold">
-                    <div><label htmlFor="settings-threshold">الحد الأدنى لتغيّر السعر</label>
+                    {support === 'install' && <p>على iPhone وiPad: أضف الموقع إلى الشاشة الرئيسية من قائمة المشاركة، ثم افتحه من الأيقونة وفعّل الإشعارات.</p>}
+                    {notificationError && <p role="alert" className="settings-notification-error">{notificationError}</p>}
+                    <p className="settings-notification-policy">ملخص للتغيّرات المهمة في الدولار واليورو والذهب، بحد أقصى 6 ملخصات يوميًا وفاصل 30 دقيقة. لا تُرسل ملخصات الأسعار من 10 مساءً إلى 8 صباحًا بتوقيت ليبيا.</p>
+                  </div>
+                  <div className="settings-row">
+                    <Bell className="settings-row-icon" aria-hidden="true" />
+                    <div className="settings-copy"><h3>تنبيهات داخل الموقع</h3><p>ملخص صغير أثناء فتح الصفحة؛ مستقل عن إشعارات الجهاز.</p></div>
+                    <button role="switch" aria-label="تنبيهات داخل الموقع" aria-checked={inAppNotifications} className="settings-switch"
+                      onClick={() => setInAppNotifications(!inAppNotifications)}><span><span /></span></button>
+                  </div>
+                  <div className="settings-threshold">
+                    <div><label htmlFor="settings-threshold">حساسية التنبيه داخل الموقع</label>
                       <output htmlFor="settings-threshold">{notificationThreshold.toFixed(3)} د.ل</output></div>
                     <input id="settings-threshold" type="range" min="0.001" max="0.1" step="0.001"
+                      disabled={!inAppNotifications}
                       value={notificationThreshold} aria-label="حساسية التنبيه"
                       aria-valuetext={`${notificationThreshold.toFixed(3)} دينار ليبي`}
                       onChange={event => {

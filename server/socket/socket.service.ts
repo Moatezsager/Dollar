@@ -6,6 +6,8 @@ import { getAppBuildSignature, serverStartTime } from '../utils/version';
 import { obfuscateData } from '../utils/helpers';
 import { Rates } from '../types';
 import { rates } from '../state';
+import { isAdminTokenValid } from '../middleware/auth';
+import { queueRatePush } from '../services/push.service';
 
 let ioInstance: SocketIOServer | null = null;
 let onlineUsers = 0;
@@ -59,13 +61,26 @@ export function broadcastOnlineCount(immediate: boolean = false) {
  */
 export function broadcastUserLogs() {
   if (ioInstance) {
+    removeExpiredAdminSockets();
     ioInstance.to('admin').emit('user_logs', { logs: userLogs });
   }
 }
 
 export function broadcastConfigUpdate() {
   if (ioInstance) {
-    ioInstance.emit('config_update', { config: appConfig });
+    removeExpiredAdminSockets();
+    ioInstance.except('admin').emit('config_update', { config: { terms: appConfig.terms } });
+    ioInstance.to('admin').emit('config_update', { config: appConfig });
+  }
+}
+
+function removeExpiredAdminSockets() {
+  for (const id of ioInstance?.sockets.adapter.rooms.get('admin') || []) {
+    const socket = ioInstance?.sockets.sockets.get(id);
+    if (socket && !isAdminTokenValid(socket.handshake.auth?.token)) {
+      socket.leave('admin');
+      socket.emit('admin_auth_error');
+    }
   }
 }
 
@@ -88,6 +103,7 @@ export function broadcastRatesUpdate(updatedRates: Rates) {
 
   lastBroadcastedRatesSignature = sig;
   ioInstance.emit('rates_update', { rates: obfuscateData(updatedRates) });
+  queueRatePush(updatedRates);
 }
 
 export function initSocketIO(server: HttpServer): SocketIOServer {
@@ -110,18 +126,24 @@ export function initSocketIO(server: HttpServer): SocketIOServer {
 
   ioInstance = io;
 
+  io.use((socket, next) => {
+    if (socket.handshake.auth?.token && !isAdminTokenValid(socket.handshake.auth.token)) {
+      return next(new Error('ADMIN_UNAUTHORIZED'));
+    }
+    next();
+  });
+
   io.on('connection', (socket: any) => {
     const req = socket.request;
     onlineUsers++;
     broadcastOnlineCount();
 
-    // Check if client requested admin room or provided admin credentials
-    if (socket.handshake?.query?.role === 'admin' || socket.handshake?.auth?.isAdmin) {
+    if (isAdminTokenValid(socket.handshake.auth?.token)) {
       socket.join('admin');
     }
 
     socket.on('join_admin', () => {
-      socket.join('admin');
+      if (isAdminTokenValid(socket.handshake.auth?.token)) socket.join('admin');
     });
 
     // Send current app build signature to client for smart auto-updater

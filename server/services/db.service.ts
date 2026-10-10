@@ -22,9 +22,9 @@ export function clearDbCache() {
 
 import { checkAndAlertIfCritical } from './alert.service';
 
-export async function logErrorArabic(message: string, context = "النظام", stack?: string, url?: string) {
+export async function logErrorArabic(message: string, context = "النظام", stack?: string, url?: string, alertSource: 'server' | 'client' = 'server') {
   // Fire background alert for critical system issues
-  checkAndAlertIfCritical(message, context, { stack, url }).catch(() => {});
+  checkAndAlertIfCritical(message, context, { stack, url, source: alertSource }).catch(() => {});
 
   if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
     console.error(`[ArabicLog] ${context}: ${message}`);

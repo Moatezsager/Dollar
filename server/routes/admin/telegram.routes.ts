@@ -276,7 +276,7 @@ router.post('/telegram/test-contact', async (req: express.Request, res: express.
     });
 
     if (success) {
-      res.json({ success: true, message: "تم إرسال رسالة تجريبية بنجاح إلى حسابك في تيليجرام (الرسائل المحفوظة - Saved Messages) 📬" });
+      res.json({ success: true, message: "تم إرسال رسالة اختبار عبر مسار اتصل بنا الحالي إلى محادثة الإدارة." });
     } else {
       const manager = getOrInitTelegramManager();
       res.status(500).json({ success: false, error: manager.lastError || "تعذر إرسال الرسالة إلى تيليجرام" });
@@ -295,7 +295,7 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
       return res.json({ connected: false, message: "لم يتم تعيين توكن البوت" });
     }
 
-    const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(10000) });
     const meData: any = await meRes.json();
     if (!meData.ok) {
       return res.json({ connected: false, error: meData.description || "توكن البوت غير صالح" });
@@ -304,11 +304,11 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
     let detectedChatId: string | null = null;
     let detectedChatUser: string | null = null;
 
-    try {
-      const updRes = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`);
+    if (req.query.detectChatId === 'true') try {
+      const updRes = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`, { signal: AbortSignal.timeout(10000) });
       const updData: any = await updRes.json();
       if (updData.ok && Array.isArray(updData.result) && updData.result.length > 0) {
-        const lastMsg = [...updData.result].reverse().find((u: any) => u.message?.chat?.id);
+        const lastMsg = [...updData.result].reverse().find((u: any) => u.message?.chat?.type === 'private' && u.message?.chat?.id);
         if (lastMsg) {
           detectedChatId = String(lastMsg.message.chat.id);
           detectedChatUser = lastMsg.message.from?.username
@@ -321,12 +321,12 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
     res.json({
       connected: true,
       bot: meData.result,
-      configuredAdminChatId: appConfig.telegramAdminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || null,
+      configuredAdminChatId: appConfig.telegramAdminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || null,
       detectedChatId,
       detectedChatUser
     });
   } catch (err: any) {
-    res.status(500).json({ connected: false, error: err.message || "فشل الاتصال بخوادم تيليجرام" });
+    res.status(500).json({ connected: false, error: "فشل الاتصال بخوادم تيليجرام. أعد المحاولة لاحقاً." });
   }
 });
 

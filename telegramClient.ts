@@ -303,19 +303,9 @@ export class TelegramManager {
     if (target === 'me') {
       let adminChat = (this.adminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || "").trim();
       if (!adminChat) {
-        // Try auto-detecting chat ID from bot getUpdates if user interacted with the bot
-        try {
-          const updRes = await fetch(`https://api.telegram.org/bot${token}/getUpdates?limit=10`);
-          const upd: any = await updRes.json();
-          if (upd.ok && Array.isArray(upd.result) && upd.result.length > 0) {
-            const lastMsg = [...upd.result].reverse().find((u: any) => u.message?.chat?.id || u.channel_post?.chat?.id);
-            if (lastMsg) {
-              adminChat = String(lastMsg.message?.chat?.id || lastMsg.channel_post?.chat?.id);
-              this.adminChatId = adminChat;
-              console.log(`[TelegramManager] Auto-detected Telegram admin chat ID from bot updates: ${adminChat}`);
-            }
-          }
-        } catch (e) {}
+        // Visitor messages must never go to whichever person last contacted the bot.
+        this.lastError = "حدد معرف محادثة الإدارة واحفظه قبل إرسال الرسائل الخاصة.";
+        return false;
       }
 
       if (adminChat) {
@@ -337,6 +327,7 @@ export class TelegramManager {
       const url = `https://api.telegram.org/bot${token}/sendMessage`;
       const res = await fetch(url, {
         method: 'POST',
+        signal: AbortSignal.timeout(10000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: target,
@@ -356,6 +347,7 @@ export class TelegramManager {
         const plain = message.replace(/[*_`]/g, '');
         const retryRes = await fetch(url, {
           method: 'POST',
+          signal: AbortSignal.timeout(10000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: target,
@@ -375,7 +367,7 @@ export class TelegramManager {
       this.lastError = data.description || "فشل الإرسال عبر البوت";
       return false;
     } catch (e: any) {
-      this.lastError = e.message || String(e);
+      this.lastError = "تعذر الاتصال بخدمة Telegram Bot API.";
       return false;
     }
   }

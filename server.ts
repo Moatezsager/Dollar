@@ -46,12 +46,12 @@ if (process.env.NODE_ENV === "production") {
 // ─── Global Error Handlers ───
 process.on("unhandledRejection", async (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  await logErrorArabic(`خطأ غير معالج في السيرفر: ${reason}`, "النظام", String(reason));
+  await logErrorArabic(`خطأ غير معالج في السيرفر: ${reason}`, "unhandledRejection", String(reason));
 });
 
 process.on("uncaughtException", async (error) => {
   console.error("Uncaught Exception:", error);
-  await logErrorArabic(`خطأ فادح في السيرفر: ${error.message}`, "النظام", error.stack || "");
+  await logErrorArabic(`خطأ فادح في السيرفر: ${error.message}`, "uncaughtException", error.stack || "");
   setTimeout(() => process.exit(1), 1000);
 });
 

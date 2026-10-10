@@ -3,10 +3,7 @@ import { db, supabase, supabaseAnonKey } from '../../db';
 import { appConfig } from '../../config';
 import { rates, serverStartTime } from '../../state';
 import { DeviceLogEntry } from '../../types';
-import {
-  lastOfficialFetchDate,
-} from '../../services/scraper.service';
-import { getOrInitTelegramManager } from '../../services/social.service';
+
 // Note: activeClient (GramJS) and whatsappManager are managed by the Worker Server.
 // Note: lastSuccessfulScrape, channelStatusTracker, lastSuccessfulFetchTime are Worker-side metrics.
 
@@ -21,6 +18,37 @@ export interface AdminSystemDeps {
 
 export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
   const router = express.Router();
+  let databaseSnapshot: any = null;
+  let databaseCheckedAt = 0;
+  let databaseRequest: Promise<any> | null = null;
+
+  // Share expensive counts between dashboard/report requests for one minute.
+  const readDatabaseSnapshot = async () => {
+    if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) return null;
+    if (databaseSnapshot && Date.now() - databaseCheckedAt < 60000) return databaseSnapshot;
+    if (databaseRequest) return databaseRequest;
+    const started = Date.now();
+    databaseRequest = Promise.all([
+      supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
+      supabase.from('official_rates').select('*', { count: 'exact', head: true }),
+      supabase.from('error_logs').select('*', { count: 'exact', head: true }),
+      supabase.from('price_changes_log').select('*', { count: 'exact', head: true }),
+      supabase.from('telegram_visits').select('visits_count, last_entry_at').eq('id', 0).maybeSingle()
+    ]).then(([parallel, official, logs, changes, visits]) => {
+      databaseSnapshot = {
+        connected: ![parallel, official, logs, changes].some(result => result.error),
+        parallelRatesCount: parallel.error ? null : parallel.count,
+        officialRatesCount: official.error ? null : official.count,
+        errorLogsCount: logs.error ? null : logs.count,
+        priceChangesCount: changes.error ? null : changes.count,
+        telegramVisits: visits.data?.visits_count,
+        ping_ms: Date.now() - started
+      };
+      databaseCheckedAt = Date.now();
+      return databaseSnapshot;
+    }).finally(() => { databaseRequest = null; });
+    return databaseRequest;
+  };
 
   // Diagnostics
   router.get('/diagnostics', async (req: express.Request, res: express.Response) => {
@@ -37,8 +65,7 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
         dbStatus = false;
       }
 
-      const tgMgr = getOrInitTelegramManager();
-      const telegramStatus = tgMgr ? true : false;
+      const telegramConfigured = !!(appConfig.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN);
       
       let regexStatus = true;
       try {
@@ -47,13 +74,13 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
         regexStatus = false;
       }
 
-      const allGood = dbStatus && telegramStatus && regexStatus;
+      const allGood = dbStatus && regexStatus;
       
       res.json({
         success: true,
         status: allGood ? 'ok' : 'error',
         db: dbStatus ? 'ok' : 'error',
-        telegram: telegramStatus ? 'ok' : 'error',
+        telegram: telegramConfigured ? 'configured' : 'unconfigured',
         regex: regexStatus ? 'ok' : 'error'
       });
     } catch (e) {
@@ -167,7 +194,9 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
   // Stats
   router.get('/stats', async (req: express.Request, res: express.Response) => {
     try {
-      const minutesSinceLastScrape = Math.floor((Date.now() - lastSuccessfulScrape.getTime()) / 60000);
+      const lastRateUpdate = Number.isFinite(Date.parse(rates.lastUpdated)) ? rates.lastUpdated : null;
+      const minutesSinceLastScrape = lastRateUpdate
+        ? Math.max(0, Math.floor((Date.now() - Date.parse(lastRateUpdate)) / 60000)) : null;
       const todayStr = new Date(new Date().getTime() + 2 * 60 * 60 * 1000).toISOString().split('T')[0];
       
       let totalInstalls = 0;
@@ -196,42 +225,22 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
         console.error("Error fetching local telegram stats:", err);
       }
       
-      let dbStats = {
-        parallelRatesCount: 0,
-        officialRatesCount: 0,
-        errorLogsCount: 0,
-        priceChangesCount: 0
+      const database = await readDatabaseSnapshot();
+      const dbStats = database || {
+        parallelRatesCount: null, officialRatesCount: null,
+        errorLogsCount: null, priceChangesCount: null
       };
-
-      if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-        try {
-          const [parallel, official, logs, changes, tgRow] = await Promise.all([
-            supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
-            supabase.from('official_rates').select('*', { count: 'exact', head: true }),
-            supabase.from('error_logs').select('*', { count: 'exact', head: true }),
-            supabase.from('price_changes_log').select('*', { count: 'exact', head: true }),
-            supabase.from('telegram_visits').select('visits_count, last_entry_at').eq('id', 0).maybeSingle()
-          ]);
-          dbStats = {
-            parallelRatesCount: parallel.count || 0,
-            officialRatesCount: official.count || 0,
-            errorLogsCount: logs.count || 0,
-            priceChangesCount: changes.count || 0
-          };
-          if (tgRow?.data && typeof tgRow.data.visits_count === 'number') {
-            totalTelegramVisits = tgRow.data.visits_count;
-          }
-        } catch (e) {
-          console.error("Failed to fetch DB stats:", e);
-        }
-      }
+      if (typeof database?.telegramVisits === 'number') totalTelegramVisits = database.telegramVisits;
 
       const memory = process.memoryUsage();
       res.json({
         onlineUsers: deps.getOnlineUsers(),
-        lastSuccessfulScrape: lastSuccessfulScrape.toISOString(),
+        lastSuccessfulScrape: lastRateUpdate,
+        lastRateUpdate,
+        dbConnected: database?.connected ?? null,
+        scope: 'web',
         minutesSinceLastScrape,
-        isStale: minutesSinceLastScrape > 30,
+        isStale: minutesSinceLastScrape === null ? null : minutesSinceLastScrape > 30,
         channelsCount: appConfig.channels?.length || 0,
         termsCount: appConfig.terms?.length || 0,
         serverStartTime: serverStartTime.toISOString(),
@@ -255,7 +264,7 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
           priceChangesCount: dbStats.priceChangesCount
         },
         database: dbStats,
-        channels: channelStatusTracker
+        channels: {}
       });
     } catch (err) {
       console.error("Error generating admin stats:", err);
@@ -326,7 +335,9 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
   // System Report
   router.get('/system-report', async (req: express.Request, res: express.Response) => {
     try {
-      const minutesSinceLastScrape = Math.floor((Date.now() - lastSuccessfulScrape.getTime()) / 60000);
+      const lastRateUpdate = Number.isFinite(Date.parse(rates.lastUpdated)) ? rates.lastUpdated : null;
+      const minutesSinceLastScrape = lastRateUpdate
+        ? Math.max(0, Math.floor((Date.now() - Date.parse(lastRateUpdate)) / 60000)) : null;
       
       let totalInstalls = 0;
       let installsToday = 0;
@@ -342,63 +353,32 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
       }
       
       let recentErrors: any[] = [];
-      let dbStats = null;
-      if (supabase && process.env.VITE_SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY.includes('dummy')) {
-        try {
-          const { data: logs } = await supabase.from('error_logs').select('*').order('created_at', { ascending: false }).limit(20);
-          if (logs) recentErrors = logs;
-          
-          const pingStart = Date.now();
-          const [parallel, official, errorLogsQuery, priceChangesQuery] = await Promise.all([
-            supabase.from('parallel_rates').select('*', { count: 'exact', head: true }),
-            supabase.from('official_rates').select('*', { count: 'exact', head: true }),
-            supabase.from('error_logs').select('*', { count: 'exact', head: true }),
-            supabase.from('price_changes_log').select('*', { count: 'exact', head: true })
-          ]);
-          const ping_ms = Date.now() - pingStart;
-          dbStats = {
-            parallel_rates: parallel.count || 0,
-            official_rates: official.count || 0,
-            error_logs_count: errorLogsQuery.count || 0,
-            price_changes_count: priceChangesQuery.count || 0,
-            ping_ms
-          };
-        } catch (e) {}
+      const database = await readDatabaseSnapshot();
+      const dbStats = database ? {
+        parallel_rates: database.parallelRatesCount,
+        official_rates: database.officialRatesCount,
+        error_logs_count: database.errorLogsCount,
+        price_changes_count: database.priceChangesCount,
+        ping_ms: database.ping_ms
+      } : null;
+      if (supabase && database?.connected) {
+        const { data } = await supabase.from('error_logs').select('*')
+          .order('created_at', { ascending: false }).limit(20);
+        recentErrors = data || [];
       }
-
-      // Reachable Sources (Telegram + WhatsApp)
-      const telegramChannels = (appConfig.channels || []).map(ch => {
-        const clean = ch.replace('@', '').trim();
-        const tracker = channelStatusTracker[clean] || {
-          status: 'active',
-          last_post_time: 0,
-          messages_processed: 0,
-          last_scrape_attempt: 0
-        };
-        return {
-          id: `@${clean}`,
-          name: clean,
-          platform: 'telegram' as const,
-          type: 'channel',
-          status: tracker.status || 'active',
-          last_post_time: tracker.last_post_time ? new Date(tracker.last_post_time).toISOString() : null,
-          messages_processed: tracker.messages_processed || 0,
-          last_scrape_attempt: tracker.last_scrape_attempt ? new Date(tracker.last_scrape_attempt).toISOString() : null,
-          is_readable: true
-        };
-      });
-
-      let whatsappChats: any[] = [];
-      try {
-        whatsappChats = await whatsappManager.getReachableChats();
-      } catch (waErr) {
-        console.warn('Failed to get whatsapp chats for system report:', waErr);
-      }
+      const telegramChannels = (appConfig.channels || []).map(ch => ({
+        id: `@${ch.replace('@', '').trim()}`, name: ch.replace('@', '').trim(),
+        platform: 'telegram' as const, type: 'channel', status: 'unknown',
+        last_post_time: null, messages_processed: null,
+        last_scrape_attempt: null, is_readable: null
+      }));
+      const whatsappChats: any[] = [];
 
       // SQLite metrics
       let sqliteSizeKb = 0;
       let pushSubsCount = 0;
       let totalMessagesDb = 0;
+      let sqliteConnected = false;
       try {
         const fs = await import('fs');
         if (fs.existsSync('messages.db')) {
@@ -408,6 +388,7 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
         if (pushRes) pushSubsCount = pushRes.count || 0;
         const msgRes = db.prepare('SELECT COUNT(*) as count FROM messages').get() as any;
         if (msgRes) totalMessagesDb = msgRes.count || 0;
+        sqliteConnected = true;
       } catch (dbE) {}
 
       const uptimeSec = Math.floor(process.uptime());
@@ -422,26 +403,14 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
       const rssMb = Math.round(memory.rss / 1024 / 1024);
       const heapUsagePct = heapTotalMb > 0 ? Math.round((heapUsedMb / heapTotalMb) * 100) : 0;
 
-      const waStatus = whatsappManager.getStatus();
-
-      // Overall health calculation
-      const isTgOk = !!activeClient;
-      const isWaOk = waStatus.status === 'connected';
-      const isDbOk = !dbStats || dbStats.ping_ms < 1500;
-      const isScraperOk = minutesSinceLastScrape <= 30;
-      let healthScore = 100;
-      if (!isTgOk) healthScore -= 20;
-      if (!isWaOk && waStatus.status !== 'scan_qr') healthScore -= 10;
-      if (!isScraperOk) healthScore -= 15;
-      if (!isDbOk) healthScore -= 15;
-      healthScore = Math.max(10, healthScore);
-
       const report = {
         generated_at: new Date().toISOString(),
+        scope: 'web',
+        worker_metrics_available: false,
         overall_health: {
-          score: healthScore,
-          status: healthScore >= 80 ? 'healthy' : healthScore >= 60 ? 'warning' : 'critical',
-          status_arabic: healthScore >= 80 ? 'ممتاز ومستقر 🟢' : healthScore >= 60 ? 'تنبيه - أداء متوسط 🟡' : 'حرج - يتطلب تدخلاً 🔴'
+          score: null,
+          status: database?.connected === false ? 'warning' : 'unverified',
+          status_arabic: database?.connected === false ? 'تعذر قراءة قاعدة البيانات' : 'تقرير Web فقط'
         },
         system_health: {
           uptime_formatted: uptimeFormatted,
@@ -462,8 +431,8 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
             total_reachable_sources: telegramChannels.length + whatsappChats.length,
             telegram_channels_count: telegramChannels.length,
             whatsapp_chats_count: whatsappChats.length,
-            active_telegram_count: telegramChannels.filter(c => c.status === 'active').length,
-            active_whatsapp_count: whatsappChats.length
+            active_telegram_count: null,
+            active_whatsapp_count: null
           },
           telegram_channels: telegramChannels,
           whatsapp_chats: whatsappChats.map(w => ({
@@ -480,42 +449,46 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
         },
         database_status: {
           sqlite: {
-            connected: true,
+            connected: sqliteConnected,
             file_size_kb: sqliteSizeKb,
             journal_mode: 'WAL',
             push_subscriptions_count: pushSubsCount,
             visitor_messages_count: totalMessagesDb
           },
           supabase: {
-            connected: !!(supabase && process.env.VITE_SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY.includes('dummy')),
+            connected: database?.connected ?? null,
             stats: dbStats
           }
         },
         scraper_status: {
-          last_successful_scrape: lastSuccessfulScrape.toISOString(),
+          last_successful_scrape: lastRateUpdate,
+          owner: 'worker',
           minutes_since_last_scrape: minutesSinceLastScrape,
-          is_stale: minutesSinceLastScrape > 30,
+          is_stale: minutesSinceLastScrape === null ? null : minutesSinceLastScrape > 30,
           channels_count: appConfig.channels.length,
           terms_count: appConfig.terms.length
         },
         central_bank_status: {
-          last_official_fetch_date: lastOfficialFetchDate || 'اليوم',
-          last_successful_fetch_time: lastSuccessfulFetchTime ? new Date(lastSuccessfulFetchTime).toISOString() : null,
+          last_official_fetch_date: rates.lastChanged?.official?.USD || null,
+          last_successful_fetch_time: null,
           usd_official: rates.official.USD || null,
           eur_official: rates.official.EUR || null,
           gbp_official: rates.official.GBP || null,
           is_synced: !!rates.official.USD
         },
         telegram_status: {
-          is_authenticated: !!activeClient
+          is_authenticated: null,
+          owner: 'worker',
+          bot_configured: !!(appConfig.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN)
         },
         whatsapp_status: {
-          status: waStatus.status,
-          phone: waStatus.phoneNumber,
-          user: waStatus.userName,
-          messages_count: waStatus.messagesReceivedCount,
-          rates_extracted: waStatus.ratesExtractedCount,
-          active_chats: waStatus.activeChatsCount
+          status: 'unknown',
+          owner: 'worker',
+          phone: null,
+          user: null,
+          messages_count: null,
+          rates_extracted: null,
+          active_chats: null
         },
         ai_engine: {
           configured: !!process.env.GEMINI_API_KEY,

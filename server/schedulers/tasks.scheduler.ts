@@ -19,7 +19,7 @@ export function initBackgroundTasks(port: number) {
   setInterval(() => {
     const url = `http://127.0.0.1:${port}/api/health`;
     console.log(`[Keep-Alive] Pinging ${url}...`);
-    fetch(url).catch(() => {});
+    fetch(url, { headers: { 'User-Agent': 'Dollar-Price-Web/1.0' } }).catch(() => {});
   }, 4 * 60 * 1000);
 
   console.log("[Tasks] Web Server background tasks initialized (Keep-Alive + Log Cleanup only).");

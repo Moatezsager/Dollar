@@ -21,6 +21,7 @@ async function callWorkerWhatsApp(
       headers: {
         'Content-Type': 'application/json',
         'X-Worker-Secret': secret,
+        'User-Agent': 'Dollar-Price-Web/1.0',
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10000),

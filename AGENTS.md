@@ -53,6 +53,8 @@ These are Web-side contracts, not verified Worker implementations. Inspect both 
 
 `WORKER_URL` and `WORKER_SERVER_URL` are separate names in current Web code; do not assume either automatically supplies the other. Verify both service environments and the matching shared secret without printing values.
 
+Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-Price-Web/1.0` for Web requests and `Dollar-Price-Worker/1.0` for Worker notifications. Node's default `node` fails the existing User-Agent length check. This header does not replace authentication. Paired Worker integration tests exercise the real middleware with the actual notification sender and WhatsApp proxy.
+
 ### Realtime and cache behavior
 
 - `server/socket/socket.service.ts` emits `rates_update`, sends a snapshot on connection, and suppresses duplicate broadcasts based on official/parallel prices and `lastUpdated`. Preserve the `Rates` shape: `official`, `parallel`, `previousOfficial`, `previousParallel`, `lastUpdated`, and `lastChanged.{official,parallel}` (`server/types.ts`, `src/types/rates.ts`).

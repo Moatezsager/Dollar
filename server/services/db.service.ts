@@ -46,57 +46,43 @@ export async function logErrorArabic(message: string, context = "النظام", 
   }
 }
 
-export async function loadLatestRatesFromSupabase() {
-  if (!supabase) return;
-  
-  try {
-    console.log("[Startup] Loading latest rates from Supabase to ensure latest prices...");
-    
-    // Load parallel rates
-    const { data: parallelData, error: parallelError } = await supabase
-      .from('parallel_rates')
-      .select('usd, rates, recorded_at')
-      .order('recorded_at', { ascending: false })
-      .limit(1);
-      
-    if (parallelData && parallelData.length > 0) {
-      const latest = parallelData[0];
-      rates.parallel = { ...rates.parallel, ...latest.rates, USD: latest.usd };
-      if (latest.recorded_at && (!rates.lastUpdated || new Date(latest.recorded_at) > new Date(rates.lastUpdated))) {
-        rates.lastUpdated = latest.recorded_at;
+let latestLoad: Promise<void> | null = null;
+const loadedAt = { parallel: 0, official: 0 };
+export function loadLatestRatesFromSupabase(): Promise<void> {
+  if (latestLoad) return latestLoad;
+  latestLoad = (async () => {
+    if (!supabase) return;
+    const [parallel, official] = await Promise.all([
+      supabase.from('parallel_rates').select('usd, rates, recorded_at, last_changed')
+        .order('recorded_at', { ascending: false }).limit(1),
+      supabase.from('official_rates').select('usd, rates, recorded_at')
+        .order('recorded_at', { ascending: false }).limit(1)
+    ]);
+    if (parallel.error || official.error) throw parallel.error || official.error;
+    for (const market of ['parallel', 'official'] as const) {
+      const row = (market === 'parallel' ? parallel : official).data?.[0];
+      const timestamp = Date.parse(row?.recorded_at || '');
+      if (!row || !Number.isFinite(timestamp) || timestamp < loadedAt[market]) continue;
+      const current = rates[market];
+      const previous = market === 'parallel' ? rates.previousParallel : rates.previousOfficial;
+      for (const [code, value] of Object.entries({ ...row.rates, USD: row.usd })) {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || code.toUpperCase() === 'OFFICIAL_USD') continue;
+        const sourceTime = market === 'parallel' ? row.last_changed?.[code] : null;
+        if (Date.parse(sourceTime || row.recorded_at) < Date.parse(rates.lastChanged[market][code] || '')) continue;
+        const changed = isSignificantChange(current[code], value);
+        if (changed) previous[code] = current[code] || value;
+        current[code] = value;
+        if (sourceTime && Number.isFinite(Date.parse(sourceTime))) rates.lastChanged[market][code] = sourceTime;
+        else if (changed || !rates.lastChanged[market][code]) rates.lastChanged[market][code] = row.recorded_at;
       }
-      for (const code in rates.parallel) {
-        if (!rates.lastChanged.parallel[code] && latest.recorded_at) {
-          rates.lastChanged.parallel[code] = latest.recorded_at;
-        }
-      }
-      console.log("[Startup] Successfully loaded latest parallel rates from", latest.recorded_at);
-      await syncCheckRates("بدء تشغيل السيرفر");
+      loadedAt[market] = timestamp;
+      if (timestamp > (Date.parse(rates.lastUpdated) || 0)) rates.lastUpdated = row.recorded_at;
     }
-    
-    // Load official rates
-    const { data: officialData, error: officialError } = await supabase
-      .from('official_rates')
-      .select('usd, rates, recorded_at')
-      .order('recorded_at', { ascending: false })
-      .limit(1);
-      
-    if (officialData && officialData.length > 0) {
-      const latest = officialData[0];
-      rates.official = { ...rates.official, ...latest.rates, USD: latest.usd };
-      if (latest.recorded_at && (!rates.lastUpdated || new Date(latest.recorded_at) > new Date(rates.lastUpdated))) {
-        rates.lastUpdated = latest.recorded_at;
-      }
-      for (const code in rates.official) {
-        if (!rates.lastChanged.official[code] && latest.recorded_at) {
-          rates.lastChanged.official[code] = latest.recorded_at;
-        }
-      }
-      console.log("[Startup] Successfully loaded latest official rates from", latest.recorded_at);
-    }
-  } catch (err) {
-    console.error("[Startup] Failed to load latest rates from Supabase:", err);
-  }
+    await syncCheckRates("مزامنة Worker");
+    clearDbCache();
+    lastRatesFetchTime = Date.now();
+  })().finally(() => { latestLoad = null; });
+  return latestLoad;
 }
 
 export async function logPriceChange(change: PriceChangeLog) {

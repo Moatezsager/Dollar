@@ -1,8 +1,6 @@
 import { AppConfig } from './types';
 import { TelegramManager } from '../telegramClient';
 import { db, supabase, supabaseAnonKey } from './db';
-import fs from 'fs';
-import path from 'path';
 
 export let appConfig: AppConfig = {
   channels: ["dollarr_ly", "musheermarket", "lydollar", "suqalmushir"],
@@ -174,22 +172,6 @@ export async function loadConfigFromSupabase() {
     } else if (data && data.config) {
       applyLoadedConfig(data.config as AppConfig, "Supabase");
 
-      // Auto-unpack WhatsApp credentials from Supabase cloud into local directory
-      if (data.config.whatsappAuth && Object.keys(data.config.whatsappAuth).length > 0) {
-        try {
-          const authDir = path.resolve(process.cwd(), 'whatsapp_auth');
-          if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
-          for (const [filename, content] of Object.entries(data.config.whatsappAuth)) {
-            if (typeof content === 'string') {
-              fs.writeFileSync(path.join(authDir, filename), content, 'utf8');
-            }
-          }
-          console.log(`[Config] Restored ${Object.keys(data.config.whatsappAuth).length} WhatsApp session files from Supabase app_config!`);
-        } catch (waErr) {
-          console.error("[Config] Error unpacking WhatsApp auth from Supabase:", waErr);
-        }
-      }
-      
       try {
         db.prepare(`
           INSERT INTO server_config (key, value) VALUES ('app_config', ?)
@@ -208,6 +190,7 @@ export async function loadConfigFromSupabase() {
 loadConfigFromStorage();
 
 export async function saveConfigToSupabase(newConfig: AppConfig) {
+  // shortcut: whole-row settings writes can race across services; use a verified DB-side atomic patch before concurrent administration.
   try {
     db.prepare(`
       INSERT INTO server_config (key, value) VALUES ('app_config', ?)

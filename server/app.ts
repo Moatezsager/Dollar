@@ -87,6 +87,8 @@ export async function createApp(io: SocketIOServer) {
   // Called by the Worker Server after it successfully saves updated rates to Supabase.
   // On receiving this, the Web Server fetches the latest rates and broadcasts to all
   // connected visitors via Socket.IO for instant real-time updates.
+  let notificationSync: Promise<void> | null = null;
+  let notificationPending = false;
   app.post("/api/internal/notify-rates-updated", async (req: express.Request, res: express.Response) => {
     const configuredSecret = (process.env.WORKER_INTERNAL_SECRET || "").trim();
     const providedHeader = req.headers["x-worker-secret"] || req.headers["authorization"] || "";
@@ -112,14 +114,26 @@ export async function createApp(io: SocketIOServer) {
     // Acknowledge immediately, then update in background
     res.status(200).json({ status: "accepted", message: "Rates update notification received. Broadcasting..." });
 
-    // Load latest rates from Supabase and broadcast to all visitors
-    try {
-      await loadLatestRatesFromSupabase();
-      broadcastRatesUpdate(rates);
-      console.log("[Notify] ✅ Rates refreshed from Supabase and broadcast to all visitors via Socket.IO.");
-    } catch (err) {
-      console.error("[Notify] Failed to reload rates after Worker notification:", err);
+    notificationPending = true;
+    if (!notificationSync) {
+      notificationSync = (async () => {
+        while (notificationPending) {
+          notificationPending = false;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              await loadLatestRatesFromSupabase();
+              broadcastRatesUpdate(rates);
+              console.log("[Notify] Rates refreshed and broadcast via Socket.IO.");
+              break;
+            } catch (err) {
+              if (attempt === 2) console.error("[Notify] Reload failed after three attempts:", err);
+              else await new Promise<void>(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+            }
+          }
+        }
+      })().finally(() => { notificationSync = null; });
     }
+    await notificationSync;
   });
 
   // Catch-all 404 for any remaining unmatched /api/* routes

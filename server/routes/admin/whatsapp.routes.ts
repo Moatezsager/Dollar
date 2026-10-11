@@ -23,6 +23,7 @@ async function callWorkerWhatsApp(
         'X-Worker-Secret': secret,
       },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10000),
     });
     const data = await res.json();
     return { status: res.status, data };
@@ -52,6 +53,15 @@ router.post('/whatsapp/disconnect', async (req: express.Request, res: express.Re
 // QR code — يجلب من Worker
 router.get('/whatsapp/qr', async (req: express.Request, res: express.Response) => {
   const result = await callWorkerWhatsApp('qr', 'GET');
+  res.status(result.status).json(result.data);
+});
+
+router.post('/whatsapp/toggle-auto', async (req, res) => {
+  if (typeof req.body?.enabled !== 'boolean') {
+    res.status(400).json({ success: false, error: 'enabled must be boolean' });
+    return;
+  }
+  const result = await callWorkerWhatsApp('toggle-auto', 'POST', { enabled: req.body.enabled });
   res.status(result.status).json(result.data);
 });
 

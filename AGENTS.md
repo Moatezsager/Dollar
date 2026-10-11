@@ -2,6 +2,17 @@
 
 This repository is the public Web application. It is independently deployed from `worker_server-main` and shares Supabase with it.
 
+## Local paired checkouts
+
+On this machine, this conversation can work with both independent checkouts:
+
+- Web: `C:/Users/LEVEL UP/.codex/worktrees/e2fc/Dollar-main` -> `https://github.com/Moatezsager/Dollar.git`.
+- Worker: `C:/Users/LEVEL UP/Projects/Dollar-Price/worker_server-main` -> `https://github.com/Moatezsager/worker_server.git`.
+
+Worker was cloned independently from its default `main` branch. Local availability does not mean its runtime or integration has been reviewed. Read its own `AGENTS.md` before changes. Re-check paths and remotes on another machine or after moving a checkout.
+
+For each task, use the target project's working directory (or `git -C <project-path>`). Fetch, stage, commit, and push each repository separately, after verifying its `origin` and branch. Never put Worker files inside Web or Web files inside Worker. Do not copy environment files or credentials between projects. Keep Worker outside Web's managed worktree; do not move either checkout without an explicit request.
+
 ## System context supplied by the owner
 
 Dollar Price is one system with two independent repositories and Render services:
@@ -89,3 +100,16 @@ These are Web-side contracts, not verified Worker implementations. Inspect both 
 - Before changes, trace API and notification contracts and test public price freshness after deployment.
 - Separate owner-provided architecture, code-confirmed behavior and live-service evidence in reports. A static code inspection is not a production health test. Do not start a backend against production credentials just to inspect the architecture.
 - Skills available when installed: `$dollar-rates-diagnostics`, `$safe-project-refactor`, `$render-resource-optimizer`.
+
+## Paired Review Update (2026-10-11)
+
+The locally available Worker implementation has now been inspected and tested with isolated fixtures; this does not verify its deployed Render service. Read its own instructions for the current queue, source-processing and WhatsApp session behavior.
+
+- Worker owns successful source persistence and the sole social-price queue. Web remains the only visitor Push sender. Keep the two checkouts, credentials, deployments and Git operations independent.
+- Both servers now start without sample prices/synthetic history. An unavailable database must not become a fabricated quote.
+- Web's notification snapshot loader preserves previous prices, consumes parallel `last_changed`, rejects older market snapshots, coalesces in-flight reads and invalidates history/rates caches. It must never replace a successful synchronization with a full-page reload.
+- The authenticated notification route still acknowledges immediately. It now retries failed database synchronization at most three times with 2/4-second delays and coalesces concurrent notifications, retaining a follow-up read if another notification arrives during synchronization. This is event-triggered recovery, not periodic price polling.
+- Admin WhatsApp `POST /api/admin/whatsapp/toggle-auto` proxies a strictly boolean `enabled` to the authenticated Worker route. The existing parent admin-token middleware must remain.
+- Web must not unpack Worker WhatsApp session files onto its filesystem. Worker session/queue keys live in existing `server_config`; their actual Supabase permissions are not established by a local test.
+- Both services still save full shared `app_config` rows. Do not promise concurrent multi-service settings writes are atomic without a verified database-side contract.
+- Unused Firebase was removed after checking for callers; visitor Push continues through the existing Web Push implementation. Both npm audits reported zero known advisories on 2026-10-11. This does not verify live configuration, RLS or account security.

@@ -107,14 +107,14 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart data={chartData} accessibilityLayer margin={{ top: 12, right: 4, left: 4, bottom: 4 }}>
                             <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-                            <XAxis dataKey="time" tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
+                            <XAxis dataKey={point => Date.parse(point.time)} type="number" scale="time" domain={['dataMin', 'dataMax']} tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
                               tickFormatter={time => format(new Date(time), chartRange === '24h' || intraday ? 'HH:mm' : 'dd/MM')}
                               minTickGap={32} axisLine={false} tickLine={false} />
                             <YAxis domain={['auto', 'auto']} orientation="right" tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
                               axisLine={false} tickLine={false} tickFormatter={value => Number(value).toFixed(decimals)} width={68} />
                             <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--ink)' }}
                               itemStyle={{ color, fontSize: 14, fontWeight: 700 }} labelStyle={{ color: 'var(--muted-ink)', fontSize: 12 }}
-                              labelFormatter={time => format(new Date(String(time)), 'dd/MM/yyyy · HH:mm')}
+                              labelFormatter={time => format(Number(time), 'dd/MM/yyyy · HH:mm')}
                               formatter={(value: number) => [`${Number(value).toFixed(decimals)} د.ل`, 'السعر']} />
                             <Area type="linear" dataKey="value" stroke={color} strokeWidth={2.5} fill={color} fillOpacity={0.08} isAnimationActive={false} />
                           </AreaChart>

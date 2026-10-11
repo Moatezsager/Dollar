@@ -73,7 +73,7 @@ export function useRatesCalculations({
         time: h.time,
         value: value
       };
-    }).filter(d => d.value > 0);
+    }).filter(d => Number.isFinite(Date.parse(d.time)) && Number.isFinite(d.value) && d.value > 0);
 
     const sorted = [...data].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     

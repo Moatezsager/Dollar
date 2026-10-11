@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { Server } = require('socket.io');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -23,6 +24,7 @@ async function main() {
   let snapshot = initial;
   let holdRates = true;
   let pendingResponse;
+  const pendingResponses = [];
   let historyFailure = false;
   let rateRequests = 0;
   let connections = 0;
@@ -33,8 +35,8 @@ async function main() {
       rateRequests++;
       const captured = JSON.stringify(snapshot);
       if (holdRates) {
-        holdRates = false;
-        pendingResponse = () => res.end(captured);
+        pendingResponses.push(() => res.end(captured));
+        pendingResponse = () => { holdRates = false; pendingResponses.splice(0).forEach(send => send()); };
       } else {
         res.end(captured);
       }
@@ -120,7 +122,39 @@ async function main() {
     assert(await cash.getByText('9.80', { exact: true }).isVisible(), 'Delayed HTTP must not overwrite Socket.IO');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_rates')).parallel.USD), 9.8);
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_history')).at(-1).usdParallel), 9.8);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_history')).length), 2, 'Delayed HTTP must still supply older chart history after a socket update');
     assert.equal(rateRequests, initialRequestCount, 'Socket event must not trigger a price query');
+
+    const checkChart = async locator => {
+      await locator.locator('.recharts-area-curve').waitFor();
+      assert(!/NaN|Infinity/.test(await locator.locator('.recharts-area-curve').getAttribute('d')));
+    };
+    const saveChart = async (locator, name) => {
+      if (!process.env.UI_ARTIFACT_DIR) return;
+      await page.waitForTimeout(500);
+      fs.mkdirSync(process.env.UI_ARTIFACT_DIR, { recursive: true });
+      await locator.screenshot({ path: path.join(process.env.UI_ARTIFACT_DIR, name + '.png') });
+    };
+    await checkChart(page.locator('.usd-chart'));
+    await saveChart(page.locator('.usd-chart'), 'chart-desktop');
+    await checkChart(page.locator('.analysis-chart'));
+    await cash.click();
+    await checkChart(page.locator('.currency-detail-chart'));
+    await saveChart(page.locator('.currency-detail-dialog'), 'chart-details-desktop');
+    await page.getByRole('dialog').locator('button[aria-label="إغلاق"]').click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await checkChart(page.locator('.usd-chart'));
+    await saveChart(page.locator('.usd-chart'), 'chart-mobile');
+    await page.locator('#mobile-bottom-nav').getByRole('button', { name: 'التحليل', exact: true }).click();
+    await checkChart(page.locator('.analysis-chart'));
+    await saveChart(page.locator('.analysis-section'), 'chart-analysis-mobile');
+    await page.locator('#mobile-bottom-nav').getByRole('button', { name: 'الرئيسية', exact: true }).click();
+    await cash.click();
+    await checkChart(page.locator('.currency-detail-chart'));
+    await saveChart(page.locator('.currency-detail-dialog'), 'chart-details-mobile');
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Charts must not overflow mobile');
+    await page.getByRole('dialog').locator('button[aria-label="إغلاق"]').click();
+    await page.setViewportSize({ width: 1440, height: 1000 });
 
     holdRates = true;
     pendingResponse = null;
@@ -158,6 +192,7 @@ async function main() {
     await page.close();
     await waitFor(() => io.sockets.sockets.size === 0);
     console.log('PASS: real Socket.IO updates USD/EUR/official/checks, cache and history');
+    console.log('PASS: delayed HTTP preserves older chart history, desktop/mobile main/analysis/detail charts render real data');
     console.log('PASS: delayed HTTP, stale/malformed events, reconnect with failed history, no reload or rate polling, cleanup');
   } finally {
     if (browser) await browser.close();

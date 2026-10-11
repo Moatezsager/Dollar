@@ -137,7 +137,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
         time: new Date(h.time).toISOString(),
         value: Number(h.usdParallel || h.ratesParallel?.USD || 0)
       }))
-      .filter((p) => p.value > 0);
+      .filter((p) => Number.isFinite(p.value) && p.value > 0);
 
     rawPoints.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
@@ -459,7 +459,10 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               </defs>
               <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} orientation="right" width={42} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => value.toFixed(2)} />
               <XAxis
-                dataKey="time"
+                dataKey={point => Date.parse(point.time)}
+                type="number"
+                scale="time"
+                domain={['dataMin', 'dataMax']}
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#94a3b8", fontSize: 12 }}
@@ -501,7 +504,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                 formatter={(val: number) => [`${val.toFixed(2)} د.ل`, 'سعر الدولار']}
               />
               <Area 
-                type="monotone" 
+                type="linear"
                 dataKey="value" 
                 stroke={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} 
                 strokeWidth={2.5} 

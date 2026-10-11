@@ -81,36 +81,25 @@ export function setTelegramManager(manager: TelegramManager | null) {
 }
 
 export function applyLoadedConfig(loadedConfig: AppConfig, source: string) {
-  const existingIds = new Set<string>();
-  const mergedTerms = loadedConfig.terms.map(dbTerm => {
-    existingIds.add(dbTerm.id);
-    const defaultTerm = appConfig.terms.find(t => t.id === dbTerm.id);
-    const isMetal = (defaultTerm && (defaultTerm.flag === "gold" || defaultTerm.flag === "silver")) ||
-      dbTerm.id.startsWith("GOLD_") || dbTerm.id.startsWith("SILVER_");
-    const isOutdatedOrNarrow = !dbTerm.regex || isMetal || 
-      ["USD", "EUR", "GBP", "USD_CHECKS", "USD_JBANK", "USD_BCD", "USD_NCB", "USD_AB", "USD_WB"].includes(dbTerm.id) ||
-      (dbTerm.id === "TND" && (dbTerm.max > 3.8 || dbTerm.min < 2.5)) ||
-      (dbTerm.id === "EGP" && (dbTerm.max > 0.28 || dbTerm.min < 0.13));
-
-    return {
-      id: dbTerm.id,
-      name: (isMetal && defaultTerm) ? defaultTerm.name : (dbTerm.name || defaultTerm?.name || dbTerm.id),
-      regex: (isOutdatedOrNarrow && defaultTerm?.regex) ? defaultTerm.regex : (dbTerm.regex || defaultTerm?.regex || ""),
-      min: (isOutdatedOrNarrow && defaultTerm) ? defaultTerm.min : ((typeof dbTerm.min === 'number' && !isNaN(dbTerm.min) && (!defaultTerm || dbTerm.min <= defaultTerm.min)) ? dbTerm.min : (defaultTerm?.min ?? 0)),
-      max: (isOutdatedOrNarrow && defaultTerm) ? defaultTerm.max : ((typeof dbTerm.max === 'number' && !isNaN(dbTerm.max) && (!defaultTerm || dbTerm.max >= defaultTerm.max)) ? dbTerm.max : (defaultTerm?.max ?? 10000)),
-      isInverse: typeof dbTerm.isInverse === 'boolean' ? dbTerm.isInverse : (defaultTerm?.isInverse ?? false),
-      flag: (dbTerm.flag && dbTerm.flag !== "undefined" && dbTerm.flag !== "null") ? dbTerm.flag : (defaultTerm?.flag || "ly")
-    };
-  });
-
-  for (const defaultTerm of appConfig.terms) {
-    if (!existingIds.has(defaultTerm.id)) {
-      mergedTerms.push(defaultTerm);
-      console.log(`[Migration] Added new missing currency term: ${defaultTerm.id}`);
-    }
-  }
-  // Filter out any obsolete gold/silver categories to keep exactly the 10 metals
-  loadedConfig.terms = mergedTerms.filter(t => t.id !== "GOLD" && t.id !== "GOLD_CAST_21" && t.id !== "SILVER_SCRAP");
+  if (Array.isArray(loadedConfig.terms)) {
+    loadedConfig.terms = loadedConfig.terms.flatMap(term => {
+      if (!term || typeof term.id !== 'string' || term.id === 'OFFICIAL_USD') return [];
+      const fallback = appConfig.terms.find(item => item.id === term.id);
+      const regex = term.regex ?? fallback?.regex ?? '';
+      const min = Number(term.min ?? fallback?.min ?? 0);
+      const max = Number(term.max ?? fallback?.max ?? 10000);
+      try {
+        if (typeof regex !== 'string' || !regex || !Number.isFinite(min) || !Number.isFinite(max) || min < 0 || min > max) throw new Error('Invalid term');
+        new RegExp(regex, 'i');
+      } catch {
+        console.warn('[Config] Skipping an invalid currency extraction rule.');
+        return [];
+      }
+      return [{ id: term.id, name: term.name || fallback?.name || term.id, regex, min, max,
+        isInverse: typeof term.isInverse === 'boolean' ? term.isInverse : fallback?.isInverse ?? false,
+        flag: term.flag || fallback?.flag || 'ly' }];
+    });
+  } else loadedConfig.terms = appConfig.terms;
 
   if (!Array.isArray(loadedConfig.channels) || loadedConfig.channels.length === 0) {
     loadedConfig.channels = ["dollarr_ly", "musheermarket", "lydollar", "suqalmushir"];

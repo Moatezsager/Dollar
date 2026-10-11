@@ -419,7 +419,9 @@ export async function fetchHistoryFromSupabase() {
     const timelineMap = new Map<string, Partial<HistoryPoint>>();
 
     parallelData.forEach((row: any) => {
-      const time = new Date(row.recorded_at).toISOString();
+      const timestamp = Date.parse(row.recorded_at);
+      if (!Number.isFinite(timestamp)) return;
+      const time = new Date(timestamp).toISOString();
       timelineMap.set(time, {
         time,
         usdParallel: row.usd,
@@ -428,7 +430,9 @@ export async function fetchHistoryFromSupabase() {
     });
 
     officialData.forEach((row: any) => {
-      const time = new Date(row.recorded_at).toISOString();
+      const timestamp = Date.parse(row.recorded_at);
+      if (!Number.isFinite(timestamp)) return;
+      const time = new Date(timestamp).toISOString();
       if (timelineMap.has(time)) {
         const existing = timelineMap.get(time)!;
         existing.usdOfficial = row.usd;
@@ -443,7 +447,9 @@ export async function fetchHistoryFromSupabase() {
     });
 
     metalData.forEach((row: any) => {
-      const time = new Date(row.recorded_at).toISOString();
+      const timestamp = Date.parse(row.recorded_at);
+      if (!Number.isFinite(timestamp)) return;
+      const time = new Date(timestamp).toISOString();
       if (timelineMap.has(time)) {
         const existing = timelineMap.get(time)!;
         existing.ratesParallel = { ...(existing.ratesParallel || {}), ...(row.rates || {}) };
@@ -459,10 +465,11 @@ export async function fetchHistoryFromSupabase() {
       new Date(a.time!).getTime() - new Date(b.time!).getTime()
     );
 
-    let lastParallelRates: any = { ...rates.parallel };
-    let lastOfficialRates: any = { ...rates.official };
-    let lastUsdParallel = rates.parallel.USD || 0;
-    let lastUsdOfficial = rates.official.USD || 0;
+    // Carry observations forward only; today's prices must never fill earlier gaps.
+    let lastParallelRates: RateMap = {};
+    let lastOfficialRates: RateMap = {};
+    let lastUsdParallel = 0;
+    let lastUsdOfficial = 0;
     
     const completedHistory = sortedPoints.map(p => {
       if (p.usdParallel !== undefined) lastUsdParallel = p.usdParallel;

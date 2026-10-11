@@ -64,9 +64,15 @@ export function useRatesData(options?: UseRatesDataOptions) {
   };
 
   const applyHistory = (next: HistoryPoint[]) => {
-    historyRef.current = next;
-    setHistory(next);
-    safeStorage.setItem('lyd_history', JSON.stringify(next));
+    const byTime = new Map<number, HistoryPoint>();
+    for (const point of next) {
+      const time = Date.parse(point?.time);
+      if (Number.isFinite(time)) byTime.set(time, { ...point, time: new Date(time).toISOString() });
+    }
+    const ordered = [...byTime.entries()].sort(([a], [b]) => a - b).map(([, point]) => point);
+    historyRef.current = ordered;
+    setHistory(ordered);
+    safeStorage.setItem('lyd_history', JSON.stringify(ordered));
   };
   const appendRateHistory = (next: Rates, points = historyRef.current) => {
     const point: HistoryPoint = {
@@ -76,10 +82,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
       ratesParallel: { ...next.parallel },
       ratesOfficial: { ...next.official },
     };
-    const nextHistory = points.filter(item => item.time !== point.time);
-    nextHistory.push(point);
-    nextHistory.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
-    applyHistory(nextHistory);
+    applyHistory([...points, point]);
   };
 
   useEffect(() => {
@@ -182,9 +185,17 @@ export function useRatesData(options?: UseRatesDataOptions) {
         fetch("/api/history", { cache: 'no-store', signal: AbortSignal.timeout(30000) }),
       ]);
       
+      const historyRes = historyResult.status === 'fulfilled' ? historyResult.value : null;
+      const historyJson = historyRes?.ok && historyRes.headers.get('content-type')?.includes('application/json')
+        ? await historyRes.json().catch(() => null) : null;
+      const newHistory = typeof historyJson === 'string' ? decodeData(historyJson) : historyJson;
+      // A stale HTTP price snapshot must not discard valid historical rows or newer socket prices.
+      if (Array.isArray(newHistory) && newHistory.length) {
+        applyHistory([...historyRef.current, ...newHistory]);
+        if (ratesRef.current) appendRateHistory(ratesRef.current);
+      }
       if (ratesResult.status === 'rejected') throw ratesResult.reason;
       const ratesRes = ratesResult.value;
-      const historyRes = historyResult.status === 'fulfilled' ? historyResult.value : null;
 
       if (!ratesRes.ok) {
         if (ratesRes.status === 502) return;
@@ -192,18 +203,14 @@ export function useRatesData(options?: UseRatesDataOptions) {
       }
 
       const ratesContentType = ratesRes.headers.get("content-type");
-      const historyContentType = historyRes?.headers.get("content-type");
 
       if (!ratesContentType?.includes("application/json")) {
         return;
       }
 
       const ratesJson = await ratesRes.json();
-      const historyJson = historyRes?.ok && historyContentType?.includes("application/json")
-        ? await historyRes.json().catch(() => null) : null;
       
       const newRates: Rates | null = typeof ratesJson === 'string' ? decodeData(ratesJson) : ratesJson;
-      const newHistory = typeof historyJson === 'string' ? decodeData(historyJson) : historyJson;
       
       if (!newRates) {
         console.error("Failed to decode rates or history");
@@ -219,9 +226,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
       if (!applyRates(newRates)) return;
       queuePriceDigest(currentRates, newRates);
-      if (socketRevision === socketRevisionRef.current) {
-        appendRateHistory(newRates, Array.isArray(newHistory) ? newHistory : historyRef.current);
-      }
+      appendRateHistory(newRates);
 
       // Fetch status
       try {

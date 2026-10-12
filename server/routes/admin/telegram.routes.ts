@@ -1,6 +1,4 @@
 import express from 'express';
-import { TelegramClient, Api } from 'telegram';
-import { StringSession } from 'telegram/sessions';
 import { appConfig } from '../../config';
 import { rates } from '../../state';
 import {
@@ -12,102 +10,9 @@ import {
 import { sendCriticalErrorAlert } from '../../services/alert.service';
 
 const router = express.Router();
-const tempClients: Record<string, { client: TelegramClient, apiId: number, apiHash: string }> = {};
-
-// Telegram MTProto Auth
-router.post('/telegram/send-code', async (req: express.Request, res: express.Response) => {
-  try {
-    const { phoneNumber, apiId, apiHash } = req.body;
-    if (!phoneNumber || !apiId || !apiHash) {
-      return res.status(400).json({ success: false, message: "بيانات غير مكتملة" });
-    }
-
-    const stringSession = new StringSession("");
-    const client = new TelegramClient(stringSession, Number(apiId), apiHash, {
-      connectionRetries: 5,
-      useWSS: false,
-      deviceModel: "PriceScraperServer",
-      systemVersion: "1.0.0",
-      appVersion: "1.0",
-    });
-
-    await client.connect();
-    
-    const sendCodeResult = await client.sendCode(
-      {
-        apiId: Number(apiId),
-        apiHash: apiHash,
-      },
-      phoneNumber
-    );
-
-    const authId = Math.random().toString(36).substring(7);
-    tempClients[authId] = { client, apiId: Number(apiId), apiHash };
-
-    res.json({ 
-      success: true, 
-      phoneCodeHash: sendCodeResult.phoneCodeHash,
-      authId: authId
-    });
-  } catch (err: any) {
-    console.error("Telegram send code error:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ success: false, message: err.message || "فشل إرسال الكود" });
-    }
-  }
-});
-
-router.post('/telegram/verify-code', async (req: express.Request, res: express.Response) => {
-  try {
-    const { phoneNumber, phoneCodeHash, code, password, authId } = req.body;
-    
-    const sessionData = tempClients[authId];
-    if (!sessionData) {
-      return res.status(400).json({ success: false, message: "جلسة التحقق غير صالحة أو منتهية" });
-    }
-
-    const { client, apiId, apiHash } = sessionData;
-    await client.invoke(new Api.auth.SignIn({
-      phoneNumber,
-      phoneCodeHash,
-      phoneCode: code
-    })).catch(async (err: any) => {
-      if (err.message.includes('SESSION_PASSWORD_NEEDED')) {
-        if (!password) {
-           throw new Error("كلمة مرور التحقق بخطوتين (2FA) مطلوبة");
-        }
-        await client.signInWithPassword(
-          { apiId, apiHash }, 
-          { 
-            password: async () => password, 
-            onError: (e) => { throw e; } 
-          }
-        );
-      } else {
-        throw err;
-      }
-    });
-
-    const sessionString = (client.session as StringSession).save();
-    
-    try {
-      await client.disconnect();
-    } catch (e) {
-      console.error("Error disconnecting temp client:", e);
-    }
-    
-    delete tempClients[authId];
-
-    res.json({ 
-      success: true, 
-      sessionString: sessionString 
-    });
-  } catch (err: any) {
-    console.error("Telegram verify code error:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ success: false, message: err.message || "فشل التحقق من الكود" });
-    }
-  }
+// Account authentication is owned by Worker; bot endpoints below remain available in Web.
+router.post(['/telegram/send-code', '/telegram/verify-code'], (_req, res) => {
+  res.status(409).json({ success: false, message: 'اربط حساب تيليجرام الشخصي من لوحة Worker فقط. إعدادات البوت تبقى متاحة هنا.' });
 });
 
 // Telegram official broadcast
@@ -247,7 +152,7 @@ router.post('/weekly-harvest/send-telegram', async (req: express.Request, res: e
       res.json({
         success: true,
         message: target === 'me'
-          ? "تم إرسال بطاقة حصاد الأسبوع بنجاح كرسالة تجريبية إلى حسابك في تيليجرام (الرسائل المحفوظة - Saved Messages) 📩"
+          ? "تم إرسال بطاقة حصاد الأسبوع عبر البوت إلى محادثة الإدارة بنجاح"
           : `تم إرسال بطاقة حصاد الأسبوع ونشرها بنجاح في القناة @${target} 🚀`
       });
     } else {

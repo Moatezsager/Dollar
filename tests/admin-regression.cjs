@@ -13,7 +13,7 @@ async function loadIsolatedWeb() {
     state: "export const rates = globalThis.__adminTest.rates; export const serverStartTime = new Date();",
     'maintenance.service': "export const userLogs = [{id:'fixture-visitor'}];",
     'push.service': "export const queueRatePush = () => {};",
-    'social.service': "export const getOrInitTelegramManager = () => ({});",
+    'social.service': "export const getOrInitTelegramManager = () => ({}); export const broadcastOfficialRates = async () => {}; export const broadcastRateChanges = async () => {}; export const forwardVisitorMessageToTelegram = async () => true;",
     version: "export const serverStartTime = new Date(); export const getAppBuildSignature = () => 'fixture';",
     helpers: "export const obfuscateData = data => data;",
   };
@@ -25,6 +25,7 @@ async function loadIsolatedWeb() {
       export * from './server/routes/admin/system.routes';
       export { default as authRouter } from './server/routes/admin/auth.routes';
       export { TelegramManager } from './telegramClient';
+      export { default as telegramRouter } from './server/routes/admin/telegram.routes';
     `, resolveDir: process.cwd(), loader: 'ts' },
     bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
     plugins: [{
@@ -131,18 +132,42 @@ async function main() {
     const beforeAutoDetect = sends.length;
     assert.equal(await withoutChat.sendViaBotApi('me', 'private visitor message'), false);
     assert.equal(sends.length, beforeAutoDetect, 'Never choose the last bot visitor as the admin');
+    const legacy = new web.TelegramManager(123, 'fixture-hash', 'legacy-shared-session', token, '42');
+    assert.equal(await legacy.getClient(), null, 'Web must not open the shared Worker account');
+    const beforePhoto = sends.length;
+    global.fetch = async (url, options) => {
+      assert(String(url).endsWith('/sendPhoto')); assert(options.signal);
+      assert.equal(options.body.get('chat_id'), '42');
+      assert.equal(options.body.get('parse_mode'), 'HTML');
+      assert.equal(options.body.get('photo').name, 'fixture.png');
+      sends.push('fixture-photo');
+      return new Response(JSON.stringify({ ok: true }));
+    };
+    assert.equal(await legacy.sendFile('me', Buffer.from('offline-image-fixture'), { filename: 'fixture.png', parseMode: 'html' }), true);
+    assert.equal(await withoutChat.sendFile('me', Buffer.from('offline-image-fixture')), false);
+    assert.equal(sends.length, beforePhoto + 1);
+    assert.equal(await legacy.sendFile('me', Buffer.alloc(10 * 1024 * 1024 + 1)), false);
+    global.fetch = async () => { throw new Error('fixture outage'); };
+    assert.equal(await legacy.sendFile('me', Buffer.from('offline-image-fixture')), false);
     console.log('PASS: important alerts, cooldown, failed-send retry, redaction and private bot delivery');
 
     global.fetch = realFetch;
     const app = express();
     app.use(express.json());
     app.use('/api/admin', web.authRouter);
+    app.use('/api/admin', web.telegramRouter);
     const apiStats = {public:{totalRequests:0},premium:{totalRequests:0},bannedIPsCount:0};
     app.use('/api/admin', web.createAdminSystemRouter({getOnlineUsers:()=>2,getUserLogs:()=>[],apiStats}));
     server = http.createServer(app);
     io = web.initSocketIO(server);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
+    for (const step of ['send-code', 'verify-code']) {
+      const disabled = await fetch(base + '/api/admin/telegram/' + step, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      assert.equal(disabled.status, 409, 'Personal account login must be performed in Worker only');
+    }
     const stats = await (await fetch(base+'/api/admin/stats')).json();
     assert.equal(stats.scope, 'web');
     assert.equal(stats.dbConnected, true);

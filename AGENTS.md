@@ -66,6 +66,9 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 
 ### Administration and Telegram contracts
 
+- Owner-approved account recovery (2026-10-12): personal Telegram/WhatsApp connections belong exclusively to Worker. Web `TelegramManager.getClient()` must never open a personal MTProto socket, even when shared legacy settings/environment contain a session. Web's legacy OTP routes respond 409 and direct administrators to Worker. Preserve Bot API contact delivery and critical alerts; Web weekly-harvest images now use `sendPhoto` with the configured bot/admin recipient instead of the Worker account. A configured bot must have target-channel posting access.
+- Worker saves new Telegram credentials privately in existing `server_config.worker_telegram_auth`, not shared `app_config`. Its account lease coordinates rolling Worker instances; do not copy the new auth key into Web or another service. The owner confirmed the old session was shared and Telegram returned `AUTH_KEY_DUPLICATED`, so recovery requires one fresh Worker login after Web's personal connection path is disabled. Existing WhatsApp `{}` checkpoints still mean explicit logout, not credentials to restore.
+
 - Public header's More menu links to `/admin`; logo clicks only return to the public dashboard. `/admin/` and legacy `/admin-panel-secure` routes also work. The old device-setup URL only redirects to login, never grants client-side authorization. Entry links/bookmarks are navigation, not authentication; HTTP and Socket.IO must validate the server token.
 - Admin Socket.IO clients supply `auth.token`. The server validates the existing 24-hour HTTP admin token before joining the private room and removes expired members before private broadcasts. Client `role`/`isAdmin` flags are not authorization.
 - `config_update` sends only `{config:{terms}}` to public sockets; the validated admin room receives full config. Obfuscation is not access control.

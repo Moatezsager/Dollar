@@ -1,6 +1,4 @@
 import { TelegramClient, Api } from "telegram";
-import { StringSession } from "telegram/sessions";
-import { CustomFile } from "telegram/client/uploads";
 
 /**
  * Public channel scraper that extracts live messages and timestamps directly from t.me/s/ preview.
@@ -115,116 +113,10 @@ export class TelegramManager {
     }
   }
 
-  /**
-   * Gets or creates the Telegram client instance.
-   * Implements connection stability and authorization checks.
-   */
+  // Personal account sockets belong exclusively to Worker, even when legacy credentials exist.
   public async getClient(): Promise<TelegramClient | null> {
-    if (this.isAuthRevoked) {
-      // Session revoked or duplicate key: avoid reconnect attempts and let public scraper handle messages
-      return null;
-    }
-
-    // If a connection attempt is already in flight, reuse its promise
-    if (this.connectPromise) {
-      return this.connectPromise;
-    }
-
-    // If already connected and authorized, return it
-    if (this.client && this.client.connected) {
-      try {
-        const isAuthorized = await this.client.checkAuthorization();
-        if (isAuthorized) {
-          activeClient = this.client;
-          return this.client;
-        }
-      } catch (e) {
-        console.warn("[TelegramManager] Authorization check failed, re-connecting...");
-      }
-    }
-
-    // Cooldown check to prevent rapid reconnection loops
-    const now = Date.now();
-    if (now < this.cooldownUntil) {
-      const remainingSec = Math.ceil((this.cooldownUntil - now) / 1000);
-      console.warn(`[TelegramManager] In cooldown period (${remainingSec}s remaining), skipping connection attempt.`);
-      return null;
-    }
-
-    this.connectPromise = this.doConnect().finally(() => {
-      this.connectPromise = null;
-    });
-
-    return this.connectPromise;
-  }
-
-  private async doConnect(): Promise<TelegramClient | null> {
-    this.isConnecting = true;
-    try {
-      if (!this.sessionString) {
-        this.lastError = "لم يتم حفظ جلسة تيليجرام بعد";
-        return null;
-      }
-
-      console.log("[TelegramManager] Initializing new Telegram client...");
-      
-      if (this.client) {
-        try { 
-          await this.client.disconnect(); 
-          if ((this.client as any).destroy) await (this.client as any).destroy();
-        } catch (e) {}
-      }
-
-      const stringSession = new StringSession(this.sessionString || "");
-      this.client = new TelegramClient(stringSession, this.apiId, this.apiHash, {
-        connectionRetries: 2,
-        useWSS: false,
-        autoReconnect: true,
-        floodSleepThreshold: 120,
-        deviceModel: "PriceScraperServer",
-        systemVersion: "1.0.0",
-        appVersion: "1.0",
-      });
-
-      await this.client.connect();
-      
-      const isAuthorized = await this.client.checkAuthorization();
-      if (!isAuthorized) {
-        throw new Error("Session is not authorized. Please check your session string.");
-      }
-      
-      console.log("[TelegramManager] Successfully connected and authorized.");
-      this.isAuthRevoked = false;
-      this.lastError = "";
-      activeClient = this.client;
-      return this.client;
-    } catch (error: any) {
-      const errorMsg = error.message || String(error);
-      
-      let cooldownDuration = 30000;
-      if (errorMsg.includes("AUTH_KEY_DUPLICATED")) {
-        this.isAuthRevoked = true;
-        this.lastError = "تم إبطال جلسة تيليجرام (AUTH_KEY_DUPLICATED) من سيرفرات تيليجرام بسبب تشغيلها في مكان آخر أو إعادة تشغيل التطبيق. يرجى تجديد تسجيل الدخول من لوحة التحكم أو استخدام Bot Token.";
-        console.warn("[TelegramManager] Telegram session active elsewhere or duplicate auth key (AUTH_KEY_DUPLICATED). Switched to public web channel scraper (no session required).");
-        cooldownDuration = 5 * 60 * 1000;
-      } else {
-        console.error("[TelegramManager] Connection failed:", errorMsg);
-        this.lastError = errorMsg;
-      }
-      
-      if (this.client) {
-        try { 
-          await this.client.disconnect(); 
-          if ((this.client as any).destroy) await (this.client as any).destroy();
-        } catch (e) {}
-      }
-      this.client = null;
-      activeClient = null;
-      this.cooldownUntil = Date.now() + cooldownDuration;
-      return null;
-    } finally {
-      this.isConnecting = false;
-    }
+    this.lastError = this.lastError || 'اتصال الحساب الشخصي متاح من لوحة Worker فقط. يستخدم Web بوت تيليجرام.';
+    return null;
   }
 
   /**
@@ -389,7 +281,7 @@ export class TelegramManager {
         return true;
       }
       if (channelUsername !== 'me') {
-        console.warn(`[TelegramManager] Bot API send failed (${this.lastError}), attempting MTProto user account...`);
+      console.warn('[TelegramManager] Bot delivery failed; Web will not open the Worker personal account.');
       }
     }
 
@@ -494,54 +386,33 @@ export class TelegramManager {
     fileBuffer: Buffer,
     options?: { caption?: string; filename?: string; parseMode?: 'md' | 'html' }
   ): Promise<boolean> {
-    const client = await this.getClient();
-    if (!client) {
-      this.lastError = "تعذر الاتصال بحساب تيليجرام";
+    const token = (this.botToken || process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    let target = channelUsername.trim();
+    if (target === 'me') target = (this.adminChatId || process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    if (!token || !target) {
+      this.lastError = 'حدد توكن البوت ومعرف محادثة الإدارة لإرسال الصورة.';
       return false;
     }
-
+    if (!fileBuffer.length || fileBuffer.length > 10 * 1024 * 1024) {
+      this.lastError = 'حجم الصورة غير صالح أو يتجاوز 10 ميجابايت.';
+      return false;
+    }
+    target = target.replace(/^https?:\/\/t\.me\//, '').replace(/^@/, '').split('?')[0].replace(/\/$/, '');
+    if (!/^-?\d+$/.test(target)) target = '@' + target;
+    const form = new FormData();
+    form.set('chat_id', target);
+    form.set('photo', new Blob([new Uint8Array(fileBuffer)], { type: 'image/png' }), options?.filename || 'weekly-harvest.png');
+    form.set('caption', options?.caption || '');
+    if (options?.parseMode) form.set('parse_mode', options.parseMode === 'html' ? 'HTML' : 'Markdown');
     try {
-      this.lastError = "";
-      let targetEntity: any = 'me';
-
-      if (channelUsername && channelUsername !== 'me') {
-        let username = channelUsername.trim();
-        if (username.includes('t.me/')) {
-          username = username.split('t.me/')[1].split('/')[0].split('?')[0];
-        }
-        username = username.replace('@', '').trim();
-        try {
-          targetEntity = await client.getEntity(username);
-        } catch (e) {
-          try {
-            const resolved = await client.invoke(new Api.contacts.ResolveUsername({ username }));
-            if (resolved.chats && resolved.chats.length > 0) {
-              targetEntity = resolved.chats[0];
-            } else if (resolved.users && resolved.users.length > 0) {
-              targetEntity = resolved.users[0];
-            } else {
-              targetEntity = username;
-            }
-          } catch (resolveErr) {
-            targetEntity = username;
-          }
-        }
-      }
-
-      const filename = options?.filename || 'weekly-harvest.png';
-      const customFile = new CustomFile(filename, fileBuffer.length, '', fileBuffer);
-
-      await client.sendFile(targetEntity, {
-        file: customFile,
-        caption: options?.caption || '',
-        parseMode: options?.parseMode || 'md',
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: 'POST', body: form, signal: AbortSignal.timeout(15000)
       });
-
-      console.log(`[TelegramManager] Successfully sent file to ${channelUsername}`);
-      return true;
-    } catch (error: any) {
-      this.lastError = error.message || String(error);
-      console.error(`[TelegramManager] Error sending file to ${channelUsername}:`, this.lastError);
+      const result: any = await response.json();
+      this.lastError = result.ok ? '' : (result.description || 'تعذر إرسال الصورة عبر البوت.');
+      return !!result.ok;
+    } catch {
+      this.lastError = 'تعذر الاتصال ببوت تيليجرام لإرسال الصورة.';
       return false;
     }
   }

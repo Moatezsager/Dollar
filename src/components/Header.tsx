@@ -16,7 +16,6 @@ import {
   Clock,
   LockKeyhole,
 } from "lucide-react";
-import { safeStorage } from "../utils/storage";
 import { ThemeToggle } from './ui/ThemeToggle';
 
 interface HeaderProps {
@@ -34,7 +33,7 @@ interface HeaderProps {
   fetchData: (force?: boolean) => void;
   triggerHaptic: (pattern?: number | number[]) => void;
   setCurrentPage: (page: 'dashboard' | 'api' | 'contact' | 'terms' | 'privacy' | 'about') => void;
-  setRunTour: (run: boolean) => void;
+  onOpenGuide: () => void;
   handleOpenPdfModal: () => void;
   isGeneratingPDF: boolean;
   setShowSettingsModal: (show: boolean) => void;
@@ -55,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   fetchData,
   triggerHaptic,
   setCurrentPage,
-  setRunTour,
+  onOpenGuide,
   handleOpenPdfModal,
   isGeneratingPDF,
   setShowSettingsModal,
@@ -200,8 +199,7 @@ export const Header: React.FC<HeaderProps> = ({
                       onClick={() => {
                         triggerHaptic(10);
                         setShowMoreMenu(false);
-                        setRunTour(true);
-                        safeStorage.removeItem('tourCompleted');
+                        onOpenGuide();
                       }}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-zinc-300 hover:text-white hover:bg-white/[0.07] transition-all w-full text-right"
                     >

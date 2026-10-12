@@ -1,0 +1,12 @@
+.capture-frame { height: 100vh; padding: 20px; display: flex; flex-direction: column; gap: 20px; background: var(--page); color: var(--ink); }
+.capture-brand { display: flex; gap: 12px; align-items: center; }
+.capture-brand img { border-radius: 8px; }
+.capture-brand strong { font-size: 16px; }
+.capture-brand small { display: block; color: var(--muted-ink); font-size: 12px; }
+.capture-brand > span { margin-inline-start: auto; color: var(--gold); font-size: 12px; font-weight: 700; }
+.capture-frame .converter-section { margin: 0; }
+.capture-frame .converter-heading { display: none; }
+.capture-frame footer { margin-top: auto; display: grid; grid-template-columns: 38px 1fr; gap: 4px 12px; }
+.capture-frame footer b { grid-row: span 2; color: var(--positive); font-family: var(--font-mono); font-size: 12px; align-self: center; direction: ltr; white-space: nowrap; }
+.capture-frame footer p { font-size: 15px; font-weight: 700; }
+.capture-frame footer small { font-size: 12px; color: var(--muted-ink); }

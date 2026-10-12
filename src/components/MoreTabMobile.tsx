@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Settings2, FileText, Share2, Bell, Send, Facebook, Mail,
-  ChevronLeft, ArrowUpLeft, Code2, Info, ShieldAlert, Lock, Users,
+  ChevronLeft, ArrowUpLeft, Code2, Info, ShieldAlert, Lock, Users, BookOpen,
 } from "lucide-react";
 import AppInstallUninstall from "./AppInstallUninstall";
 
@@ -14,11 +14,12 @@ interface MoreTabMobileProps {
   setSettingsTab: (tab: 'general' | 'notifications' | 'appearance') => void;
   setCurrentPage: (page: 'dashboard' | 'api' | 'contact' | 'terms' | 'privacy' | 'about') => void;
   onlineCount: number;
+  onOpenGuide: () => void;
 }
 
 export const MoreTabMobile: React.FC<MoreTabMobileProps> = ({
   activeTab, triggerHaptic, setShowSettingsModal, handleOpenPdfModal,
-  handleShare, setSettingsTab, setCurrentPage, onlineCount,
+  handleShare, setSettingsTab, setCurrentPage, onlineCount, onOpenGuide,
 }) => {
   return (
     <section id="more-section" aria-label="المزيد" className={activeTab === 'more' ? 'more-section md:hidden' : 'hidden'}>
@@ -72,6 +73,11 @@ export const MoreTabMobile: React.FC<MoreTabMobileProps> = ({
       <section className="more-group" aria-labelledby="more-info-heading">
         <h3 id="more-info-heading">عن المنصة</h3>
         <div className="more-links">
+          <button onClick={() => { triggerHaptic(10); onOpenGuide(); }}>
+            <BookOpen aria-hidden="true" className="more-link-icon" />
+            <span><strong>الدليل الشامل للتطبيق</strong><small>درس المحوّل والجولة التفاعلية</small></span>
+            <ChevronLeft aria-hidden="true" className="more-link-arrow" />
+          </button>
           <button onClick={() => { triggerHaptic(10); setCurrentPage('api'); }}>
             <Code2 aria-hidden="true" className="more-link-icon" />
             <span><strong>بوابة المطورين (API)</strong><small>الوصول البرمجي للأسعار</small></span>

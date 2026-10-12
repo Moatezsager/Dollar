@@ -7,6 +7,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
+    // Offline video tooling has its own React installation, not a Web entry point.
+    optimizeDeps: { entries: ['index.html'] },
     plugins: [
       react(), 
       tailwindcss(),
@@ -60,6 +62,7 @@ export default defineConfig(({mode}) => {
       })
     ],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },

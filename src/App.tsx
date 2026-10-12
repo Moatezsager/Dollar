@@ -35,6 +35,7 @@ import { CurrencyChartModal } from "./components/modals/CurrencyChartModal";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { SearchModal } from "./components/modals/SearchModal";
 import { PdfExportModal } from "./components/modals/PdfExportModal";
+import AppGuide from './components/modals/AppGuide';
 import { PrintableBulletin } from "./components/PrintableBulletin";
 
 // Custom Hooks
@@ -186,6 +187,7 @@ export default function App() {
   // Header More Menu & Tour
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [runTour, setRunTour] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Advanced Charts Section State
   const [chartAnalysisCurrency, setChartAnalysisCurrency] = useState('USD_CASH');
@@ -352,6 +354,30 @@ export default function App() {
 
           {/* App Tour */}
           <AppTour runTour={runTour} setRunTour={setRunTour} triggerHaptic={triggerHaptic} />
+          {showGuide && <AppGuide
+              onClose={() => {
+                setShowGuide(false);
+                requestAnimationFrame(() => {
+                  if (document.activeElement === document.body) document.getElementById('more-menu-btn')?.focus();
+                });
+              }}
+              onTryConverter={() => {
+                setShowGuide(false);
+                setCurrentPage('dashboard');
+                setActiveTab('converter');
+                requestAnimationFrame(() => {
+                  document.getElementById('currency-converter-section')?.scrollIntoView({ block: 'start' });
+                  document.getElementById('converter-foreign')?.focus({ preventScroll: true });
+                });
+              }}
+              onStartTour={() => {
+                setShowGuide(false);
+                setCurrentPage('dashboard');
+                setActiveTab('main');
+                safeStorage.removeItem('tourCompleted');
+                setRunTour(true);
+              }}
+            />}
 
 
           {/* Floating Telegram & Facebook Action Buttons (Desktop Only) */}
@@ -401,7 +427,7 @@ export default function App() {
             fetchData={fetchData}
             triggerHaptic={triggerHaptic}
             setCurrentPage={setCurrentPage}
-            setRunTour={setRunTour}
+            onOpenGuide={() => setShowGuide(true)}
             handleOpenPdfModal={handleOpenPdfModal}
             isGeneratingPDF={isGeneratingPDF}
             setShowSettingsModal={setShowSettingsModal}
@@ -520,6 +546,7 @@ export default function App() {
                   setSettingsTab={setSettingsTab}
                   setCurrentPage={setCurrentPage}
                   onlineCount={onlineCount}
+                  onOpenGuide={() => setShowGuide(true)}
                 />
 
                 {/* Desktop Inner Footer */}

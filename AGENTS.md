@@ -34,7 +34,7 @@ Worker responsibilities above are owner-provided context, not confirmation that 
 ## Confirmed in the current Web code
 
 - `server.ts` initializes database/config state and Socket.IO, then reloads current prices and broadcasts them on startup. `server/app.ts` mounts Web routes, including `/api/admin` with `requireAdmin` after login routes (`server/routes/admin/index.ts`).
-- `server/db.ts` creates the server Supabase client from `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; it also maintains local SQLite storage. Inspect the actual credential role/permissions instead of inferring them from the variable name. Never place privileged secrets in `VITE_*` variables.
+- `server/db.ts` creates the server Supabase client from `VITE_SUPABASE_URL` and server-only `SUPABASE_SERVICE_ROLE_KEY`, required in production. Development may fall back to the anon key. Browser code keeps the anon key separately; never put privileged secrets in `VITE_*` variables. Local SQLite remains independent.
 - `server/services/db.service.ts` reads `parallel_rates` and `official_rates`, with `exchange_rates` fallback in the broader initialization/history paths. History also reads `metal_rates`. Preserve fields including `usd`, `rates`, `recorded_at`, `last_changed`, and legacy `rates_parallel`/`rates_official` where used. Config is loaded from `app_config` (`server/config.ts`).
 - Web is not entirely read-only: it stores visitor/admin data and retains manual price writes and legacy extraction, Telegram and publishing helpers. `server/routes/admin/rates.routes.ts` still handles manual extraction/persistence; `server/services/social.service.ts` forwards contact messages to Telegram. Do not remove these paths merely because background price collection belongs to Worker.
 - `server/schedulers/cron.scheduler.ts` does not schedule price collection. `tasks.scheduler.ts` only sets up visitor-log cleanup and a local health request. The Web `/api/refresh-parallel` and `/api/refresh-official` legacy routes return HTTP 503 with Worker job hints; they are not active collection jobs.
@@ -118,3 +118,10 @@ The locally available Worker implementation has now been inspected and tested wi
 - Web must not unpack Worker WhatsApp session files onto its filesystem. Worker session/queue keys live in existing `server_config`; their actual Supabase permissions are not established by a local test.
 - Both services still save full shared `app_config` rows. Do not promise concurrent multi-service settings writes are atomic without a verified database-side contract.
 - Unused Firebase was removed after checking for callers; visitor Push continues through the existing Web Push implementation. Both npm audits reported zero known advisories on 2026-10-11. This does not verify live configuration, RLS or account security.
+
+## Database Access Rollout (2026-10-12)
+
+- Read-only production checks confirmed anonymous exposure of private app_config credentials, contact messages, Push subscription keys and logs. Never reopen anonymous permissions to restore an admin workflow. Deploy server-only database credentials before applying Worker's supabase_security_hardening.sql; see its DATABASE_ROLLOUT.md. Prepared SQL is not proof that production permissions have changed.
+- Server credentials stay out of the browser bundle. Set SUPABASE_SERVICE_ROLE_KEY in Render Web before deployment; keep the separate anon settings configured. Rotation of exposed credentials requires coordination and provider revocation, not only removal from source.
+- Error-log deletion uses a non-null primary-key filter compatible with integer IDs. Local broadcast timestamps stay milliseconds; remote broadcast_log uses timestamptz with ISO insertion and retention filters.
+- node tests/database-access.cjs isolates database credentials and the actual log-deletion route. Supply WORKER_PROJECT_PATH to test both services' remote broadcast timestamp contracts. No production environment loading or writes occur.

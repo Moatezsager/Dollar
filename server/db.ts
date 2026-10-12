@@ -110,11 +110,16 @@ try {
 // Initialize Supabase client
 export const supabaseUrl = process.env.VITE_SUPABASE_URL;
 export const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+const serverKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
+
+if (supabaseUrl && process.env.NODE_ENV === 'production' && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required on the Web server before private database access is enabled.');
+}
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("[DB] WARNING: Supabase credentials missing from environment variables.");
 }
 
-export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
-  ? createClient(supabaseUrl, supabaseAnonKey)
+export const supabase: SupabaseClient | null = (supabaseUrl && serverKey)
+  ? createClient(supabaseUrl, serverKey, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;

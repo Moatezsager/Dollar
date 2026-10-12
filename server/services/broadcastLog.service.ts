@@ -109,7 +109,7 @@ export function addBroadcastLog(params: AddBroadcastLogParams): void {
       supabase
         .from('broadcast_log')
         .insert({
-          created_at: createdAt,
+          created_at: new Date(createdAt).toISOString(),
           platform: params.platform,
           currency_ids: currencyIdsJson,
           status: params.status,
@@ -276,7 +276,7 @@ export async function cleanupOldBroadcastLogs(): Promise<number> {
 
   if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
     try {
-      await supabase.from('broadcast_log').delete().lt('created_at', cutoff45Days);
+      await supabase.from('broadcast_log').delete().lt('created_at', new Date(cutoff45Days).toISOString());
     } catch (err) {
       console.error("[BroadcastLog] Failed to clean up Supabase broadcast logs:", err);
     }

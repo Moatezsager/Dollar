@@ -14,7 +14,7 @@ router.delete('/error-logs', async (req: express.Request, res: express.Response)
     if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
       return res.status(400).json({ success: false, message: "قاعدة بيانات Supabase غير متصلة" });
     }
-    const { error } = await supabase.from('error_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error } = await supabase.from('error_logs').delete().not('id', 'is', null);
     if (error) throw error;
     res.json({ success: true, message: "تم مسح جميع سجلات الأخطاء بنجاح" });
   } catch (err: any) {

@@ -125,3 +125,9 @@ The locally available Worker implementation has now been inspected and tested wi
 - Server credentials stay out of the browser bundle. Set SUPABASE_SERVICE_ROLE_KEY in Render Web before deployment; keep the separate anon settings configured. Rotation of exposed credentials requires coordination and provider revocation, not only removal from source.
 - Error-log deletion uses a non-null primary-key filter compatible with integer IDs. Local broadcast timestamps stay milliseconds; remote broadcast_log uses timestamptz with ISO insertion and retention filters.
 - node tests/database-access.cjs isolates database credentials and the actual log-deletion route. Supply WORKER_PROJECT_PATH to test both services' remote broadcast timestamp contracts. No production environment loading or writes occur.
+
+## Social Link Previews
+
+- Web HTML preview cache tracks both parallel USD and EUR. Missing prices are omitted, never shown as zero. ETags hash rendered HTML rather than a truncated USD-only timestamp.
+- Numeric r query parameters (6-32 digits) are preserved in og:url/twitter:url for distinct Telegram shares without per-URL cache growth or database reads. Other query values are not reflected into metadata. Facebook retains its root/short URL and current logo asset.
+- Both social senders replace the website short URL with a WEB_SERVER_URL-based, numeric cache-busting link only for Telegram. Immediate retries reuse the same link; Facebook keeps tinyurl.com/2j7667u2. Worker tests/social-previews.cjs with WEB_PROJECT_PATH checks both senders and the real production HTML handler. External platform caching and existing posts cannot be guaranteed by these fixtures.

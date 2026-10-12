@@ -155,20 +155,24 @@ export async function createApp(io: SocketIOServer) {
     interface HtmlCache {
       html: string;
       builtAt: number;
-      usdSnapshot: number;
+      ratesSnapshot: string;
       etag: string;
     }
     let cachedHtmlPage: HtmlCache | null = null;
     const HTML_CACHE_TTL_MS = 5 * 60 * 1000;
+    const previewSnapshot = () => JSON.stringify([rates?.parallel?.USD, rates?.parallel?.EUR]);
 
     function buildAndCacheHtml(): HtmlCache {
       let html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
 
-      if (rates?.parallel?.USD) {
-        const usdStr = rates.parallel.USD.toFixed(2);
-        const eurStr = (rates.parallel.EUR || 0).toFixed(2);
-        const dynamicTitle = `💵 دولار: ${usdStr} | 💶 يورو: ${eurStr} | مؤشر الدينار`;
-        const dynamicDesc = `السعر الآن في السوق الموازي: الدولار ${usdStr} د.ل، واليورو ${eurStr} د.ل. تابع أسعار العملات والذهب لحظة بلحظة.`;
+      const prices = [
+        { value: rates?.parallel?.USD, label: '💵 دولار' },
+        { value: rates?.parallel?.EUR, label: '💶 يورو' }
+      ].filter(price => Number.isFinite(price.value) && price.value > 0);
+      if (prices.length) {
+        const summary = prices.map(price => `${price.label}: ${price.value.toFixed(2)}`).join(' | ');
+        const dynamicTitle = `${summary} | مؤشر الدينار`;
+        const dynamicDesc = `السعر الآن في السوق الموازي: ${summary} د.ل. تابع أسعار العملات والذهب لحظة بلحظة.`;
 
         html = html
           .replace(/<title>.*?<\/title>/i, `<title>${dynamicTitle}</title>`)
@@ -179,8 +183,8 @@ export async function createApp(io: SocketIOServer) {
           .replace(/<meta\s+property=["']twitter:description["']\s+content=["'][^"']*["'][^>]*>/i, `<meta property="twitter:description" content="${dynamicDesc}">`);
       }
 
-      const etag = `"${Buffer.from(`${rates?.parallel?.USD || 0}-${Date.now()}`).toString('base64').slice(0, 16)}"`;
-      cachedHtmlPage = { html, builtAt: Date.now(), usdSnapshot: rates?.parallel?.USD || 0, etag };
+      const etag = `"${crypto.createHash('sha256').update(html).digest('hex')}"`;
+      cachedHtmlPage = { html, builtAt: Date.now(), ratesSnapshot: previewSnapshot(), etag };
       console.log('[HtmlCache] ✅ Rebuilt HTML cache. ETag:', etag);
       return cachedHtmlPage;
     }
@@ -206,22 +210,35 @@ export async function createApp(io: SocketIOServer) {
     app.get(/^(?!.*\.(js|css|json|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webmanifest|xml)$).*$/, (req, res) => {
       const now = Date.now();
       const cacheExpired = !cachedHtmlPage || (now - cachedHtmlPage.builtAt) >= HTML_CACHE_TTL_MS;
-      const rateChanged = cachedHtmlPage && cachedHtmlPage.usdSnapshot !== (rates?.parallel?.USD || 0);
+      const rateChanged = cachedHtmlPage && cachedHtmlPage.ratesSnapshot !== previewSnapshot();
 
       const cache = (cacheExpired || rateChanged) ? buildAndCacheHtml() : cachedHtmlPage!;
-
-      const clientEtag = req.headers['if-none-match'];
-      if (clientEtag && clientEtag === cache.etag) {
-        res.status(304).end();
-        return;
+      let html = cache.html;
+      const revision = typeof req.query.r === 'string' && /^\d{6,32}$/.test(req.query.r) ? req.query.r : null;
+      if (revision) {
+        // Keep Telegram's distinct share URL instead of collapsing previews to the root URL.
+        html = html.replace(/(<meta\s+property=["'](?:og|twitter):url["']\s+content=["'])([^"']+)(["'][^>]*>)/gi,
+          (_match, before, url, after) => {
+            const shareUrl = new URL(url);
+            shareUrl.searchParams.set('r', revision);
+            return `${before}${shareUrl.toString()}${after}`;
+          });
       }
+      const etag = revision ? `"${crypto.createHash('sha256').update(html).digest('hex')}"` : cache.etag;
 
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-      res.setHeader('ETag', cache.etag);
+      res.setHeader('ETag', etag);
+
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && clientEtag === etag) {
+        res.status(304).end();
+        return;
+      }
+
       res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-      res.send(cache.html);
+      res.send(html);
     });
   }
 

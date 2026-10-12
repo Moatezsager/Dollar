@@ -10,6 +10,12 @@ import crypto from 'crypto';
  */
 export const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
+export function getTelegramShareUrl(): string {
+  const url = new URL('/', process.env.WEB_SERVER_URL || 'https://dollar-price-qp14.onrender.com/');
+  url.searchParams.set('r', `${Date.now()}${crypto.randomInt(100000, 1000000)}`);
+  return url.toString();
+}
+
 /**
  * Common Metal / Gold & Silver identifier set
  */

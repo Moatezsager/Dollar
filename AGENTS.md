@@ -57,6 +57,8 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 
 ### Realtime and cache behavior
 
+- Publishing readiness contract (2026-10-12): authenticated `POST /api/internal/notify-rates-updated?wait=true` responds only after the shared database synchronization, USD/EUR HTML cache rebuild when prices change, and Socket.IO broadcast. Success is `{status:"synchronized",lastUpdated,parallel:{USD,EUR},official:{USD,EUR}}`; exhausted database retries return 503. Calls without `wait=true` retain the legacy immediate `accepted` response, which is not publishing readiness. Only this waiting path gets a 20-second HTTP timeout; ordinary APIs retain their existing limits. Do not accept client-provided prices as database truth.
+
 - `server/socket/socket.service.ts` emits `rates_update`, sends a snapshot on connection, and suppresses duplicate broadcasts based on official/parallel prices and `lastUpdated`. Preserve the `Rates` shape: `official`, `parallel`, `previousOfficial`, `previousParallel`, `lastUpdated`, and `lastChanged.{official,parallel}` (`server/types.ts`, `src/types/rates.ts`).
 - Other events include `online_count` (`{count}`), `config_update` (`{config}`), `app_version` (`{version,serverStartTime}`), and admin-room `user_logs` (`{logs}`). Inspect consumers in `src/Admin.tsx` as well as the public hook before changing them.
 - `src/hooks/useRatesData.ts` decodes/validates updates, rejects older snapshots, updates React state and local `lyd_rates`/`lyd_history` storage, and appends live history. It protects newer socket data from stale HTTP responses. `src/App.tsx` consumes this state for the UI.
@@ -101,6 +103,7 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 - Inspect actual callers, routes, authentication, response shapes and Socket.IO subscribers on both sides before altering integration contracts. Preserve automatic reconnection, subscriptions/cleanup and live prices without full-page reloads.
 - Never expose Supabase service-role keys, Worker secrets, or full internal config to the browser.
 - Keep secrets in ignored local environment files or service environment settings, never in documentation, commits, browser bundles or diagnostic output.
+- Cron authentication accepts only the configured `CRON_SECRET` environment value; never restore the embedded legacy fallback removed during the 2026-10-12 secret scan. It was already present in repository history, so deletion alone does not revoke it. The owner must rotate any matching deployed secret and update the authorized scheduler/callers, without committing the replacement.
 - Verify admin Socket.IO authorization server-side.
 - Do not modify Worker files or shared Supabase schema without explicit approval.
 - Analyze the impact on both projects before changing shared tables, columns, timestamps or price representations. Preserve the independent Worker dashboard and existing authenticated integrations.

@@ -87,8 +87,9 @@ export async function createApp(io: SocketIOServer) {
   // Called by the Worker Server after it successfully saves updated rates to Supabase.
   // On receiving this, the Web Server fetches the latest rates and broadcasts to all
   // connected visitors via Socket.IO for instant real-time updates.
-  let notificationSync: Promise<void> | null = null;
+  let notificationSync: Promise<boolean> | null = null;
   let notificationPending = false;
+  let refreshPreview: (() => void) | undefined;
   app.post("/api/internal/notify-rates-updated", async (req: express.Request, res: express.Response) => {
     const configuredSecret = (process.env.WORKER_INTERNAL_SECRET || "").trim();
     const providedHeader = req.headers["x-worker-secret"] || req.headers["authorization"] || "";
@@ -111,18 +112,23 @@ export async function createApp(io: SocketIOServer) {
       return res.status(500).json({ status: "failed", error: "Verification error" });
     }
 
-    // Acknowledge immediately, then update in background
-    res.status(200).json({ status: "accepted", message: "Rates update notification received. Broadcasting..." });
+    const waitForSync = req.query.wait === 'true';
+    // Legacy callers retain immediate acknowledgement; publishers wait for completed synchronization.
+    if (!waitForSync) res.status(200).json({ status: "accepted", message: "Rates update notification received. Broadcasting..." });
 
     notificationPending = true;
     if (!notificationSync) {
       notificationSync = (async () => {
+        let synchronized = false;
         while (notificationPending) {
           notificationPending = false;
+          synchronized = false;
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
               await loadLatestRatesFromSupabase();
+              refreshPreview?.();
               broadcastRatesUpdate(rates);
+              synchronized = true;
               console.log("[Notify] Rates refreshed and broadcast via Socket.IO.");
               break;
             } catch (err) {
@@ -131,9 +137,17 @@ export async function createApp(io: SocketIOServer) {
             }
           }
         }
+        return synchronized;
       })().finally(() => { notificationSync = null; });
     }
-    await notificationSync;
+    const synchronized = await notificationSync;
+    if (waitForSync && !res.headersSent) {
+      res.status(synchronized ? 200 : 503).json(synchronized ? {
+        status: 'synchronized', lastUpdated: rates.lastUpdated,
+        parallel: { USD: rates.parallel.USD || null, EUR: rates.parallel.EUR || null },
+        official: { USD: rates.official.USD || null, EUR: rates.official.EUR || null }
+      } : { status: 'failed', error: 'Rates synchronization failed' });
+    }
   });
 
   // Catch-all 404 for any remaining unmatched /api/* routes
@@ -191,6 +205,9 @@ export async function createApp(io: SocketIOServer) {
 
     // Build initial cache on startup
     buildAndCacheHtml();
+    refreshPreview = () => {
+      if (!cachedHtmlPage || cachedHtmlPage.ratesSnapshot !== previewSnapshot()) buildAndCacheHtml();
+    };
 
     app.use(express.static(distPath, { 
       index: false,

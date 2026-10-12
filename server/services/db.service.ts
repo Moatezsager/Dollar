@@ -51,7 +51,7 @@ const loadedAt = { parallel: 0, official: 0 };
 export function loadLatestRatesFromSupabase(): Promise<void> {
   if (latestLoad) return latestLoad;
   latestLoad = (async () => {
-    if (!supabase) return;
+    if (!supabase) throw new Error('Database unavailable for rates synchronization');
     const [parallel, official] = await Promise.all([
       supabase.from('parallel_rates').select('usd, rates, recorded_at, last_changed')
         .order('recorded_at', { ascending: false }).limit(1),

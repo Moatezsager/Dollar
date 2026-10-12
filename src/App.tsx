@@ -4,7 +4,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import InstallPrompt from "./components/InstallPrompt";
 import PushNotificationPrompt from "./components/PushNotificationPrompt";
 import { AutoUpdateBanner } from "./components/AutoUpdateBanner";
-import { AppTour } from "./components/ui/AppTour";
+import { AppTour, type TourSection } from "./components/ui/AppTour";
 import { FloatingSocialButtons } from "./components/ui/FloatingSocialButtons";
 import { OfflineBanner } from "./components/ui/OfflineBanner";
 import { IOSInstallPrompt } from "./components/ui/IOSInstallPrompt";
@@ -188,6 +188,11 @@ export default function App() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [runTour, setRunTour] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [tourStartIndex, setTourStartIndex] = useState(0);
+  const navigateTour = useCallback((section: TourSection) => {
+    setCurrentPage('dashboard');
+    setActiveTab(section);
+  }, []);
 
   // Advanced Charts Section State
   const [chartAnalysisCurrency, setChartAnalysisCurrency] = useState('USD_CASH');
@@ -353,7 +358,7 @@ export default function App() {
           <AutoUpdateBanner />
 
           {/* App Tour */}
-          <AppTour runTour={runTour} setRunTour={setRunTour} triggerHaptic={triggerHaptic} />
+          {runTour && <AppTour runTour={runTour} initialStep={tourStartIndex} onNavigate={navigateTour} setRunTour={setRunTour} triggerHaptic={triggerHaptic} />}
           {showGuide && <AppGuide
               onClose={() => {
                 setShowGuide(false);
@@ -370,8 +375,9 @@ export default function App() {
                   document.getElementById('converter-foreign')?.focus({ preventScroll: true });
                 });
               }}
-              onStartTour={() => {
+              onStartTour={(index = 0) => {
                 setShowGuide(false);
+                setTourStartIndex(index);
                 setCurrentPage('dashboard');
                 setActiveTab('main');
                 safeStorage.removeItem('tourCompleted');

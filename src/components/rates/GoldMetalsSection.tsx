@@ -24,7 +24,7 @@ export const GoldMetalsSection: React.FC<GoldMetalsSectionProps> = ({
   return (
     <div className={activeTab === 'gold' ? 'block space-y-8 md:space-y-16' : 'hidden md:block md:space-y-16'}>
       {/* Mobile Gold Header */}
-      <div className="flex items-center gap-4 mb-2 md:hidden">
+      <div data-tour="metals-heading" className="flex items-center gap-4 mb-2 md:hidden">
         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 border border-amber-500/20 flex items-center justify-center text-amber-400">
           <Coins className="w-6 h-6" />
         </div>
@@ -35,7 +35,7 @@ export const GoldMetalsSection: React.FC<GoldMetalsSectionProps> = ({
       </div>
 
       <section id="metals-grid">
-        <div className="flex items-center justify-between mb-6 group hidden md:flex">
+        <div data-tour="metals-heading" className="flex items-center justify-between mb-6 group hidden md:flex">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 border border-amber-500/10 flex items-center justify-center text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
               <Coins className="w-5 h-5" />

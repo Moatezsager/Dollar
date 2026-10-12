@@ -59,13 +59,23 @@ async function main() {
     ]);
     await page.waitForTimeout(200);
     assert.equal(videoRequests.length, 0, 'Home must not download guide video');
-    const open = async () => {
+    const open = async (lesson = true) => {
       await page.locator('#more-menu-btn').click();
       await page.getByRole('button', { name: 'الدليل الشامل للتطبيق', exact: true }).click();
       await page.getByRole('dialog', { name: 'الدليل الشامل للتطبيق' }).waitFor();
+      if (lesson) await page.getByRole('tab', { name: 'درس المحوّل', exact: true }).click();
       await page.waitForTimeout(200);
     };
     const dialog = page.getByRole('dialog', { name: 'الدليل الشامل للتطبيق' });
+    await open(false);
+    assert.equal(await dialog.locator('.guide-topic').count(), 6);
+    assert.equal(await dialog.locator('video').count(), 0, 'Overview must not mount media');
+    await page.getByRole('tab', { name: 'جولة تعريفية', exact: true }).focus();
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.getByRole('tab', { name: 'درس المحوّل', exact: true }).getAttribute('aria-selected'), 'true');
+    await page.keyboard.press('Home');
+    assert.equal(await page.getByRole('tab', { name: 'جولة تعريفية', exact: true }).getAttribute('aria-selected'), 'true');
+    await page.getByRole('button', { name: 'إغلاق الدليل' }).click();
     await open();
     assert.equal(videoRequests.length, 0, 'Opening guide must not preload MP4');
     assert.equal(await page.locator('video').getAttribute('preload'), 'none');
@@ -76,6 +86,8 @@ async function main() {
     assert(videoRequests.every(url => url.includes('converter-desktop.mp4')));
     assert.equal(await page.locator('video').evaluate(video => video.duration), 20);
     assert(await page.locator('video').evaluate(video => video.controls), 'Native controls must be available during playback');
+    await page.getByRole('tab', { name: 'درس المحوّل', exact: true }).click();
+    assert(await page.locator('video').evaluate(video => !video.paused), 'Selecting the active tab must not interrupt playback');
     await page.locator('video').evaluate(video => { video.textTracks[0].mode = 'hidden'; });
     await page.waitForFunction(() => document.querySelector('video').textTracks[0].cues?.length === 4);
     const framePixels = async seconds => {
@@ -127,7 +139,7 @@ async function main() {
         }
         await page.getByRole('button', { name: 'إغلاق الدليل' }).focus();
         await page.keyboard.press('Shift+Tab');
-        assert(await page.getByRole('button', { name: 'الجولة التفاعلية', exact: true }).evaluate(button => button === document.activeElement), 'Focus must wrap within dialog');
+        assert(await page.getByRole('button', { name: 'جرّب المحوّل', exact: true }).evaluate(button => button === document.activeElement), 'Focus must wrap within dialog');
         await page.keyboard.press('Tab');
         assert(await page.getByRole('button', { name: 'إغلاق الدليل' }).evaluate(button => button === document.activeElement));
         if (artifactDir) await dialog.screenshot({ path: path.join(artifactDir, `guide-${width}-${theme}.png`) });
@@ -161,11 +173,80 @@ async function main() {
     await page.unroute('**/guide/*.mp4');
     await page.getByRole('button', { name: 'إعادة محاولة تشغيل الدرس' }).click();
     await page.waitForFunction(() => document.querySelector('video')?.currentTime > 0.1);
-    await page.getByRole('button', { name: 'الجولة التفاعلية', exact: true }).click();
+    await page.getByRole('tab', { name: 'جولة تعريفية', exact: true }).click();
+    await page.getByRole('button', { name: 'ابدأ الجولة', exact: true }).click();
     await page.getByRole('alertdialog').waitFor();
     assert.equal(await dialog.count(), 0, 'Existing tour must replace guide');
+    await page.getByRole('button', { name: 'إغلاق الجولة', exact: true }).click();
+
+    const titles = ['الأسعار الرئيسية', 'أسعار المصرف المركزي', 'الذهب والفضة', 'التحليل والرسوم البيانية', 'محوّل العملات', 'الإعدادات والمزيد'];
+    const tabs = ['الرئيسية', 'الرئيسية', 'الذهب', 'التحليل', 'المحول', 'الرئيسية'];
+    const tour = page.getByRole('alertdialog');
+    const pricesBeforeTours = await page.evaluate(() => localStorage.getItem('lyd_rates'));
+    const tourRequests = priceRequests;
+    await page.locator('#converter-foreign').fill('150');
+    for (const [width, height, theme] of [[1440, 1000, 'dark'], [1440, 1000, 'light'], [390, 844, 'dark'], [390, 844, 'light'], [320, 568, 'dark'], [844, 390, 'light']]) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+      await open(false);
+      assert.equal(await dialog.locator('video').count(), 0);
+      assert(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth));
+      if (artifactDir) await dialog.screenshot({ path: path.join(artifactDir, `guide-overview-${width}-${theme}.png`) });
+      await page.getByRole('button', { name: 'ابدأ الجولة', exact: true }).click();
+      for (let step = 0; step < titles.length; step++) {
+        await tour.getByRole('heading', { name: titles[step], exact: true }).waitFor();
+        await page.waitForTimeout(300);
+        assert.equal(await tour.getByRole('progressbar', { name: 'تقدم الجولة' }).evaluate(element => element.value), step + 1);
+        assert(await tour.evaluate(node => {
+          const rect = node.getBoundingClientRect();
+          return rect.left >= -1 && rect.top >= -1 && rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1 && node.scrollWidth <= node.clientWidth;
+        }), `Tour step ${step + 1} fits ${width}x${height}`);
+        if (width < 768) assert.equal(await page.locator('#mobile-bottom-nav').getByRole('button', { name: tabs[step], exact: true }).getAttribute('aria-current'), 'page');
+        for (const button of await tour.getByRole('button').all()) assert((await button.boundingBox()).height >= 44);
+        if (artifactDir) await page.screenshot({ path: path.join(artifactDir, `tour-${width}-${theme}-${step + 1}.png`) });
+        if (step === 3) {
+          await tour.getByRole('button', { name: 'السابق', exact: true }).click();
+          await tour.getByRole('heading', { name: titles[2], exact: true }).waitFor();
+          await tour.getByRole('button', { name: 'التالي', exact: true }).click();
+          await tour.getByRole('heading', { name: titles[3], exact: true }).waitFor();
+        }
+        await tour.getByRole('button', { name: step === 5 ? 'إنهاء الجولة' : 'التالي', exact: true }).click();
+      }
+      await tour.waitFor({ state: 'detached' });
+      assert.equal(await page.evaluate(() => localStorage.getItem('tourCompleted')), 'true');
+      assert.equal(await page.locator('#converter-foreign').inputValue(), '150', 'Tour must preserve converter input');
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    for (let step = 0; step < titles.length; step++) {
+      await open(false);
+      await dialog.getByRole('button', { name: `استكشاف ${titles[step]}`, exact: true }).click();
+      await tour.getByRole('heading', { name: titles[step], exact: true }).waitFor();
+      if (step === 2) {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await tour.getByRole('heading', { name: titles[step], exact: true }).waitFor();
+        await page.waitForTimeout(300);
+        assert.equal(await tour.getByRole('progressbar').evaluate(element => element.value), 3, 'Resizing must keep the current step');
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await page.waitForTimeout(300);
+      }
+      await page.keyboard.press('Escape');
+      await tour.waitFor({ state: 'detached' });
+    }
+    await page.locator('.analysis-toolbar').evaluate(node => node.classList.replace('analysis-toolbar', 'unavailable-analysis-toolbar'));
+    await open(false);
+    await dialog.getByRole('button', { name: `استكشاف ${titles[3]}`, exact: true }).click();
+    await tour.getByRole('heading', { name: titles[4], exact: true }).waitFor();
+    await page.locator('.unavailable-analysis-toolbar').evaluate(node => node.classList.replace('unavailable-analysis-toolbar', 'analysis-toolbar'));
+    await page.keyboard.press('Escape');
+    await tour.waitFor({ state: 'detached' });
+    await open(false);
+    await page.getByRole('button', { name: 'ابدأ الجولة', exact: true }).click();
+    await tour.getByRole('button', { name: 'تخطي الجولة', exact: true }).click();
+    await tour.waitFor({ state: 'detached' });
+    assert.equal(await page.evaluate(() => localStorage.getItem('lyd_rates')), pricesBeforeTours);
+    assert.equal(priceRequests, tourRequests, 'Tour navigation must not refetch prices');
     assert.deepEqual(errors, []);
-    console.log('App guide: playback, captions, responsive themes, focus, retry, converter handoff, existing tour and price isolation passed.');
+    console.log('App guide: overview, six-step responsive tour, selective start, back/skip/Escape, resize, themes, playback, captions, retry, focus and price isolation passed.');
   } catch (error) {
     console.error('Browser errors:', errors);
     if (page) {

@@ -220,7 +220,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               </div>
 
               {/* Price & Change Badge Row */}
-              <div className="my-auto py-1.5 flex flex-col gap-1 sm:gap-1.5">
+              <div data-tour="primary-price" className="my-auto py-1.5 flex flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-baseline gap-1">
                   <span className={`text-lg sm:text-2xl font-black font-mono tracking-tight tabular-nums ${priceColor}`}>
                     {usdRate > 0 ? usdRate.toFixed(2) : '—'}

@@ -55,7 +55,9 @@ async function main() {
   if (process.env.WORKER_PROJECT_PATH) roots.push(path.resolve(process.env.WORKER_PROJECT_PATH));
   for (const project of roots) {
     let inserted, cutoff;
+    const loggerFile = path.join(project, 'server/utils/logger.ts');
     const service = load(path.join(project, 'server/services/broadcastLog.service.ts'), {
+      '../utils/logger': fs.existsSync(loggerFile) ? load(loggerFile, {}) : {},
       '../db': { db, supabaseAnonKey: 'fixture', supabaseKey: 'fixture', supabase: {
         from: () => ({ insert: value => { inserted = value; return Promise.resolve({ error: null }); },
           delete: () => ({ lt: async (column, value) => { cutoff = value; return { error: null }; } }) })

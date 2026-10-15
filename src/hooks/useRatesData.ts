@@ -38,6 +38,8 @@ export function useRatesData(options?: UseRatesDataOptions) {
   const ratesRef = useRef<Rates | null>(null);
   const historyRef = useRef<HistoryPoint[]>([]);
   const socketRevisionRef = useRef(0);
+  const historyRevisionRef = useRef(0);
+  const liveHistoryRef = useRef<{ revision: number; point: HistoryPoint }[]>([]);
   const thresholdRef = useRef<number>(notificationThreshold);
   const configTermsRef = useRef<any[]>([]);
 
@@ -175,6 +177,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
   const fetchData = async (forceRefresh = false) => {
     const socketRevision = socketRevisionRef.current;
+    const historyRevision = historyRevisionRef.current;
     setIsRefreshing(true);
     try {
       if (forceRefresh) {
@@ -190,9 +193,10 @@ export function useRatesData(options?: UseRatesDataOptions) {
         ? await historyRes.json().catch(() => null) : null;
       const newHistory = typeof historyJson === 'string' ? decodeData(historyJson) : historyJson;
       // A stale HTTP price snapshot must not discard valid historical rows or newer socket prices.
-      if (Array.isArray(newHistory) && newHistory.length) {
-        applyHistory([...historyRef.current, ...newHistory]);
-        if (ratesRef.current) appendRateHistory(ratesRef.current);
+      const validHistory = Array.isArray(newHistory) && newHistory.every(point => Number.isFinite(Date.parse(point?.time)));
+      if (validHistory && historyRevision === historyRevisionRef.current) {
+        // Replace deleted/corrected cached rows, retaining only live arrivals after this request began.
+        applyHistory([...newHistory, ...liveHistoryRef.current.filter(item => item.revision > socketRevision).map(item => item.point)]);
       }
       if (ratesResult.status === 'rejected') throw ratesResult.reason;
       const ratesRes = ratesResult.value;
@@ -226,7 +230,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
       if (!applyRates(newRates)) return;
       queuePriceDigest(currentRates, newRates);
-      appendRateHistory(newRates);
+      if (!validHistory && historyRevision === historyRevisionRef.current) appendRateHistory(newRates);
 
       // Fetch status
       try {
@@ -325,7 +329,18 @@ export function useRatesData(options?: UseRatesDataOptions) {
           queuePriceDigest(currentRates, decodedRates);
           socketRevisionRef.current++;
           appendRateHistory(decodedRates);
+          const point = historyRef.current.find(item => Date.parse(item.time) === Date.parse(decodedRates.lastUpdated));
+          if (point) liveHistoryRef.current = [...liveHistoryRef.current.slice(-119), { revision: socketRevisionRef.current, point }];
           setLoading(false);
+        });
+        socket.on('history_update', (data: any) => {
+          const corrected = typeof data?.history === 'string' ? decodeData<HistoryPoint[]>(data.history) : data?.history;
+          const readStartedAt = Date.parse(data?.readStartedAt);
+          if (!Number.isFinite(readStartedAt) || !Array.isArray(corrected) || !corrected.every(point => Number.isFinite(Date.parse(point?.time)))) return;
+          historyRevisionRef.current++;
+          socketRevisionRef.current++;
+          liveHistoryRef.current = liveHistoryRef.current.filter(item => Date.parse(item.point.time) > readStartedAt);
+          applyHistory([...corrected, ...liveHistoryRef.current.map(item => item.point)]);
         });
         socket.on('config_update', (data: any) => {
           if (Array.isArray(data?.config?.terms)) setConfigTerms(data.config.terms);

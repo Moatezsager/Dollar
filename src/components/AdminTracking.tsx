@@ -1,427 +1,102 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { BarChart3, CheckCircle2, LineChart, Activity, Wifi, XCircle, AlertCircle, MapPin, AppWindow, Smartphone, Monitor, Layout, Search, Filter, Copy, ChevronDown, ChevronUp } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
-import { formatDistanceToNow } from "date-fns";
-import { ar } from "date-fns/locale";
+import React, { useEffect, useState } from 'react';
+import { RefreshCw, Users, Eye, ChartNoAxesCombined, Search } from 'lucide-react';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import '../styles/admin-analytics.css';
 
-interface AdminTrackingProps {
-  token: string;
-}
-
-const fetchWithTimeout = async (resource: string, options: any = {}, timeout = 8000) => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const response = await fetch(resource, {
-      ...options,
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
-  }
+type Report = {
+  summary: { totalPageviews: number; totalVisitors: number; sessions: number; returningVisitors: number; pageviewGrowth: number | null; visitorGrowth: number | null };
+  trend: { date: string; pageviews: number; visitors: number }[];
+  deviceTypes: Record<string, number>; browsers: Record<string, number>; os: Record<string, number>;
+  pages: Record<string, number>; sources: Record<string, number>;
+  source: string; truncated: boolean; generatedAt: string; trackingEnabled: boolean;
+  writeHealth?: { localOnly: number; since: string };
 };
+const number = (n: number) => n.toLocaleString('ar-LY');
+const date = (value: string | number) => {
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString('ar-LY', { timeZone: 'Africa/Tripoli', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'غير متاح';
+};
+const pageNames: Record<string, string> = { '/': 'الأسعار', '/api': 'بوابة المطورين', '/contact': 'اتصل بنا', '/about': 'عن المنصة', '/privacy': 'الخصوصية', '/terms': 'شروط الاستخدام' };
 
-export function AdminTracking({ token }: AdminTrackingProps) {
-  const [userLogs, setUserLogs] = useState<any[]>([]);
-  const [analyticsData, setAnalyticsData] = useState<any>(null);
-  const [analyticsDays, setAnalyticsDays] = useState(7);
-  const [deviceSearchTerm, setDeviceSearchTerm] = useState('');
-  const [deviceFilter, setDeviceFilter] = useState<'all' | 'Mobile' | 'Desktop' | 'Tablet' | 'Bot'>('all');
-  const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
-  const [copiedIp, setCopiedIp] = useState<string | null>(null);
-  const [expandedUserAgentId, setExpandedUserAgentId] = useState<string | null>(null);
-
-  const fetchAnalyticsDashboard = async () => {
-    try {
-      const res = await fetch(`/api/admin/analytics?days=${analyticsDays}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAnalyticsData(data);
-      }
-    } catch (err) {
-      console.warn("Analytics fetch failed", err);
-    }
-  };
-
-  const fetchTrackingLogs = async () => {
-    fetchAnalyticsDashboard();
-    try {
-      const res = await fetchWithTimeout("/api/admin/tracking/logs", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUserLogs(data.logs || []);
-      }
-    } catch (err) {
-      console.warn("Tracking logs fetch failed");
-    }
-  };
-
+export function AdminTracking({ token }: { token: string }) {
+  const [days, setDays] = useState(7), [refresh, setRefresh] = useState(0);
+  const [report, setReport] = useState<Report | null>(null);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [busy, setBusy] = useState(true), [error, setError] = useState('');
+  const [logsError, setLogsError] = useState(''), [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
   useEffect(() => {
-    if (token) {
-      fetchAnalyticsDashboard();
-      fetchTrackingLogs();
-    }
-  }, [analyticsDays, token]);
-
-  const normalizedLogs = useMemo(() => {
-    return userLogs.map(log => {
-      const isOnline = log.isOnline || log.status === 'online';
-      const lastSeenStr = log.lastSeen || log.last_active || log.timestamp || new Date().toISOString();
-      const lastSeenDate = new Date(lastSeenStr);
-      const safeLastSeen = isNaN(lastSeenDate.getTime()) ? new Date() : lastSeenDate;
-
-      let country = log.country || "";
-      let city = log.city || "";
-      if (!country && log.location && log.location !== "جاري التحديد..." && log.location !== "غير معروف" && log.location !== "تعذر التحديد" && log.location !== "شبكة محلية") {
-        const parts = log.location.split(',');
-        if (parts.length > 0) country = parts[0].trim();
-        if (parts.length > 1) city = parts[1].trim();
-      } else if (!country && log.location) {
-        country = log.location;
-      }
-
-      return {
-        ...log,
-        status: isOnline ? 'online' : 'offline',
-        lastSeen: safeLastSeen.toISOString(),
-        sessionCount: log.sessionCount || log.visits || 1,
-        pageviews: log.pageviews || log.visits || 1,
-        country,
-        city
-      };
-    });
-  }, [userLogs]);
-
-  const filteredLogs = useMemo(() => {
-    return normalizedLogs.filter(log => {
-      const matchesSearch = log.ip.includes(deviceSearchTerm) || (log.userAgent && log.userAgent.toLowerCase().includes(deviceSearchTerm.toLowerCase()));
-      const matchesDevice = deviceFilter === 'all' || log.deviceType === deviceFilter;
-      const matchesStatus = deviceStatusFilter === 'all' || log.status === deviceStatusFilter;
-      return matchesSearch && matchesDevice && matchesStatus;
-    });
-  }, [normalizedLogs, deviceSearchTerm, deviceFilter, deviceStatusFilter]);
-
-  return (
-    <motion.div 
-      key="tracking"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="space-y-6"
-    >
-      {/* Analytics Dashboard Header */}
-      <div className="bg-black/40 backdrop-blur-md rounded-3xl border border-slate-700/50 p-6 md:p-8 overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -mr-32 -mt-32 pointer-events-none" />
-        
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center border border-emerald-500/30">
-              <BarChart3 className="w-7 h-7 text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-white flex items-center gap-3">
-                إحصائيات الزوار (Analytics)
-                <span className="flex items-center gap-2 text-xs font-bold px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/30">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  {normalizedLogs.filter(l => l.status === 'online').length} مباشر
-                </span>
-              </h2>
-              <p className="text-sm text-slate-400 mt-1">
-                نظام إحصائيات متقدم محمي بالذكاء الاصطناعي ضد الروبوتات (مفلتر بنسبة 100% من روبوتات فيسبوك، تيليجرام وغيرها لضمان أقصى دقة).
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <select 
-              value={analyticsDays}
-              onChange={(e) => setAnalyticsDays(parseInt(e.target.value))}
-              className="px-4 py-2.5 bg-black/50 border border-slate-700/50 rounded-xl text-white font-medium focus:outline-none focus:border-emerald-500/50"
-            >
-              <option value="1">آخر 24 ساعة</option>
-              <option value="7">آخر 7 أيام</option>
-              <option value="30">آخر 30 يوم</option>
-            </select>
-            <button 
-              onClick={() => { fetchAnalyticsDashboard(); fetchTrackingLogs(); }}
-              className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl transition-all"
-            >
-              تحديث البيانات
-            </button>
-          </div>
-        </div>
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setBusy(true); setError(''); setReport(null);
+    fetch('/api/admin/analytics?days=' + days, { headers: { Authorization: 'Bearer ' + token }, signal: controller.signal, cache: 'no-store' })
+      .then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); if (!data.success) throw new Error(); return data; })
+      .then(data => { if (!controller.signal.aborted) setReport(data); })
+      .catch(() => { if (!controller.signal.aborted) setError('تعذّر تحميل الإحصائيات. حاول مجددًا.'); })
+      .finally(() => { clearTimeout(timeout); if (!controller.signal.aborted) setBusy(false); });
+    const onAbort = () => { setBusy(false); setError('انتهت مهلة تحميل الإحصائيات. حاول مجددًا.'); };
+    controller.signal.addEventListener('abort', onAbort);
+    return () => { controller.signal.removeEventListener('abort', onAbort); clearTimeout(timeout); controller.abort(); };
+  }, [days, token, refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    setLogs([]); setLogsError('');
+    fetch('/api/admin/tracking/logs', { headers: { Authorization: 'Bearer ' + token }, signal: controller.signal, cache: 'no-store' })
+      .then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); if (!data.success || !Array.isArray(data.logs)) throw new Error(); return data.logs; })
+      .then(data => { if (!controller.signal.aborted) setLogs(data); })
+      .catch(() => { if (!controller.signal.aborted) setLogsError('تعذّر تحميل لقطة الاتصالات.'); })
+      .finally(() => clearTimeout(timeout));
+    const onAbort = () => setLogsError('انتهت مهلة تحميل لقطة الاتصالات.');
+    controller.signal.addEventListener('abort', onAbort);
+    return () => { controller.signal.removeEventListener('abort', onAbort); clearTimeout(timeout); controller.abort(); };
+  }, [token, refresh]);
+  const filtered = logs.filter(log => (status === 'all' || Boolean(log.isOnline) === (status === 'online')) &&
+    [log.ip, log.browser, log.os, log.deviceName].some(value => String(value || '').toLowerCase().includes(search.toLowerCase())));
+  const growth = (value: number | null) => value == null ? 'المقارنة غير متاحة' : (value > 0 ? '+' : '') + number(value) + '% عن الفترة السابقة';
+  const breakdown = (title: string, values: Record<string, number>, names: Record<string, string> = {}) => {
+    const entries = Object.entries(values).sort((a, b) => b[1] - a[1]);
+    const total = entries.reduce((sum, [, count]) => sum + count, 0);
+    return <section><h3>{title}</h3>{!entries.length ? <p>لا توجد مشاهدات مسجلة.</p> : <ol className="analytics-ranking">{entries.slice(0, 8).map(([name, count]) =>
+      <li key={name}><div><span dir="auto">{names[name] || name}</span><strong>{number(count)} <small>({number(Math.round(count / total * 100))}%)</small></strong></div><progress value={count} max={total} aria-label={names[name] || name} /></li>
+    )}</ol>}</section>;
+  };
+  return <div className="admin-analytics" dir="rtl">
+    <header><div><h2><ChartNoAxesCombined size={22} /> نمو الزيارات</h2><p>المشاهدات المسجلة حسب توقيت طرابلس</p></div>
+      <div className="analytics-actions"><label>الفترة<select aria-label="الفترة" value={days} onChange={e => setDays(Number(e.target.value))}><option value={1}>اليوم</option><option value={7}>آخر 7 أيام</option><option value={30}>آخر 30 يومًا</option></select></label>
+      <button type="button" title="تحديث التقرير والاتصالات" aria-label="تحديث التقرير والاتصالات" disabled={busy} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={18} /></button></div>
+    </header>
+    {busy && <p role="status">جارٍ تحميل الإحصائيات…</p>}
+    {error && <p role="alert" className="analytics-warning">{error}</p>}
+    {report && <>
+      <p className="analytics-caption">آخر احتساب: {date(report.generatedAt)} · يُعاد استخدام التقرير لمدة 5 دقائق</p>
+      {report.trackingEnabled === false && <p className="analytics-warning">تسجيل الزيارات متوقف من إعدادات الإدارة؛ المعروض بيانات سابقة فقط.</p>}
+      {!!report.writeHealth?.localOnly && <p className="analytics-warning">تعذّر تأكيد الحفظ البعيد لـ {number(report.writeHealth.localOnly)} مشاهدة منذ تشغيل السيرفر ({date(report.writeHealth.since)}). حُفظت محليًا وقد تنقص من تقرير Supabase.</p>}
+      {(report.source === 'local' || report.truncated) && <p role="status" className="analytics-warning">{report.source === 'local' ? 'تعذّر قراءة Supabase؛ هذه بيانات محلية قد تكون غير مكتملة بعد إعادة تشغيل السيرفر. ' : ''}{report.truncated ? 'وصل التقرير إلى حد القراءة؛ الأرقام تمثل جزءًا من السجل. ' : ''}مقارنة النمو معطّلة لهذه النتيجة.</p>}
+      <div className="analytics-metrics">
+        <div><span><Eye size={17} /> المشاهدات</span><strong>{number(report.summary.totalPageviews)}</strong><small>{growth(report.summary.pageviewGrowth)}</small></div>
+        <div><span><Users size={17} /> متصفحات فريدة</span><strong>{number(report.summary.totalVisitors)}</strong><small>{growth(report.summary.visitorGrowth)}</small></div>
+        <div><span>الجلسات</span><strong>{number(report.summary.sessions)}</strong><small>تتجدد بعد 30 دقيقة دون مشاهدة صفحة جديدة</small></div>
+        <div><span>زوار عائدون خلال الفترة</span><strong>{number(report.summary.returningVisitors)}</strong><small>معرّفات ظهرت في أكثر من جلسة</small></div>
       </div>
-
-      {/* Analytics Graphs (Recharts) */}
-      {analyticsData && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Trend Chart */}
-          <div className="lg:col-span-2 bg-black/40 border border-slate-700/50 rounded-3xl p-6">
-            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-              <LineChart className="w-5 h-5 text-emerald-400" />
-              الزيارات والزوار (أخر {analyticsDays} أيام)
-            </h3>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={analyticsData.trend} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPageviews" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorVisitors" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" stroke="#475569" fontSize={12} tickMargin={10} minTickGap={30} />
-                  <YAxis stroke="#475569" fontSize={12} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value} />
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <RechartsTooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#fff' }}
-                    itemStyle={{ color: '#fff' }}
-                    labelStyle={{ color: '#94a3b8', marginBottom: '8px' }}
-                  />
-                  <Area type="monotone" dataKey="pageviews" name="الزيارات" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorPageviews)" />
-                  <Area type="monotone" dataKey="visitors" name="الزوار الفريدين" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorVisitors)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          
-          {/* Summary Stats */}
-          <div className="space-y-6">
-            <div className="bg-black/40 border border-slate-700/50 rounded-3xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4">إجمالي الزيارات</h3>
-              <div className="text-4xl font-black text-emerald-400 mb-1">{analyticsData.summary.totalPageviews.toLocaleString()}</div>
-              <p className="text-slate-400 text-sm">صفحة تم عرضها</p>
-            </div>
-            <div className="bg-black/40 border border-slate-700/50 rounded-3xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4">إجمالي الزوار</h3>
-              <div className="text-4xl font-black text-blue-400 mb-1">{analyticsData.summary.totalVisitors.toLocaleString()}</div>
-              <p className="text-slate-400 text-sm">مستخدم فريد</p>
-            </div>
-          </div>
-
-          {/* Device Breakdown */}
-          <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-black/40 border border-slate-700/50 rounded-3xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <Smartphone className="w-5 h-5 text-emerald-400" /> الأجهزة
-              </h3>
-              <div className="space-y-4">
-               {Object.entries(analyticsData.deviceTypes).sort((a:any, b:any) => b[1] - a[1]).map(([device, count]: any) => (
-                 <div key={device}>
-                   <div className="flex justify-between text-sm mb-1">
-                     <span className="text-slate-300">{device}</span>
-                     <span className="text-white font-bold">{count.toLocaleString()}</span>
-                   </div>
-                   <div className="w-full bg-slate-800 rounded-full h-2">
-                     <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${Math.min(100, (count / analyticsData.summary.totalPageviews) * 100)}%` }}></div>
-                   </div>
-                 </div>
-               ))}
-              </div>
-            </div>
-            <div className="bg-black/40 border border-slate-700/50 rounded-3xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <AppWindow className="w-5 h-5 text-blue-400" /> المتصفحات
-              </h3>
-              <div className="space-y-4">
-               {Object.entries(analyticsData.browsers).sort((a:any, b:any) => b[1] - a[1]).slice(0, 5).map(([browser, count]: any) => (
-                 <div key={browser}>
-                   <div className="flex justify-between text-sm mb-1">
-                     <span className="text-slate-300">{browser}</span>
-                     <span className="text-white font-bold">{count.toLocaleString()}</span>
-                   </div>
-                   <div className="w-full bg-slate-800 rounded-full h-2">
-                     <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(100, (count / analyticsData.summary.totalPageviews) * 100)}%` }}></div>
-                   </div>
-                 </div>
-               ))}
-              </div>
-            </div>
-            <div className="bg-black/40 border border-slate-700/50 rounded-3xl p-6">
-              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <Monitor className="w-5 h-5 text-purple-400" /> أنظمة التشغيل
-              </h3>
-              <div className="space-y-4">
-               {Object.entries(analyticsData.os).sort((a:any, b:any) => b[1] - a[1]).slice(0, 5).map(([os, count]: any) => (
-                 <div key={os}>
-                   <div className="flex justify-between text-sm mb-1">
-                     <span className="text-slate-300">{os}</span>
-                     <span className="text-white font-bold">{count.toLocaleString()}</span>
-                   </div>
-                   <div className="w-full bg-slate-800 rounded-full h-2">
-                     <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${Math.min(100, (count / analyticsData.summary.totalPageviews) * 100)}%` }}></div>
-                   </div>
-                 </div>
-               ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tracking Detailed Table */}
-      <div className="bg-black/40 border border-slate-700/50 rounded-3xl overflow-hidden mt-8">
-        <div className="p-6 border-b border-slate-800 flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-900/50">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <Activity className="w-5 h-5 text-emerald-400" /> 
-            تفاصيل الزوار والجلسات 
-            <span className="text-xs bg-slate-800 px-2 py-1 rounded-lg text-slate-400">{filteredLogs.length} سجل</span>
-          </h3>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text"
-                placeholder="بحث بالـ IP أو الوكيل..."
-                value={deviceSearchTerm}
-                onChange={(e) => setDeviceSearchTerm(e.target.value)}
-                className="pl-4 pr-10 py-2 bg-black/50 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500 w-full sm:w-64"
-              />
-            </div>
-            <select
-              value={deviceFilter}
-              onChange={(e) => setDeviceFilter(e.target.value as any)}
-              className="px-4 py-2 bg-black/50 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="all">كل الأجهزة</option>
-              <option value="Mobile">هاتف المحمول</option>
-              <option value="Desktop">كمبيوتر مكتبي</option>
-              <option value="Tablet">جهاز لوحي</option>
-              <option value="Bot">روبوت/زاحف</option>
-            </select>
-            <select
-              value={deviceStatusFilter}
-              onChange={(e) => setDeviceStatusFilter(e.target.value as any)}
-              className="px-4 py-2 bg-black/50 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500"
-            >
-              <option value="all">كل الحالات</option>
-              <option value="online">مباشر الآن</option>
-              <option value="offline">غير متصل</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-sm">
-            <thead className="bg-black/60 text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="p-4 font-bold">الحالة</th>
-                <th className="p-4 font-bold">IP الموقع</th>
-                <th className="p-4 font-bold">الجهاز والمتصفح</th>
-                <th className="p-4 font-bold">الجلسات و النشاط</th>
-                <th className="p-4 font-bold text-center">آخر تفاعل</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/50">
-              {filteredLogs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center text-slate-500">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    لا توجد بيانات مطابقة للبحث
-                  </td>
-                </tr>
-              ) : (
-                filteredLogs.map((log: any, idx: number) => (
-                  <React.Fragment key={idx}>
-                    <tr className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-3 h-3 rounded-full ${log.status === 'online' ? 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-600'}`}></div>
-                          <span className={`font-bold ${log.status === 'online' ? 'text-emerald-400' : 'text-slate-500'}`}>
-                            {log.status === 'online' ? 'مباشر' : 'غير متصل'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2 group/ip">
-                          <span className="font-mono text-slate-300" dir="ltr">{log.ip}</span>
-                          <button 
-                            onClick={() => {
-                              navigator.clipboard.writeText(log.ip);
-                              setCopiedIp(log.ip);
-                              setTimeout(() => setCopiedIp(null), 2000);
-                            }}
-                            className="text-slate-600 hover:text-white transition-colors p-1"
-                            title="نسخ IP"
-                          >
-                            {copiedIp === log.ip ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                        {log.country && (
-                          <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                            <MapPin className="w-3 h-3" /> {log.city ? `${log.city}, ` : ''}{log.country}
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-slate-800 rounded-lg text-slate-400">
-                            {log.deviceType === 'Mobile' ? <Smartphone className="w-4 h-4" /> : 
-                             log.deviceType === 'Desktop' ? <Monitor className="w-4 h-4" /> : 
-                             log.deviceType === 'Bot' ? <Layout className="w-4 h-4 text-rose-400" /> : 
-                             <AppWindow className="w-4 h-4" />}
-                          </div>
-                          <div>
-                            <div className="font-bold text-white text-xs">{log.browser} • {log.os}</div>
-                            <div className="text-[10px] text-slate-500 mt-0.5">{log.deviceType}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-col gap-1 text-xs">
-                          <div className="flex items-center justify-between bg-slate-900/50 px-2 py-1 rounded">
-                            <span className="text-slate-500">الجلسات:</span>
-                            <span className="font-mono text-blue-400 font-bold">{log.sessionCount || 1}</span>
-                          </div>
-                          <div className="flex items-center justify-between bg-slate-900/50 px-2 py-1 rounded">
-                            <span className="text-slate-500">الصفحات:</span>
-                            <span className="font-mono text-purple-400 font-bold">{log.pageviews || 1}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="text-xs text-slate-300 font-medium">
-                          {formatDistanceToNow(new Date(log.lastSeen), { addSuffix: true, locale: ar })}
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-1" dir="ltr">
-                          {new Date(log.lastSeen).toLocaleTimeString()}
-                        </div>
-                        <button 
-                          onClick={() => setExpandedUserAgentId(expandedUserAgentId === log.id ? null : log.id)}
-                          className="mt-2 text-[10px] text-blue-400 hover:text-blue-300 flex items-center justify-center gap-1 mx-auto"
-                        >
-                          تفاصيل الوكيل {expandedUserAgentId === log.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        </button>
-                      </td>
-                    </tr>
-                    {expandedUserAgentId === log.id && (
-                      <tr className="bg-black/20">
-                        <td colSpan={5} className="p-4 border-t border-slate-800/50">
-                          <div className="text-xs font-mono text-slate-400 break-all bg-black/50 p-3 rounded-lg border border-slate-800">
-                            <span className="text-slate-500 mb-1 block">User Agent:</span>
-                            {log.userAgent}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </motion.div>
-  );
+      <section><h3>الحركة اليومية</h3><div className="analytics-legend"><span>المشاهدات</span><span>المتصفحات الفريدة</span></div>
+        {report.summary.totalPageviews === 0 ? <p className="analytics-empty">لا توجد مشاهدات مسجلة لهذه الفترة. لن تُستنتج زيارات من تغيّر الأسعار أو اتصالات السيرفر.</p> :
+        <div className="analytics-chart" dir="ltr"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.trend} margin={{ top: 15, right: 12, left: 0, bottom: 5 }}>
+          <CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="date" tickFormatter={value => value.slice(5)} minTickGap={25} stroke="var(--muted-ink)" /><YAxis allowDecimals={false} width={40} stroke="var(--muted-ink)" />
+          <Tooltip contentStyle={{ background: 'var(--surface)', borderColor: 'var(--line)', color: 'var(--ink)', direction: 'rtl' }} />
+          <Area dataKey="pageviews" name="المشاهدات" stroke="var(--official)" fill="var(--official)" fillOpacity={0.12} isAnimationActive={false} />
+          <Area dataKey="visitors" name="المتصفحات الفريدة" stroke="#c58025" fill="transparent" strokeDasharray="5 3" isAnimationActive={false} />
+        </AreaChart></ResponsiveContainer></div>}
+        <details><summary>عرض الأرقام اليومية</summary><div className="analytics-table"><table><thead><tr><th>التاريخ</th><th>المشاهدات</th><th>متصفحات فريدة</th></tr></thead><tbody>{report.trend.map(day => <tr key={day.date}><td>{day.date}</td><td>{number(day.pageviews)}</td><td>{number(day.visitors)}</td></tr>)}</tbody></table></div></details>
+      </section>
+      <div className="analytics-columns">{breakdown('الصفحات الأكثر مشاهدة', report.pages, pageNames)}{breakdown('مصادر الوصول', report.sources)}</div>
+      <div className="analytics-columns analytics-thirds">{breakdown('الأجهزة', report.deviceTypes, { Desktop: 'كمبيوتر', Mobile: 'هاتف', Tablet: 'جهاز لوحي' })}{breakdown('المتصفحات', report.browsers)}{breakdown('أنظمة التشغيل', report.os)}</div>
+      <details className="analytics-method"><summary>كيف تُقرأ هذه الأرقام؟</summary><p>الزائر الفريد هو معرّف متصفح، وليس شخصًا مؤكدًا. مسح التخزين أو استخدام جهاز آخر قد يحتسب معرّفًا جديدًا. لا تُجمع أعداد الزوار اليومية للحصول على العدد الفريد للفترة.</p><p>تُسجّل الصفحات العامة فقط، وتُدمج إعادة فتح الصفحة نفسها خلال 30 ثانية. المقارنة مع الفترة السابقة ذات المدة المنقضية نفسها. غياب بيانات سابقة يمنع حساب نسبة النمو.</p><p>قد تنقص الأرقام بسبب حجب التتبع أو طلب عدم التتبع أو تعذّر الإرسال أو حدود الحماية. تُستبعد الروبوتات المعروفة قدر الإمكان، وليس بضمان كامل. بيانات الإحالة على مستوى اسم الموقع، ولا تُسجّل معاملات الروابط. فشل الحفظ البعيد يحتفظ بنسخة محلية، لكنه قد يترك فجوة في التقرير البعيد.</p></details>
+    </>}
+    <section><h3>لقطة الاتصالات الأخيرة</h3><p>سجل اتصالات منفصل عن المشاهدات، وليس عدّادًا حيًا للأشخاص. قد يحتوي تبويبات متعددة وإعادة اتصال.</p>
+      <div className="analytics-actions"><label className="analytics-search"><Search size={18} /><input aria-label="بحث في الاتصالات" placeholder="عنوان IP أو المتصفح أو الجهاز" value={search} onChange={e => setSearch(e.target.value)} /></label>
+        <select aria-label="حالة الاتصال" value={status} onChange={e => setStatus(e.target.value)}><option value="all">كل الاتصالات</option><option value="online">متصل وقت اللقطة</option><option value="offline">غير متصل</option></select></div>
+      {logsError ? <p role="alert">{logsError}</p> : <div className="analytics-table"><table><thead><tr><th>عنوان IP</th><th>المتصفح / النظام</th><th>مرات الاتصال</th><th>آخر نشاط</th><th>الحالة وقت اللقطة</th></tr></thead><tbody>{filtered.slice(0, 100).map((log, i) => <tr key={log.id || i}><td dir="ltr">{log.ip || 'غير متاح'}</td><td>{log.browser || 'غير معروف'} / {log.os || 'غير معروف'}</td><td>{Number.isFinite(log.visits) ? log.visits : 'غير متاح'}</td><td>{date(log.last_active || log.timestamp)}</td><td>{log.isOnline ? 'متصل' : 'غير متصل'}</td></tr>)}</tbody></table>{!filtered.length && <p>لا توجد اتصالات مطابقة.</p>}{filtered.length > 100 && <p>تُعرض أحدث 100 نتيجة؛ ضيّق البحث لعرض نتائج أخرى.</p>}</div>}
+    </section>
+  </div>;
 }

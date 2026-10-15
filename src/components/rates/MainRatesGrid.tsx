@@ -22,6 +22,7 @@ import { ar } from "date-fns/locale";
 import { Rates, CurrencyItem, HistoryPoint, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { RateCell } from "../RateCell";
+import { formatLibyaDate } from '../../utils/rateHistory';
 import { RateSkeleton } from "../ui/RateSkeleton";
 
 interface MainRatesGridProps {
@@ -340,9 +341,9 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 
         {/* 3. كرت المركزي (رسمي) */}
         {(() => {
-          const rawDiff = officialUsdRate - prevOfficialUsdRate;
-          const isUp = rawDiff >= 0.005;
-          const isDown = rawDiff <= -0.005;
+          const rawDiff = (Math.round(officialUsdRate * 10000) - Math.round(prevOfficialUsdRate * 10000)) / 10000;
+          const isUp = rawDiff > 0;
+          const isDown = rawDiff < 0;
           const isChange = isUp || isDown;
           const priceColor = officialUsdFlash === 'up' ? 'text-emerald-300' : officialUsdFlash === 'down' ? 'text-rose-300' : isUp ? 'text-emerald-400' : isDown ? 'text-rose-400' : 'text-white';
 
@@ -370,7 +371,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="my-auto py-1.5 flex flex-col gap-1 sm:gap-1.5">
                 <div className="flex items-baseline gap-1">
                   <span className={`text-lg sm:text-2xl font-black font-mono tracking-tight tabular-nums ${priceColor}`}>
-                    {officialUsdRate > 0 ? officialUsdRate.toFixed(2) : '—'}
+                    {officialUsdRate > 0 ? officialUsdRate.toFixed(4) : '—'}
                   </span>
                   <span className="text-[9px] sm:text-xs font-bold text-slate-400">د.ل</span>
                 </div>
@@ -383,7 +384,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                         : 'bg-rose-500/10 text-rose-400 border-rose-500/25'
                     }`}>
                       {isUp ? <ArrowUpRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" /> : <ArrowDownRight className="w-2.5 h-2.5 sm:w-3 sm:h-3" />}
-                      <span dir="ltr">{isUp ? '+' : ''}{rawDiff.toFixed(2)}</span>
+                      <span dir="ltr">{isUp ? '+' : ''}{rawDiff.toFixed(4)}</span>
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-0.5 text-[9px] sm:text-xs font-mono font-medium text-slate-300 bg-slate-800/80 px-1.5 sm:px-2 py-0.5 rounded-md border border-white/10 shadow-sm">
@@ -397,14 +398,14 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
               <div className="pt-1.5 sm:pt-2 border-t border-white/[0.07] flex flex-col gap-0.5 text-[9px] sm:text-xs text-slate-400 mt-auto">
                 <div className="flex items-center justify-between font-mono">
                   <span className="text-slate-500 font-sans text-[8.5px] sm:text-[10.5px]">السابق:</span>
-                  <span dir="ltr" className="text-slate-300 font-bold">{prevOfficialUsdRate > 0 ? prevOfficialUsdRate.toFixed(2) : '—'}</span>
+                  <span dir="ltr" className="text-slate-300 font-bold">{prevOfficialUsdRate > 0 ? prevOfficialUsdRate.toFixed(4) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-500 font-sans text-[8px] sm:text-[10px]">
                   <span className="flex items-center gap-0.5 text-slate-500">
                     <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-500 shrink-0" />
-                    <span>تحديث:</span>
+                    <span>آخر تغير:</span>
                   </span>
-                  <span className="text-slate-400 truncate">{getShortTimeAgo(officialUsdLastChanged)}</span>
+                  <span className="text-slate-400 truncate">{formatLibyaDate(officialUsdLastChanged || '')}</span>
                 </div>
               </div>
             </div>
@@ -752,6 +753,7 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                   rate={rate}
                   prevRate={prevRate}
                   trend={trends24h[currency.code]?.official}
+                  decimals={4}
                   lastChangedDate={rates?.lastChanged?.official[currency.code]}
                   onClick={() => setSelectedRate({ code: currency.code, name: currency.name, market: 'official' })}
                 />

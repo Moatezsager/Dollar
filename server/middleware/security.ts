@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
-import rateLimit from "express-rate-limit";
+import rateLimit, { MemoryStore, ipKeyGenerator } from "express-rate-limit";
+import { PUBLIC_API_DEFAULTS, PUBLIC_API_BOUNDS, PUBLIC_API_CAPACITY } from '../../shared/developerApi';
 import helmet from "helmet";
 import { appConfig } from "../config";
 
@@ -29,6 +30,13 @@ export const apiStats = {
 };
 
 export const bannedIPs = new Map<string, number>();
+
+export const developerApiHeaders: express.RequestHandler = (_req, res, next) => {
+  res.set({ 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Authorization, Accept',
+    'Access-Control-Expose-Headers': 'Retry-After, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset' });
+  next();
+};
 
 export const ipBanMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
@@ -167,6 +175,7 @@ export const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
+    if (/^\/public\/rates\/?$/i.test(req.path)) return true;
     if (req.path === '/health' || req.path === '/ping' || req.path === '/version') return true;
     if (req.path.startsWith('/refresh-') || req.path === '/cleanup-db') {
       const key = extractProvidedCronKey(req);
@@ -240,20 +249,50 @@ export const premiumApiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const publicApiLimiter = rateLimit({
-  windowMs: appConfig.apiConfig?.rateLimitWindowMs || 60000,
-  max: appConfig.apiConfig?.rateLimitMaxRequests || 20,
-  handler: (req, res, next, options) => {
-    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
-    if (ip) {
-      const banDuration = appConfig.apiConfig?.banDurationMinutes || 5;
-      bannedIPs.set(ip, Date.now() + banDuration * 60 * 1000);
-      console.warn(`[Security] Banned IP ${ip} for ${banDuration} minutes due to rate limit exceeded.`);
-      apiStats.bannedIPsCount++;
-    }
-    apiStats.public.failedRequests++;
-    res.status(options.statusCode).json({ success: false, error: `Too many requests. Your IP is temporarily banned.` });
+export function getPublicApiConfig() {
+  const config = appConfig.apiConfig;
+  const bounded = (value: unknown, min: number, max: number, fallback: number) =>
+    Number.isInteger(value) && Number(value) >= min && Number(value) <= max ? Number(value) : fallback;
+  return {
+    enabled: config?.enabled !== false,
+    rateLimitWindowMs: bounded(config?.rateLimitWindowMs, PUBLIC_API_BOUNDS.minWindow, PUBLIC_API_BOUNDS.maxWindow, PUBLIC_API_DEFAULTS.rateLimitWindowMs),
+    rateLimitMaxRequests: bounded(config?.rateLimitMaxRequests, PUBLIC_API_BOUNDS.minRequests, PUBLIC_API_BOUNDS.maxRequests, PUBLIC_API_DEFAULTS.rateLimitMaxRequests),
+  };
+}
+
+let publicWindow = 0;
+let publicStore: MemoryStore;
+let publicLimiter: ReturnType<typeof rateLimit>;
+const publicCapacityLimiter = rateLimit({
+  windowMs: 60000, limit: PUBLIC_API_CAPACITY, keyGenerator: () => 'public-api',
+  standardHeaders: false, legacyHeaders: false,
+  handler: (_req, res) => {
+    res.set('Retry-After', '60').status(429).json({ success: false, error: 'API_BUSY', message: 'Service capacity reached. Retry later.' });
   },
-  standardHeaders: true,
-  legacyHeaders: false,
 });
+
+// Separate quotas protect the API without banning visitors from the rest of the site.
+export const publicApiLimiter: express.RequestHandler = (req, res, next) => {
+  publicCapacityLimiter(req, res, () => {
+    const config = getPublicApiConfig();
+    if (publicWindow !== config.rateLimitWindowMs) {
+      publicStore?.shutdown();
+      publicWindow = config.rateLimitWindowMs;
+      publicStore = new MemoryStore();
+      publicLimiter = rateLimit({ windowMs: publicWindow, store: publicStore,
+        // Runtime settings rebuild this one limiter and shut down its previous store.
+        validate: { creationStack: false },
+        limit: () => getPublicApiConfig().rateLimitMaxRequests,
+        standardHeaders: true, legacyHeaders: false,
+        message: { success: false, error: 'RATE_LIMITED', message: 'Request quota exceeded. Respect Retry-After.' },
+      });
+    }
+    const key = ipKeyGenerator(req.ip || req.socket.remoteAddress || 'unknown');
+    if (publicStore.current.size + publicStore.previous.size >= 10000 &&
+        !publicStore.current.has(key) && !publicStore.previous.has(key)) {
+      res.set('Retry-After', '60').status(503).json({ success: false, error: 'API_BUSY' });
+      return;
+    }
+    publicLimiter(req, res, next);
+  });
+};

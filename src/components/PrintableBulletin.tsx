@@ -97,7 +97,7 @@ export const PrintableBulletin = forwardRef<HTMLDivElement, PrintableBulletinPro
               const previous = group.official ? rates?.previousOfficial?.[item.code] : rates?.previousParallel?.[item.code];
               const hasPrevious = isPrice(previous);
               const difference = hasPrevious ? price - previous : null;
-              const decimals = group.official ? 3 : 2;
+              const decimals = group.official ? 4 : 2;
               const changed = difference !== null && Math.abs(difference) >= .5 * Math.pow(10, -decimals);
               const tone = changed ? difference! > 0 ? 'pdf-up' : 'pdf-down' : '';
               const unit = group.id === 'metals' ? item.code.includes('LIRA') || item.code.includes('MUJARA') ? 'قطعة' : 'جرام' : item.code;
@@ -107,7 +107,7 @@ export const PrintableBulletin = forwardRef<HTMLDivElement, PrintableBulletinPro
                   <td className="pdf-number pdf-current">{price.toFixed(decimals)}</td>
                   <td className="pdf-number">{hasPrevious ? previous.toFixed(decimals) : '—'}</td>
                   <td className={`pdf-number ${tone}`}>{difference === null ? '—' : changed ? `${difference > 0 ? '+' : ''}${difference.toFixed(decimals)}` : (0).toFixed(decimals)}</td>
-                  <td className={`pdf-number ${tone}`}>{difference === null ? '—' : changed ? `${difference > 0 ? '+' : ''}${(difference / previous! * 100).toFixed(2)}%` : '0.00%'}</td>
+                  <td className={`pdf-number ${tone}`}>{difference === null ? '—' : changed ? `${difference > 0 ? '+' : ''}${(difference / previous! * 100).toFixed(group.official ? 4 : 2)}%` : '0.00%'}</td>
                   <td className={tone}>{difference === null ? 'غير متاح' : changed ? difference > 0 ? 'ارتفاع ↑' : 'انخفاض ↓' : 'مستقر'}</td>
                 </tr>
               );

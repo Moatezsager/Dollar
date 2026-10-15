@@ -1,4 +1,6 @@
 import express from "express";
+import { rateLimit } from 'express-rate-limit';
+import { recordPageview } from '../services/analytics-tracking';
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
@@ -145,108 +147,9 @@ router.post("/messages", messageRateLimiter, async (req: express.Request, res: e
   }
 });
 
-router.post("/analytics/track", express.json(), (req: express.Request, res: express.Response) => {
-  try {
-    const { sessionId, visitorId, pagePath, referrer } = req.body;
-    if (!sessionId || !visitorId) {
-      return res.status(400).json({ success: false, error: "Missing sessionId or visitorId" });
-    }
-
-    const ua = req.headers['user-agent'] || 'Unknown';
-    let deviceType = "Desktop";
-    let deviceVendor = "Unknown";
-    let deviceModel = "Unknown";
-
-    if (/mobile/i.test(ua)) deviceType = "Mobile";
-    if (/tablet|ipad/i.test(ua)) deviceType = "Tablet";
-    if (/bot|crawler|spider|googlebot|bingbot|yandex/i.test(ua)) deviceType = "Bot";
-
-    if (/iPhone/i.test(ua)) {
-      deviceVendor = "Apple"; deviceModel = "iPhone"; deviceType = "Mobile";
-    } else if (/iPad/i.test(ua)) {
-      deviceVendor = "Apple"; deviceModel = "iPad"; deviceType = "Tablet";
-    } else if (/Samsung|SM-|GT-/i.test(ua)) {
-      deviceVendor = "Samsung"; deviceModel = "Galaxy"; deviceType = "Mobile";
-    } else if (/Huawei|Honor/i.test(ua)) {
-      deviceVendor = "Huawei"; deviceModel = "Device"; deviceType = "Mobile";
-    } else if (/Xiaomi|Redmi|POCO/i.test(ua)) {
-      deviceVendor = "Xiaomi"; deviceModel = "Device"; deviceType = "Mobile";
-    } else if (/Android/i.test(ua)) {
-      deviceVendor = "Android"; deviceModel = "Smartphone"; deviceType = "Mobile";
-    } else if (/Windows/i.test(ua)) {
-      deviceVendor = "PC"; deviceModel = "Windows Desktop"; deviceType = "Desktop";
-    } else if (/Macintosh|Mac OS/i.test(ua)) {
-      deviceVendor = "Apple"; deviceModel = "Macintosh"; deviceType = "Desktop";
-    } else if (/Linux/i.test(ua)) {
-      deviceVendor = "PC"; deviceModel = "Linux Desktop"; deviceType = "Desktop";
-    }
-
-    let osName = "Unknown";
-    let osVersion = "Unknown";
-    if (/Windows NT 10.0/i.test(ua)) { osName = "Windows"; osVersion = "10 / 11"; }
-    else if (/Windows/i.test(ua)) { osName = "Windows"; }
-    else if (/Mac OS X/i.test(ua)) { osName = "macOS"; }
-    else if (/Android (\d+(\.\d+)?)/i.test(ua)) {
-      const match = ua.match(/Android (\d+(\.\d+)?)/i);
-      osName = "Android";
-      osVersion = match ? match[1] : "Android";
-    }
-    else if (/iPhone OS (\d+_\d+)/i.test(ua)) {
-      const match = ua.match(/iPhone OS (\d+_\d+)/i);
-      osName = "iOS";
-      osVersion = match ? match[1].replace("_", ".") : "iOS";
-    } else if (/Linux/i.test(ua)) {
-      osName = "Linux";
-    }
-
-    let browserName = "Other";
-    let browserVersion = "Unknown";
-    if (/SamsungBrowser/i.test(ua)) browserName = "Samsung Internet";
-    else if (/Edg/i.test(ua)) browserName = "Microsoft Edge";
-    else if (/Chrome|CriOS/i.test(ua)) browserName = "Google Chrome";
-    else if (/Firefox|FxiOS/i.test(ua)) browserName = "Mozilla Firefox";
-    else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browserName = "Apple Safari";
-    else if (/Opera|OPR/i.test(ua)) browserName = "Opera";
-
-    // 1. Insert into local SQLite
-    const insertLocal = db.prepare(`
-      INSERT INTO analytics_events (
-        visitor_id, session_id, page_path, referrer, 
-        device_type, device_vendor, device_model, 
-        os_name, os_version, browser_name, browser_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    insertLocal.run(
-      visitorId, sessionId, pagePath || '/', referrer || '',
-      deviceType, deviceVendor, deviceModel,
-      osName, osVersion, browserName, browserVersion
-    );
-
-    // 2. Insert into Supabase
-    if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-      supabase.from('analytics_events').insert([{
-        visitor_id: visitorId,
-        session_id: sessionId,
-        page_path: pagePath || '/',
-        referrer: referrer || '',
-        device_type: deviceType,
-        device_vendor: deviceVendor,
-        device_model: deviceModel,
-        os_name: osName,
-        os_version: osVersion,
-        browser_name: browserName,
-        browser_version: browserVersion
-      }]).then(({ error }) => {
-        if (error) console.error("[Supabase] Analytics event sync error:", error.message);
-      });
-    }
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("[Analytics] Error logging tracking event:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+const analyticsCapacity = rateLimit({ windowMs: 60000, limit: 300, keyGenerator: () => 'analytics', standardHeaders: 'draft-8', legacyHeaders: false });
+const analyticsPerIP = rateLimit({ windowMs: 60000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
+router.post('/analytics/track', analyticsCapacity, analyticsPerIP, express.json({ limit: '4kb' }), recordPageview);
 
 router.post("/track/install", (req: express.Request, res: express.Response) => {
   try {

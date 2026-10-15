@@ -57,13 +57,16 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 
 ### Realtime and cache behavior
 
+- Historical record corrections in Web update both `rates.USD` and `usd` for USD without changing the observation time. Older-record edits must not publish a new current social price. Successful record edits/deletions send Web-only `history_update` with encoded authoritative history and `readStartedAt`; clients replace cached history, preserving live observations newer than that read. This is separate from `rates_update` and does not trigger per-visitor polling or Worker jobs.
+- `/api/history` now uses HTTP `no-store` while retaining the existing server history cache. A strict read failure returns 503, never an empty successful deletion snapshot. Cache generations prevent reads begun before a correction from restoring stale cached data. `tests/history-corrections.cjs`, `tests/history-data.cjs`, and `tests/realtime-rates.cjs` cover correction persistence, historical publishing guards, deletion and in-flight races.
+
 - Publishing readiness contract (2026-10-12): authenticated `POST /api/internal/notify-rates-updated?wait=true` responds only after the shared database synchronization, USD/EUR HTML cache rebuild when prices change, and Socket.IO broadcast. Success is `{status:"synchronized",lastUpdated,parallel:{USD,EUR},official:{USD,EUR}}`; exhausted database retries return 503. Calls without `wait=true` retain the legacy immediate `accepted` response, which is not publishing readiness. Only this waiting path gets a 20-second HTTP timeout; ordinary APIs retain their existing limits. Do not accept client-provided prices as database truth.
 
 - `server/socket/socket.service.ts` emits `rates_update`, sends a snapshot on connection, and suppresses duplicate broadcasts based on official/parallel prices and `lastUpdated`. Preserve the `Rates` shape: `official`, `parallel`, `previousOfficial`, `previousParallel`, `lastUpdated`, and `lastChanged.{official,parallel}` (`server/types.ts`, `src/types/rates.ts`).
 - Other events include `online_count` (`{count}`), `config_update` (`{config}`), `app_version` (`{version,serverStartTime}`), and admin-room `user_logs` (`{logs}`). Inspect consumers in `src/Admin.tsx` as well as the public hook before changing them.
 - `src/hooks/useRatesData.ts` decodes/validates updates, rejects older snapshots, updates React state and local `lyd_rates`/`lyd_history` storage, and appends live history. It protects newer socket data from stale HTTP responses. `src/App.tsx` consumes this state for the UI.
 - Socket.IO uses polling/WebSocket transports and automatic reconnection; the hook fetches a snapshot after reconnection. Unmount removes listeners, disconnects the socket and clears its interval. The hook's 30-second fallback poll is for visitor count, **not price collection**.
-- Server DB caches are 30 seconds for rates and 60 seconds for history. `/api/rates?refresh=true` forces a DB read, not an external-source fetch. HTTP rates cache is `max-age=15, stale-while-revalidate=30`; history is `max-age=120, stale-while-revalidate=300`. The hook requests with `cache: 'no-store'`.
+- Server DB caches are 30 seconds for rates and 60 seconds for history. `/api/rates?refresh=true` forces a DB read, not an external-source fetch. HTTP rates cache is `max-age=15, stale-while-revalidate=30`; history uses `no-store` so historical corrections are not masked by browser HTTP caches. The hook requests with `cache: 'no-store'`.
 - The notification loader `loadLatestRatesFromSupabase()` reads the latest parallel/official rows directly and then broadcasts in-memory rates; it is not the full history initialization path. Check every cache layer and timestamp when diagnosing freshness, including PWA behavior, rather than assuming notification acknowledgement invalidates everything.
 
 ### Administration and Telegram contracts
@@ -95,6 +98,13 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 - After a build, `node tests/push-registration.cjs` checks real compiled service-worker activation, unified scope, PushManager and notification assets in an isolated browser. It does not request permission or subscribe a real device.
 
 ## Required working rules
+
+### Visitor analytics
+
+- Public page views are recorded by `useVisitorAnalytics`, not price updates or Socket reconnects. DNT/GPC disable page analytics; `enableUserTracking` is enforced server-side. Only known public page paths are accepted; referrers retain origin only. Never store query-string secrets or derive pageviews from connection counts.
+- `/api/analytics/track` has per-IP and process-wide request limits, 30-second duplicate suppression, bounded concurrent writes and a remote-write timeout. Local-only writes are counted visibly in the admin report; there is no durable remote retry queue. Do not claim lossless analytics or that a unique browser ID equals a person.
+- Admin `/analytics` accepts 1/7/30 calendar-day ranges in Africa/Tripoli, caches aggregates for five minutes, coalesces concurrent reads, and caps each raw report at 10,000 events. Local fallback and truncation disable growth comparisons. No automatic analytics polling or shared schema changes were introduced.
+- `node tests/analytics.cjs` and `node tests/analytics-ui.cjs` cover isolated aggregation, collection, privacy, caching and responsive admin behavior. They do not measure production completeness or Render CPU/RAM.
 
 - Preserve public UI/PWA, Socket.IO, admin UI, authentication, and visitor functionality.
 - Treat the Worker as owner of background source fetching, publishing, and scheduled jobs; Web may call authenticated Worker APIs server-side.
@@ -131,6 +141,14 @@ The locally available Worker implementation has now been inspected and tested wi
 - Server credentials stay out of the browser bundle. Set SUPABASE_SERVICE_ROLE_KEY in Render Web before deployment; keep the separate anon settings configured. Rotation of exposed credentials requires coordination and provider revocation, not only removal from source.
 - Error-log deletion uses a non-null primary-key filter compatible with integer IDs. Local broadcast timestamps stay milliseconds; remote broadcast_log uses timestamptz with ISO insertion and retention filters.
 - node tests/database-access.cjs isolates database credentials and the actual log-deletion route. Supply WORKER_PROJECT_PATH to test both services' remote broadcast timestamp contracts. No production environment loading or writes occur.
+
+## Developer API (2026-10-14)
+
+- The free `GET /api/public/rates` returns only parallel cash USD/EUR in LYD. It serves the Web memory snapshot without database/source requests and uses `Cache-Control: no-store`. Its `lastUpdated` comes from the parallel row, not a newer official/global timestamp. Missing/invalid/future data returns 503; a parallel snapshot older than 12 hours returns 503 with `success:false, stale:true` and the last available values.
+- API quotas use the trusted Express IP and IPv6 subnet grouping. Runtime settings are `app_config.config.apiConfig.{enabled,rateLimitWindowMs,rateLimitMaxRequests}`; validate bounds before applying. Defaults and the maximum quota are 5 requests/minute/IP; longer windows can further restrict access. Existing higher settings fall back to the conservative default. Documentation recommends one request per five minutes and uses https://dollar-price-qp14.onrender.com/api/public/rates. Paid access is requested through Contact, with agreed quotas. Changing the window recreates one store and clears its timer; changing only the maximum preserves counts. Public quota exhaustion returns 429/Retry-After without banning website visitors. A per-process 120-request/minute capacity ceiling, 10,000 tracked-IP cap and 100-entry request log bound resource usage. These are application limits, not distributed DDoS protection.
+- `/api/admin/api-stats` and `/api-config` retain admin-token authentication. Report remote persistence failure honestly. Never expose a premium key in responses or URL query strings. `/api/premium/rates` requires the server-only `PREMIUM_API_KEY`, has no built-in fallback, and uses private/no-store responses.
+- `Developers` is the canonical public guide; `ApiDocs` re-exports it. Examples and admin links must match the real routes. No unverified uptime guarantees. The guide's request test is manual and bounded, not polling.
+- `node tests/developer-api.cjs` checks real routers/limiters with isolated state; `node tests/developer-api-ui.cjs` tests the public/admin components on light/dark mobile/desktop fixtures. Neither contacts production. Paired Worker test fixtures include the new Web headers/shared constants; Worker runtime behavior is unchanged.
 
 ## Social Link Previews
 

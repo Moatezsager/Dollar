@@ -10,6 +10,9 @@ import {
   syncCheckRates 
 } from '../../services/db.service';
 import { broadcastRateChanges } from '../../services/social.service';
+import { fetchHistoryFromSupabase } from '../../services/db.service';
+import { getIO } from '../../socket/socket.service';
+import { obfuscateData } from '../../utils/helpers';
 
 export interface AdminDatabaseDeps {
   broadcastRatesUpdate: (rates: Rates) => void;
@@ -18,6 +21,17 @@ export interface AdminDatabaseDeps {
 
 export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Router {
   const router = express.Router();
+  const publishHistoryCorrection = async () => {
+    try {
+      const readStartedAt = new Date().toISOString();
+      const corrected = await fetchHistoryFromSupabase(true);
+      getIO()?.emit('history_update', { history: obfuscateData(corrected.slice(-120)), readStartedAt });
+      return true;
+    } catch {
+      console.error('[History] Record saved, but corrected history could not be broadcast.');
+      return false;
+    }
+  };
 
   // Records management
   router.get('/records/:market/:currency', async (req: express.Request, res: express.Response) => {
@@ -55,6 +69,10 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
     const { market, id } = req.params;
     const { currency, value } = req.body;
     const table = market === 'official' ? 'official_rates' : 'parallel_rates';
+    const numericValue = typeof value === 'number' || typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    if (!['official', 'parallel'].includes(market) || typeof currency !== 'string' || !/^[A-Z][A-Z0-9_]{0,39}$/.test(currency) || !Number.isFinite(numericValue) || numericValue <= 0) {
+      return res.status(400).json({ success: false, message: 'بيانات التصحيح غير صالحة' });
+    }
     
     if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
       return res.status(500).json({ success: false, message: "قاعدة البيانات غير متصلة" });
@@ -69,11 +87,11 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
         
       if (fetchError) throw fetchError;
       
-      const updatedRates = { ...existing.rates, [currency]: parseFloat(value) };
+      const updatedRates = { ...existing.rates, [currency]: numericValue };
       
       const { error: updateError } = await supabase
         .from(table)
-        .update({ rates: updatedRates })
+        .update({ rates: updatedRates, ...(currency === 'USD' ? { usd: numericValue } : {}) })
         .eq('id', id);
         
       if (updateError) throw updateError;
@@ -83,15 +101,15 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
       try {
         const { data: latestRecord } = await supabase
           .from(table)
-          .select('rates, recorded_at')
+          .select('id, rates, recorded_at')
           .order('recorded_at', { ascending: false })
           .limit(1)
           .single();
           
-        if (latestRecord && latestRecord.rates) {
+        if (latestRecord && latestRecord.rates && String(latestRecord.id) === String(id)) {
           if (market === 'official') {
              rates.official = { ...rates.official, ...latestRecord.rates };
-             rates.lastUpdated = latestRecord.recorded_at;
+             rates.lastUpdated = new Date(Math.max(Date.parse(rates.lastUpdated) || 0, Date.parse(latestRecord.recorded_at))).toISOString();
              if (currency) {
                rates.lastChanged.official[currency] = latestRecord.recorded_at;
              }
@@ -99,7 +117,7 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
              const oldVal = rates.parallel[currency] || existing.rates?.[currency] || parseFloat(value);
              const newVal = parseFloat(value);
              rates.parallel = { ...rates.parallel, ...latestRecord.rates };
-             rates.lastUpdated = latestRecord.recorded_at;
+             rates.lastUpdated = new Date(Math.max(Date.parse(rates.lastUpdated) || 0, Date.parse(latestRecord.recorded_at))).toISOString();
              if (currency) {
                rates.lastChanged.parallel[currency] = latestRecord.recorded_at;
              }
@@ -122,7 +140,8 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
         console.error("Error resyncing cache after update:", syncErr);
       }
       
-      res.json({ success: true, message: "تم تحديث السجل بنجاح" });
+      const historyUpdated = await publishHistoryCorrection();
+      res.json({ success: true, historyUpdated, message: historyUpdated ? 'تم تصحيح السجل وتحديث الرسوم البيانية' : 'تم حفظ السجل؛ تعذّر تحديث الرسوم الآن، حاول تحديث البيانات لاحقًا' });
     } catch (err: any) {
       if (!res.headersSent) {
         res.status(500).json({ success: false, message: err.message });
@@ -133,6 +152,7 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
   router.delete('/records/:market/:id', async (req: express.Request, res: express.Response) => {
     const { market, id } = req.params;
     const table = market === 'official' ? 'official_rates' : 'parallel_rates';
+    if (!['official', 'parallel'].includes(market)) return res.status(400).json({ success: false });
     
     if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
       return res.status(500).json({ success: false, message: "قاعدة البيانات غير متصلة" });
@@ -159,13 +179,13 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
         if (latestRecord && latestRecord.rates) {
           if (market === 'official') {
              rates.official = { ...rates.official, ...latestRecord.rates };
-             rates.lastUpdated = latestRecord.recorded_at;
+             rates.lastUpdated = new Date(Math.max(Date.parse(rates.lastUpdated) || 0, Date.parse(latestRecord.recorded_at))).toISOString();
              for (const key in latestRecord.rates) {
                rates.lastChanged.official[key] = latestRecord.recorded_at;
              }
           } else {
              rates.parallel = { ...rates.parallel, ...latestRecord.rates };
-             rates.lastUpdated = latestRecord.recorded_at;
+             rates.lastUpdated = new Date(Math.max(Date.parse(rates.lastUpdated) || 0, Date.parse(latestRecord.recorded_at))).toISOString();
              for (const key in latestRecord.rates) {
                rates.lastChanged.parallel[key] = latestRecord.recorded_at;
              }
@@ -176,7 +196,8 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
         console.error("Error resyncing cache after delete:", syncErr);
       }
       
-      res.json({ success: true, message: "تم حذف السجل بنجاح" });
+      const historyUpdated = await publishHistoryCorrection();
+      res.json({ success: true, historyUpdated, message: historyUpdated ? 'تم حذف السجل وتحديث الرسوم البيانية' : 'تم حذف السجل؛ تعذّر تحديث الرسوم الآن، حاول تحديث البيانات لاحقًا' });
     } catch (err: any) {
       if (!res.headersSent) {
         res.status(500).json({ success: false, message: err.message });

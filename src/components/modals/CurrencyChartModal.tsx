@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
-import { format } from "date-fns";
 import { ArrowUpRight, ArrowDownRight, Minus, X, Calculator, CheckCircle2, Copy, Share2, ChartNoAxesCombined } from "lucide-react";
 import { Rates, CURRENCIES, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
+import { formatLibyaDate } from '../../utils/rateHistory';
+
+const libyaDateTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Tripoli', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+});
+const libyaTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const libyaDate = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Tripoli', day: '2-digit', month: '2-digit' });
 
 interface CurrencyChartModalProps {
   selectedRate: { code: string; name: string; market: 'official' | 'parallel' } | null;
@@ -41,12 +47,13 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
         const decimals = selectedRate.market === 'official' ? 4 : (selectedRate.code === 'EGP' || selectedRate.code === 'TRY' ? 3 : 2);
         const market = selectedRate.market === 'parallel' ? 'السوق الموازي' : 'المصرف المركزي';
         const isMetal = METAL_IDS.includes(selectedRate.code);
-        const rangeLabel = chartRange === '24h' ? '24 ساعة' : chartRange === '7d' ? '7 أيام' : 'كل السجل';
         const color = chartStats.change > 0 ? 'var(--positive)' : chartStats.change < 0 ? 'var(--negative)' : 'var(--official)';
         const TrendIcon = chartStats.change > 0 ? ArrowUpRight : chartStats.change < 0 ? ArrowDownRight : Minus;
         const parsedAmount = Number(amount);
         const total = amount !== '' && Number.isFinite(parsedAmount) && parsedAmount >= 0 && currentRate > 0 ? parsedAmount * currentRate : null;
-        const updatedAt = Date.parse(rates?.lastUpdated || '');
+        const changedAt = Date.parse(rates?.lastChanged?.[selectedRate.market]?.[selectedRate.code] || '');
+        const updatedAt = Number.isFinite(changedAt) ? changedAt : Date.parse(rates?.lastUpdated || '');
+        const firstReading = chartData[0], lastReading = chartData[chartData.length - 1];
         const intraday = chartData.length > 1 && Date.parse(chartData[chartData.length - 1].time) - Date.parse(chartData[0].time) < 172800000;
         const handleCopyRate = async () => {
           triggerHaptic(8);
@@ -79,13 +86,18 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                 <div className="currency-detail-price">
                   <div><p>السعر الحالي</p>
                     <div><strong dir="ltr">{currentRate > 0 ? currentRate.toFixed(decimals) : '—'}</strong><span>د.ل</span></div>
-                    {Number.isFinite(updatedAt) && <small>تحديث البيانات: <time dateTime={new Date(updatedAt).toISOString()}>{format(updatedAt, 'dd/MM/yyyy · HH:mm')}</time></small>}
+                    {Number.isFinite(updatedAt) && <small>{Number.isFinite(changedAt) ? 'آخر تغير للسعر' : 'تحديث البيانات'}: <time dateTime={new Date(updatedAt).toISOString()} dir="ltr">{selectedRate.market === 'official' ? formatLibyaDate(updatedAt) : libyaDateTime.format(updatedAt)}</time></small>}
                   </div>
                   {chartData.length >= 2 && (
                     <div className="currency-detail-trend">
                       <div style={{ color }}><TrendIcon size={18} aria-hidden="true" /><strong dir="ltr">{chartStats.change > 0 ? '+' : ''}{chartStats.change.toFixed(decimals)} د.ل</strong></div>
-                      <span style={{ color }} dir="ltr">{chartStats.changePercent > 0 ? '+' : ''}{chartStats.changePercent.toFixed(2)}%</span>
-                      <small>التغير خلال {rangeLabel}</small>
+                      <span style={{ color }} dir="ltr">{chartStats.changePercent > 0 ? '+' : ''}{chartStats.changePercent.toFixed(selectedRate.market === 'official' ? 4 : 2)}%</span>
+                      <small>{selectedRate.market === 'official' ? 'التغير بين الأيام المعروضة' : 'التغير بين القراءات المعروضة'}</small>
+                      <small className="currency-detail-period">
+                        <span>من <time dateTime={firstReading.time} dir="ltr">{selectedRate.market === 'official' ? formatLibyaDate(firstReading.time) : libyaDateTime.format(new Date(firstReading.time))}</time></span>
+                        <span>إلى <time dateTime={lastReading.time} dir="ltr">{selectedRate.market === 'official' ? formatLibyaDate(lastReading.time) : libyaDateTime.format(new Date(lastReading.time))}</time></span>
+                      </small>
+                      <small>بتوقيت ليبيا</small>
                     </div>
                   )}
                 </div>
@@ -95,26 +107,28 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                     <div className="currency-detail-chart-heading">
                       <h3>حركة السعر</h3>
                       <div role="group" aria-label="فترة الرسم البياني">
-                        {(['24h', '7d', 'all'] as const).map(range => (
+                        {(selectedRate.market === 'official' ? ['7d', 'all'] as const : ['24h', '7d', 'all'] as const).map(range => (
                           <button key={range} aria-pressed={chartRange === range} onClick={() => { setChartRange(range); triggerHaptic(5); }}>
                             {range === '24h' ? '24 ساعة' : range === '7d' ? '7 أيام' : 'الكل'}
                           </button>
                         ))}
                       </div>
                     </div>
+                    {selectedRate.market === 'official' && <p className="currency-detail-daily-note">آخر سعر رسمي متاح لكل يوم · {chartData.length} يوم</p>}
                     <div className="currency-detail-chart" role="group" aria-label="الرسم البياني للسعر">
                       {chartData.length >= 2 ? (
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart data={chartData} accessibilityLayer margin={{ top: 12, right: 4, left: 4, bottom: 4 }}>
                             <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
                             <XAxis dataKey={point => Date.parse(point.time)} type="number" scale="time" domain={['dataMin', 'dataMax']} tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
-                              tickFormatter={time => format(new Date(time), chartRange === '24h' || intraday ? 'HH:mm' : 'dd/MM')}
+                              ticks={selectedRate.market === 'official' ? chartData.map(point => Date.parse(point.time)) : undefined}
+                              tickFormatter={time => selectedRate.market === 'official' ? libyaDate.format(new Date(time)) : (chartRange === '24h' || intraday ? libyaTime : libyaDate).format(new Date(time))}
                               minTickGap={32} axisLine={false} tickLine={false} />
-                            <YAxis domain={['auto', 'auto']} orientation="right" tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
+                            <YAxis domain={['auto', 'auto']} orientation="right" tickCount={selectedRate.market === 'official' ? 2 : 5} tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
                               axisLine={false} tickLine={false} tickFormatter={value => Number(value).toFixed(decimals)} width={68} />
                             <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--ink)' }}
                               itemStyle={{ color, fontSize: 14, fontWeight: 700 }} labelStyle={{ color: 'var(--muted-ink)', fontSize: 12 }}
-                              labelFormatter={time => format(Number(time), 'dd/MM/yyyy · HH:mm')}
+                              labelFormatter={time => selectedRate.market === 'official' ? formatLibyaDate(Number(time)) : libyaDateTime.format(Number(time))}
                               formatter={(value: number) => [`${Number(value).toFixed(decimals)} د.ل`, 'السعر']} />
                             <Area type="linear" dataKey="value" stroke={color} strokeWidth={2.5} fill={color} fillOpacity={0.08} isAnimationActive={false} />
                           </AreaChart>
@@ -122,14 +136,14 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                       ) : <div className="currency-detail-empty" role="status"><ChartNoAxesCombined size={28} aria-hidden="true" /><p>لا توجد بيانات تاريخية كافية لهذه الفترة</p></div>}
                     </div>
                     {chartData.length > 0 && (
-                      <details onToggle={event => setShowHistoryTable(event.currentTarget.open)} className="currency-detail-records">
+                      <details open={showHistoryTable} onToggle={event => setShowHistoryTable(event.currentTarget.open)} className="currency-detail-records">
                         <summary>القراءات التاريخية</summary>
                         {showHistoryTable && <div>
                           <table>
                             <caption className="sr-only">سجل سعر {selectedRate.name} للفترة المحددة بالدينار الليبي</caption>
-                            <thead><tr><th scope="col">التاريخ والوقت</th><th scope="col">السعر (د.ل)</th></tr></thead>
+                            <thead><tr><th scope="col">{selectedRate.market === 'official' ? 'اليوم' : 'التاريخ والوقت'}</th><th scope="col">السعر (د.ل)</th></tr></thead>
                             <tbody>{chartData.map((point, index) => (
-                              <tr key={`${point.time}-${index}`}><td><time dateTime={point.time} dir="ltr">{format(new Date(point.time), 'dd/MM/yyyy · HH:mm')}</time></td><td><span dir="ltr">{point.value.toFixed(decimals)}</span></td></tr>
+                              <tr key={`${point.time}-${index}`}><td><time dateTime={point.time} dir="ltr">{selectedRate.market === 'official' ? formatLibyaDate(point.time) : libyaDateTime.format(new Date(point.time))}</time></td><td><span dir="ltr">{point.value.toFixed(decimals)}</span></td></tr>
                             ))}</tbody>
                           </table>
                         </div>}
@@ -165,7 +179,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                     </section>
 
                     <details className="currency-detail-long-range">
-                      <summary>ملخص آخر 30 يومًا</summary>
+                      <summary>القراءات المتاحة خلال آخر 30 يومًا</summary>
                       <dl>{[
                         { label: 'أعلى قراءة', value: advancedStats.resistance },
                         { label: 'أقل قراءة', value: advancedStats.support },

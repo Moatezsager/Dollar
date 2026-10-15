@@ -62,9 +62,10 @@ export function AdminDatabase({ token, config }: AdminDatabaseProps) {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess("تم تحديث السجل بنجاح");
         setEditingRecord(null);
-        fetchDbRecords();
+        await fetchDbRecords();
+        if (data.historyUpdated === false) setError(data.message);
+        else setSuccess(data.message || "تم تحديث السجل بنجاح");
       } else {
         setError(data.message || "فشل التحديث");
       }
@@ -83,8 +84,9 @@ export function AdminDatabase({ token, config }: AdminDatabaseProps) {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess("تم حذف السجل بنجاح");
-        fetchDbRecords();
+        await fetchDbRecords();
+        if (data.historyUpdated === false) setError(data.message);
+        else setSuccess(data.message || "تم حذف السجل بنجاح");
       } else {
         setError(data.message || "فشل الحذف");
       }
@@ -188,7 +190,8 @@ export function AdminDatabase({ token, config }: AdminDatabaseProps) {
                         {editingRecord === record.id ? (
                           <input
                             type="number"
-                            step="0.001"
+                            step={dbMarket === 'official' ? '0.0001' : '0.001'}
+                            aria-label="السعر المصحح"
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             className="w-32 bg-black border border-emerald-500/50 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -196,7 +199,7 @@ export function AdminDatabase({ token, config }: AdminDatabaseProps) {
                           />
                         ) : (
                           <span className="text-lg font-bold text-emerald-400">
-                            {Number(record.value).toFixed(3)}
+                            {Number(record.value).toFixed(dbMarket === 'official' ? 4 : 3)}
                           </span>
                         )}
                       </td>

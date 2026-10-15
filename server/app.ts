@@ -16,7 +16,8 @@ import {
   permissionsPolicyMiddleware,
   apiLimiter,
   publicApiLimiter,
-  apiStats
+  apiStats,
+  developerApiHeaders
 } from "./middleware/security";
 
 // Routers
@@ -46,6 +47,7 @@ export async function createApp(io: SocketIOServer) {
   app.use(compression());
   app.use(express.json());
   app.set('trust proxy', 1);
+  app.use(['/api/public/rates', '/api/premium/rates'], developerApiHeaders);
 
   // Security Middlewares
   app.use(ipBanMiddleware);

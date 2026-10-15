@@ -19,7 +19,7 @@ export function InformationPage({ title, page, onBack, onNavigate, children }: I
       <button className="information-back" onClick={onBack}><ArrowRight size={18} aria-hidden="true" /><span>العودة</span></button>
       <header className="information-header">
         <div><h1>{title}</h1><p>مؤشر الدينار · Dollar Price</p></div>
-        <span>آخر مراجعة: <time dateTime="2026-10-08">8 أكتوبر 2026</time></span>
+        <span>آخر مراجعة: <time dateTime={page === 'privacy' ? '2026-10-14' : '2026-10-08'}>{page === 'privacy' ? '14 أكتوبر 2026' : '8 أكتوبر 2026'}</time></span>
       </header>
       <nav aria-label="معلومات المنصة" className="information-nav">
         {[

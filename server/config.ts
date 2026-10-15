@@ -12,7 +12,7 @@ export let appConfig: AppConfig = {
   apiConfig: {
     enabled: true,
     rateLimitWindowMs: 60000,
-    rateLimitMaxRequests: 20,
+    rateLimitMaxRequests: 5,
     banDurationMinutes: 5,
   },
   terms: [
@@ -118,7 +118,7 @@ export function applyLoadedConfig(loadedConfig: AppConfig, source: string) {
     loadedConfig.apiConfig = {
       enabled: true,
       rateLimitWindowMs: 60000,
-      rateLimitMaxRequests: 20,
+      rateLimitMaxRequests: 5,
       banDurationMinutes: 5,
     };
   }

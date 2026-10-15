@@ -45,7 +45,7 @@ async function main() {
         }
         let body = {};
         if (url.pathname === '/api/config') body = { terms };
-        if (url.pathname === '/api/rates') body = { parallel, official: { USD: 6.3, EUR: 7.1 }, previousParallel: { EUR: 10.1 }, previousOfficial: { EUR: 7 }, lastUpdated: '2026-10-08T08:30:00Z' };
+        if (url.pathname === '/api/rates') body = { parallel, official: { USD: 6.4404, EUR: 7.1001 }, previousParallel: { EUR: 10.1 }, previousOfficial: { EUR: 7.1 }, lastUpdated: '2026-10-08T08:30:00Z' };
         if (url.pathname === '/api/history') body = [{ time: new Date().toISOString(), usdParallel: parallel.USD, usdOfficial: 6.3, ratesParallel: parallel }];
         if (url.pathname === '/api/status') body = { status: 'active' };
         return route.fulfill({ json: body });
@@ -121,6 +121,9 @@ async function main() {
       const report = page.locator('#pdf-report-container');
       assert.equal(await report.locator('tbody tr').count(), 2, 'Print preserves the selected official currencies');
       assert.equal(await report.locator('[data-code="USD"] td').nth(2).innerText(), '—', 'Unavailable previous price is not fabricated');
+      assert.equal(await report.locator('[data-code="USD"] td').nth(1).innerText(), '6.4404');
+      assert.equal(await report.locator('[data-code="EUR"] td').nth(3).innerText(), '+0.0001');
+      assert.equal(await report.locator('[data-code="EUR"] td').nth(4).innerText(), '+0.0014%');
       assert((await report.innerText()).includes('10:30'), 'Data timestamp uses Tripoli, not the visitor timezone');
       assert(!(await report.innerText()).includes('معتمدة رسمياً'));
       if (width === 1440) {

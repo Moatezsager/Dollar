@@ -3,6 +3,7 @@ import { Rates, HistoryPoint, CURRENCIES, METAL_IDS } from "../types/rates";
 import { SearchableItem } from "../utils/smartSearch";
 import { usePriceFlash } from "./usePriceFlash";
 import { Minus, Activity, TrendingUp } from "lucide-react";
+import { getRateHistory, libyaDayKey } from '../utils/rateHistory';
 
 interface UseRatesCalculationsProps {
   rates: Rates | null;
@@ -17,7 +18,8 @@ export function useRatesCalculations({
   configTerms,
   selectedRate,
 }: UseRatesCalculationsProps) {
-  const [chartRange, setChartRange] = useState<'24h' | '7d' | 'all'>('7d');
+  const [requestedChartRange, setChartRange] = useState<'24h' | '7d' | 'all'>('7d');
+  const chartRange = selectedRate?.market === 'official' && requestedChartRange === '24h' ? '7d' : requestedChartRange;
 
   // Derive dynamic currencies from configTerms to support user-added currencies
   const dynamicCurrencies = useMemo(() => {
@@ -40,6 +42,10 @@ export function useRatesCalculations({
 
   const filteredHistory = useMemo(() => {
     if (!history.length) return [];
+    if (selectedRate?.market === 'official' && chartRange !== 'all') {
+      const firstDay = libyaDayKey(Date.now() - 6 * 86400000), today = libyaDayKey(Date.now());
+      return history.filter(point => { const day = libyaDayKey(point.time); return day >= firstDay && day <= today; });
+    }
     const now = new Date();
     let cutoff: Date | null = null;
     
@@ -51,33 +57,11 @@ export function useRatesCalculations({
     
     if (!cutoff) return history;
     return history.filter(h => new Date(h.time) >= cutoff!);
-  }, [history, chartRange]);
+  }, [history, chartRange, selectedRate?.market]);
 
   const chartData = useMemo(() => {
     const targetRate = selectedRate || { code: 'USD', name: 'دولار أمريكي', market: 'parallel' as const };
-    if (!filteredHistory.length) return [];
-    
-    const data = filteredHistory.map(h => {
-      const rateObj = targetRate.market === 'parallel' ? h.ratesParallel : h.ratesOfficial;
-      let value = 0;
-      
-      if (rateObj && rateObj[targetRate.code] !== undefined && rateObj[targetRate.code] !== null) {
-        value = Number(rateObj[targetRate.code]);
-      } 
-      
-      if (value === 0 && targetRate.code === 'USD') {
-        value = targetRate.market === 'parallel' ? h.usdParallel : h.usdOfficial;
-      }
-      
-      return {
-        time: h.time,
-        value: value
-      };
-    }).filter(d => Number.isFinite(Date.parse(d.time)) && Number.isFinite(d.value) && d.value > 0);
-
-    const sorted = [...data].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-    
-    return sorted;
+    return getRateHistory(filteredHistory, targetRate);
   }, [selectedRate, filteredHistory]);
 
   const chartStats = useMemo(() => {
@@ -85,8 +69,8 @@ export function useRatesCalculations({
     const values = chartData.map(d => d.value);
     const first = values[0];
     const last = values[values.length - 1];
-    const isUp = last >= first;
-    const change = last - first;
+    const change = selectedRate?.market === 'official' ? (Math.round(last * 10000) - Math.round(first * 10000)) / 10000 : last - first;
+    const isUp = change >= 0;
     const changePercent = first !== 0 ? (change / first) * 100 : 0;
     return {
       max: Math.max(...values),
@@ -96,7 +80,7 @@ export function useRatesCalculations({
       change,
       changePercent
     };
-  }, [chartData]);
+  }, [chartData, selectedRate?.market]);
 
   const advancedStats = useMemo(() => {
     const targetRate = selectedRate || { code: 'USD', name: 'دولار أمريكي', market: 'parallel' as const };
@@ -105,17 +89,9 @@ export function useRatesCalculations({
     const now = new Date();
     const cutoff30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    const elements30d = history.filter(h => new Date(h.time) >= cutoff30d).map(h => {
-      const rateObj = targetRate.market === 'parallel' ? h.ratesParallel : h.ratesOfficial;
-      let value = 0;
-      if (rateObj && rateObj[targetRate.code] !== undefined && rateObj[targetRate.code] !== null) {
-        value = Number(rateObj[targetRate.code]);
-      } 
-      if (value === 0 && targetRate.code === 'USD') {
-        value = targetRate.market === 'parallel' ? h.usdParallel : h.usdOfficial;
-      }
-      return value;
-    }).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+    const firstDay = libyaDayKey(Date.now() - 29 * 86400000);
+    const elements30d = getRateHistory(history.filter(h => targetRate.market === 'official'
+      ? libyaDayKey(h.time) >= firstDay : new Date(h.time) >= cutoff30d), targetRate).map(point => point.value);
     
     if (elements30d.length === 0) return { ma30: 0, support: 0, resistance: 0 };
     
@@ -330,7 +306,7 @@ export function useRatesCalculations({
 
   const officialUsdRate = rates?.official?.["USD"] || 0;
   const prevOfficialUsdRate = rates?.previousOfficial?.["USD"] || officialUsdRate;
-  const officialUsdFlash = usePriceFlash(officialUsdRate);
+  const officialUsdFlash = usePriceFlash(Number(officialUsdRate.toFixed(4)));
   const officialUsdLastChanged = rates?.lastChanged?.official?.["USD"] || rates?.lastUpdated;
 
   const usd24hStats = useMemo(() => {

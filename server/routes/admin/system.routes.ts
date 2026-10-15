@@ -1,4 +1,6 @@
 import express from 'express';
+import { readAnalytics } from '../../services/analytics.service';
+import { analyticsWriteHealth } from '../../services/analytics-tracking';
 import { db, supabase, supabaseAnonKey } from '../../db';
 import { appConfig } from '../../config';
 import { rates, serverStartTime } from '../../state';
@@ -104,91 +106,12 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
     }
   });
 
-  // Analytics Dashboard Data
-  router.get('/analytics', async (req: express.Request, res: express.Response) => {
-    try {
-      const days = parseInt(req.query.days as string) || 7;
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
-      const cutoffIso = cutoff.toISOString();
-
-      let events: any[] = [];
-      let loadedFromSupabase = false;
-
-      if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-        try {
-          const { data, error } = await supabase
-            .from('analytics_events')
-            .select('*')
-            .gte('created_at', cutoffIso)
-            .order('created_at', { ascending: true });
-          
-          if (!error && data) {
-            events = data;
-            loadedFromSupabase = true;
-          } else if (error) {
-            console.error("[Analytics] Supabase query error, falling back to SQLite:", error.message);
-          }
-        } catch (err) {
-          console.error("[Analytics] Supabase query exception, falling back to SQLite:", err);
-        }
-      }
-
-      if (!loadedFromSupabase) {
-        events = db.prepare(`
-          SELECT * FROM analytics_events 
-          WHERE created_at >= ?
-          ORDER BY created_at ASC
-        `).all(cutoffIso) as any[];
-      }
-
-      const dailyStatsMap: Record<string, { pageviews: number, uniqueVisitors: Set<string> }> = {};
-      const deviceTypes: Record<string, number> = {};
-      const browsers: Record<string, number> = {};
-      const os: Record<string, number> = {};
-      
-      const allUniqueVisitors = new Set<string>();
-
-      events.forEach(e => {
-        const dateStr = e.created_at.split(' ')[0] || e.created_at.split('T')[0];
-        if (!dailyStatsMap[dateStr]) { 
-          dailyStatsMap[dateStr] = { pageviews: 0, uniqueVisitors: new Set() };
-        }
-        
-        dailyStatsMap[dateStr].pageviews++;
-        dailyStatsMap[dateStr].uniqueVisitors.add(e.visitor_id);
-        allUniqueVisitors.add(e.visitor_id);
-        
-        deviceTypes[e.device_type] = (deviceTypes[e.device_type] || 0) + 1;
-        
-        const bName = e.browser_name || 'Unknown';
-        browsers[bName] = (browsers[bName] || 0) + 1;
-        
-        const oName = e.os_name || 'Unknown';
-        os[oName] = (os[oName] || 0) + 1;
-      });
-
-      const trend = Object.keys(dailyStatsMap).map(date => ({
-        date,
-        pageviews: dailyStatsMap[date].pageviews,
-        visitors: dailyStatsMap[date].uniqueVisitors.size
-      }));
-
-      res.json({
-        success: true,
-        summary: {
-          totalPageviews: events.length,
-          totalVisitors: allUniqueVisitors.size,
-        },
-        trend,
-        deviceTypes,
-        browsers,
-        os
-      });
-    } catch (err) {
-      console.error("[Analytics] Error fetching dashboard data:", err);
-      res.status(500).json({ success: false });
-    }
+  router.get('/analytics', async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const days = req.query.days === undefined ? 7 : Number(req.query.days);
+    if (![1, 7, 30].includes(days)) return res.status(400).json({ success: false });
+    try { res.json({ ...await readAnalytics(days), trackingEnabled: appConfig.enableUserTracking !== false, writeHealth: analyticsWriteHealth }); }
+    catch { res.status(503).json({ success: false }); }
   });
 
   // Stats

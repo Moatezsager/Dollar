@@ -5,16 +5,21 @@ import { HistoryPoint, PriceChangeLog, RateMap, AppConfig } from '../types';
 import { isSignificantChange, METAL_IDS } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
+// Half of one four-decimal unit avoids losing a 0.0001 change to floating-point noise.
+const OFFICIAL_CHANGE_THRESHOLD = 0.00005;
+
 export let lastRatesFetchTime = 0;
 export const RATES_CACHE_TTL = 30 * 1000; // 30 seconds
 
 export let lastHistoryFetchTime = 0;
 export const HISTORY_CACHE_TTL = 60 * 1000; // 1 minute
 export let cachedHistory: HistoryPoint[] | null = null;
+let historyGeneration = 0;
 
 export const recentChangesLog: PriceChangeLog[] = [];
 
 export function clearDbCache() {
+  historyGeneration++;
   cachedHistory = null;
   lastHistoryFetchTime = 0;
   lastRatesFetchTime = 0;
@@ -48,6 +53,9 @@ export async function logErrorArabic(message: string, context = "النظام", 
 
 let latestLoad: Promise<void> | null = null;
 const loadedAt = { parallel: 0, official: 0 };
+export function getParallelUpdatedAt() {
+  return loadedAt.parallel > 0 ? new Date(loadedAt.parallel).toISOString() : null;
+}
 export function loadLatestRatesFromSupabase(): Promise<void> {
   if (latestLoad) return latestLoad;
   latestLoad = (async () => {
@@ -69,7 +77,7 @@ export function loadLatestRatesFromSupabase(): Promise<void> {
         if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || code.toUpperCase() === 'OFFICIAL_USD') continue;
         const sourceTime = market === 'parallel' ? row.last_changed?.[code] : null;
         if (Date.parse(sourceTime || row.recorded_at) < Date.parse(rates.lastChanged[market][code] || '')) continue;
-        const changed = isSignificantChange(current[code], value);
+        const changed = isSignificantChange(current[code], value, market === 'official' ? OFFICIAL_CHANGE_THRESHOLD : undefined);
         if (changed) previous[code] = current[code] || value;
         current[code] = value;
         if (sourceTime && Number.isFinite(Date.parse(sourceTime))) rates.lastChanged[market][code] = sourceTime;
@@ -141,6 +149,7 @@ export async function initializeRatesFromDB(force = false) {
         
       if (!error && data && data.length > 0) {
         const latestRow = data[0];
+        if (latestRow.rates_parallel && Number.isFinite(Date.parse(latestRow.recorded_at))) loadedAt.parallel = Date.parse(latestRow.recorded_at);
         if (latestRow.rates_parallel) rates.parallel = { ...rates.parallel, ...latestRow.rates_parallel };
         if (latestRow.rates_official) rates.official = { ...rates.official, ...latestRow.rates_official };
         if (latestRow.last_changed) {
@@ -164,7 +173,7 @@ export async function initializeRatesFromDB(force = false) {
               const row = data[i];
               const r = isP ? row.rates_parallel : row.rates_official;
               const rowVal = r ? r[code] : undefined;
-              if (rowVal !== undefined && isSignificantChange(rowVal, currentVal)) {
+              if (rowVal !== undefined && isSignificantChange(rowVal, currentVal, isP ? undefined : OFFICIAL_CHANGE_THRESHOLD)) {
                 diffRow = row;
                 break;
               }
@@ -191,6 +200,7 @@ export async function initializeRatesFromDB(force = false) {
     } else {
       if (parallelData && parallelData.length > 0) {
         const latest = parallelData[0];
+        if (Number.isFinite(Date.parse(latest.recorded_at))) loadedAt.parallel = Date.parse(latest.recorded_at);
         if (latest.rates) rates.parallel = { ...rates.parallel, ...latest.rates };
         if (latest.usd) rates.parallel.USD = latest.usd;
         if (latest.last_changed && typeof latest.last_changed === 'object') {
@@ -247,7 +257,7 @@ export async function initializeRatesFromDB(force = false) {
           for (let i = 0; i < officialData.length; i++) {
             const row = officialData[i];
             const rowVal = row.rates ? row.rates[code] : (code === 'USD' ? row.usd : undefined);
-            if (rowVal !== undefined && isSignificantChange(rowVal, currentVal)) {
+            if (rowVal !== undefined && isSignificantChange(rowVal, currentVal, OFFICIAL_CHANGE_THRESHOLD)) {
               prevDiffRow = row;
               break;
             }
@@ -343,6 +353,11 @@ export async function saveToSupabase(type: 'parallel' | 'official' | 'both' = 'b
     }
 
     const settled = await Promise.allSettled(results);
+    if ((type === 'parallel' || type === 'both') && rates.parallel.USD >= 5.5 &&
+        settled[0]?.status === 'fulfilled' && !(settled[0].value as any)?.error) {
+      const savedAt = Date.parse(rates.lastUpdated || now);
+      if (Number.isFinite(savedAt)) loadedAt.parallel = savedAt;
+    }
     
     settled.forEach((res, i) => {
       if (res.status === 'rejected') {
@@ -378,12 +393,16 @@ export async function saveToSupabase(type: 'parallel' | 'official' | 'both' = 'b
   }
 }
 
-export async function fetchHistoryFromSupabase() {
+export async function fetchHistoryFromSupabase(strict = false) {
+  const generation = historyGeneration;
   if (cachedHistory && Date.now() - lastHistoryFetchTime < HISTORY_CACHE_TTL) {
     return cachedHistory;
   }
 
-  if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) return history;
+  if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
+    if (strict) throw new Error('History database unavailable');
+    return history;
+  }
   
   try {
     const [parallelRes, officialRes, metalRes] = await Promise.all([
@@ -396,6 +415,8 @@ export async function fetchHistoryFromSupabase() {
         officialRes.error?.message.includes('relation "official_rates" does not exist')) {
         
         const { data, error } = await supabase.from('exchange_rates').select('*').order('recorded_at', { ascending: false }).limit(3000);
+        if (strict && (error || !data)) throw new Error('History read failed');
+        if (generation !== historyGeneration) throw new Error('History changed during read');
         if (!error && data) {
            cachedHistory = data.reverse().map((row: any) => ({
               time: row.recorded_at,
@@ -412,6 +433,8 @@ export async function fetchHistoryFromSupabase() {
         return history;
     }
 
+    if (strict && [parallelRes, officialRes, metalRes].some(result => result.error || !result.data)) throw new Error('Incomplete history read');
+    if (generation !== historyGeneration) throw new Error('History changed during read');
     const parallelData = parallelRes.data || [];
     const officialData = officialRes.data || [];
     const metalData = metalRes.data || [];
@@ -424,7 +447,7 @@ export async function fetchHistoryFromSupabase() {
       const time = new Date(timestamp).toISOString();
       timelineMap.set(time, {
         time,
-        usdParallel: row.usd,
+        usdParallel: row.rates?.USD ?? row.usd,
         ratesParallel: row.rates || { USD: row.usd }
       });
     });
@@ -435,12 +458,12 @@ export async function fetchHistoryFromSupabase() {
       const time = new Date(timestamp).toISOString();
       if (timelineMap.has(time)) {
         const existing = timelineMap.get(time)!;
-        existing.usdOfficial = row.usd;
+        existing.usdOfficial = row.rates?.USD ?? row.usd;
         existing.ratesOfficial = row.rates || { USD: row.usd };
       } else {
         timelineMap.set(time, {
           time,
-          usdOfficial: row.usd,
+          usdOfficial: row.rates?.USD ?? row.usd,
           ratesOfficial: row.rates || { USD: row.usd }
         });
       }
@@ -486,13 +509,14 @@ export async function fetchHistoryFromSupabase() {
       };
     }) as HistoryPoint[];
 
-    if (completedHistory.length > 0) {
+    if (completedHistory.length > 0 || strict) {
       cachedHistory = completedHistory;
       lastHistoryFetchTime = Date.now();
       return cachedHistory;
     }
   } catch (err) {
     console.error("Error fetching history from separated tables:", err);
+    if (strict) throw err;
   }
   return history;
 }

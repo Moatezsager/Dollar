@@ -1,9 +1,11 @@
 import express from "express";
+import crypto from 'node:crypto';
 import { rates, history } from "../state";
 import { appConfig } from "../config";
 import { supabase, supabaseAnonKey } from "../db";
-import { initializeRatesFromDB, fetchHistoryFromSupabase, recentChangesLog } from "../services/db.service";
+import { initializeRatesFromDB, fetchHistoryFromSupabase, recentChangesLog, getParallelUpdatedAt } from "../services/db.service";
 import { publicApiLimiter, premiumApiLimiter, apiStats } from "../middleware/security";
+import { PUBLIC_API_STALE_MS } from '../../shared/developerApi';
 import { obfuscateData } from "../utils/helpers";
 
 const router = express.Router();
@@ -27,13 +29,11 @@ router.get("/rates", async (req: express.Request, res: express.Response) => {
   }
 });
 
-router.all("/public/rates", publicApiLimiter, async (req: express.Request, res: express.Response) => {
+router.all("/public/rates", (req, res, next) => {
   const startTime = Date.now();
-  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string || 'Unknown';
-  const userAgent = req.headers['user-agent'] || 'Unknown';
   apiStats.public.totalRequests++;
-
-  const logRequest = (status: number) => {
+  res.on('finish', () => {
+    const status = res.statusCode;
     if (status >= 200 && status < 300) {
       apiStats.public.successfulRequests++;
     } else {
@@ -41,19 +41,19 @@ router.all("/public/rates", publicApiLimiter, async (req: express.Request, res: 
     }
     apiStats.public.recentRequests.unshift({
       timestamp: new Date().toISOString(),
-      ip,
-      userAgent,
+      ip: req.ip || 'Unknown',
+      userAgent: (req.headers['user-agent'] || 'Unknown').slice(0, 200),
       status,
       responseTime: Date.now() - startTime
     });
     if (apiStats.public.recentRequests.length > 100) {
       apiStats.public.recentRequests.pop();
     }
-  };
-
+  });
+  next();
+}, publicApiLimiter, (req: express.Request, res: express.Response) => {
   if (appConfig.apiConfig?.enabled === false) {
-    logRequest(503);
-    res.status(503).json({ success: false, error: "API is currently disabled by administrator." });
+    res.set('Retry-After', '60').status(503).json({ success: false, error: 'API_DISABLED' });
     return;
   }
 
@@ -63,47 +63,47 @@ router.all("/public/rates", publicApiLimiter, async (req: express.Request, res: 
   
   // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
-    logRequest(204);
     res.status(204).end();
     return;
   }
 
   // Restrict to GET method
   if (req.method !== 'GET') {
-    logRequest(405);
-    res.status(405).json({ success: false, error: "Method Not Allowed. Only GET is supported." });
+    res.set('Allow', 'GET, OPTIONS').status(405).json({ success: false, error: 'METHOD_NOT_ALLOWED' });
     return;
   }
 
   try {
-    // Check for stale data (older than 12 hours)
-    const lastUpdatedTime = new Date(rates.lastUpdated).getTime();
-    const isStale = (Date.now() - lastUpdatedTime) > (12 * 60 * 60 * 1000);
-    
-    // Set cache control headers to force caching for 5 minutes
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    
+    const lastUpdated = getParallelUpdatedAt();
+    const timestamp = Date.parse(lastUpdated || '');
+    const valid = ['USD', 'EUR'].every(code => Number.isFinite(rates.parallel[code]) && rates.parallel[code] > 0);
+    if (!valid || !Number.isFinite(timestamp) || timestamp > Date.now() + 60000) {
+      return res.set('Retry-After', '60').status(503).json({ success: false, error: 'RATES_UNAVAILABLE', data: null, lastUpdated: null });
+    }
+    const isStale = Date.now() - timestamp > PUBLIC_API_STALE_MS;
     const publicData = {
       success: !isStale,
       stale: isStale,
+      market: 'parallel',
+      quoteCurrency: 'LYD',
       data: {
         USD: rates.parallel.USD,
         EUR: rates.parallel.EUR,
-        GBP: rates.parallel.GBP,
       },
-      lastUpdated: rates.lastUpdated
+      lastUpdated,
+      lastChanged: Object.fromEntries(['USD', 'EUR'].map(code => {
+        const time = Date.parse(rates.lastChanged.parallel[code] || '');
+        return [code, Number.isFinite(time) && time <= Date.now() ? new Date(time).toISOString() : null];
+      })),
+      ...(isStale ? { error: 'STALE_RATES', warning: 'Latest saved parallel-market data is older than 12 hours.' } : {})
     };
-    
     if (isStale) {
-      (publicData as any).warning = "البيانات قديمة جداً ولم يتم تحديثها منذ أكثر من 12 ساعة.";
+      res.set('Retry-After', '60');
     }
-    
-    logRequest(200);
-    res.json(publicData);
+    res.status(isStale ? 503 : 200).json(publicData);
   } catch (err) {
     console.error("Error in /api/public/rates:", err);
     if (!res.headersSent) {
-      logRequest(500);
       res.status(500).json({ success: false, error: "Internal Server Error" });
     }
   }
@@ -156,8 +156,12 @@ router.all("/premium/rates", premiumApiLimiter, async (req: express.Request, res
   }
 
   const apiKey = authHeader.split(' ')[1];
-  const validKeys = [process.env.PREMIUM_API_KEY || 'premium-test-key-12345'];
-  if (!validKeys.includes(apiKey)) {
+  const configuredKey = process.env.PREMIUM_API_KEY;
+  if (!configuredKey) {
+    logRequest(503);
+    return res.status(503).json({ success: false, error: 'Premium API is not configured.' });
+  }
+  if (!crypto.timingSafeEqual(crypto.createHash('sha256').update(apiKey).digest(), crypto.createHash('sha256').update(configuredKey).digest())) {
     logRequest(403);
     res.status(403).json({ success: false, error: "Forbidden. Invalid API key." });
     return;
@@ -165,7 +169,7 @@ router.all("/premium/rates", premiumApiLimiter, async (req: express.Request, res
 
   try {
     await initializeRatesFromDB(false);
-    res.setHeader('Cache-Control', 'public, max-age=30');
+    res.setHeader('Cache-Control', 'private, no-store');
     logRequest(200);
     res.json({
       success: true,
@@ -210,18 +214,15 @@ router.get("/recent-changes", async (req: express.Request, res: express.Response
 
 router.get("/history", async (req: express.Request, res: express.Response) => {
   try {
-    res.setHeader('Cache-Control', 'public, max-age=120, stale-while-revalidate=300');
-    const dbHistory = await fetchHistoryFromSupabase();
+    res.setHeader('Cache-Control', 'no-store');
+    const dbHistory = await fetchHistoryFromSupabase(true);
     const trimmed = Array.isArray(dbHistory) && dbHistory.length > 120 
       ? dbHistory.slice(-120) 
       : dbHistory;
     res.json(obfuscateData(trimmed));
   } catch (err) {
     if (!res.headersSent) {
-      const fallback = Array.isArray(history) && history.length > 120 
-        ? history.slice(-120) 
-        : history;
-      res.json(obfuscateData(fallback));
+      res.status(503).json({ error: 'History temporarily unavailable' });
     }
   }
 });

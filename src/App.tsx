@@ -40,6 +40,7 @@ import { PrintableBulletin } from "./components/PrintableBulletin";
 
 // Custom Hooks
 import { useAppSettings } from "./hooks/useAppSettings";
+import { useVisitorAnalytics } from "./hooks/useVisitorAnalytics";
 import { useRatesData } from "./hooks/useRatesData";
 import { useRatesCalculations } from "./hooks/useRatesCalculations";
 import { usePullToRefresh } from "./hooks/usePullToRefresh";
@@ -55,6 +56,7 @@ import { manualCachePurgeAndReload } from "./utils/autoUpdater";
 export default function App() {
   // Navigation & Page State
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'api' | 'contact' | 'terms' | 'privacy' | 'about'>('dashboard');
+  useVisitorAnalytics(currentPage);
   const [activeTab, setActiveTab] = useState<'main' | 'gold' | 'charts' | 'converter' | 'more'>('main');
 
   // App Settings Hook
@@ -443,7 +445,7 @@ export default function App() {
           <AnimatePresence mode="wait">
             {currentPage === 'api' ? (
               <motion.div key="api" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <Developers onBack={() => setCurrentPage('dashboard')} />
+                <Developers onBack={() => setCurrentPage('dashboard')} onContact={() => setCurrentPage('contact')} />
               </motion.div>
             ) : currentPage === 'terms' ? (
               <motion.div key="terms" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

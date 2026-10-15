@@ -72,7 +72,7 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Vite-only previews read public data from the configured Web server.
       proxy: env.APP_URL ? {
-        '^/api/(rates|history|config|status|stats/active)(?:\\?|$)': {
+        '^/api/(rates|history|config|status|stats/active|public/rates)(?:\\?|$)': {
           target: env.APP_URL,
           changeOrigin: true,
         },

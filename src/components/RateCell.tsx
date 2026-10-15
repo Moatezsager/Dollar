@@ -4,6 +4,7 @@ import { FlagIcon } from './FlagIcon';
 import { usePriceFlash } from '../hooks/usePriceFlash';
 import { formatDistanceToNow } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { formatLibyaDate } from '../utils/rateHistory';
 
 interface RateCellProps {
   key?: string | number | null;
@@ -59,11 +60,12 @@ export const RateCell = ({
   decimals = 2, 
   onClick 
 }: RateCellProps) => {
-  const flash = usePriceFlash(rate);
-  const rawDiff = rate - prevRate;
-  const isUp = rawDiff >= 0.005;
-  const isDown = rawDiff <= -0.005;
-  const changePercent = prevRate > 0 && Math.abs(rawDiff) >= 0.005 
+  const flash = usePriceFlash(decimals === 4 ? Number(rate.toFixed(4)) : rate);
+  const rawDiff = decimals === 4 ? (Math.round(rate * 10000) - Math.round(prevRate * 10000)) / 10000 : rate - prevRate;
+  const threshold = decimals === 4 ? 0.00005 : 0.005;
+  const isUp = rawDiff >= threshold;
+  const isDown = rawDiff <= -threshold;
+  const changePercent = prevRate > 0 && Math.abs(rawDiff) >= threshold
     ? ((rawDiff / prevRate) * 100) 
     : (trend ?? 0);
   const isTrendUp = changePercent >= 0.01 || isUp;
@@ -128,7 +130,7 @@ export const RateCell = ({
                 : 'bg-rose-500/10 text-rose-400 border-rose-500/25'
             }`}>
               {isTrendUp ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-              <span dir="ltr">{isTrendUp ? '+' : ''}{changePercent.toFixed(2)}%</span>
+              <span dir="ltr">{isTrendUp ? '+' : ''}{changePercent.toFixed(decimals === 4 ? 4 : 2)}%</span>
             </span>
           ) : (
             <span className="inline-flex items-center text-xs font-mono font-semibold text-slate-200 bg-slate-800/90 px-2.5 py-1 rounded-lg border border-white/10 shadow-sm">
@@ -146,7 +148,7 @@ export const RateCell = ({
         {lastChangedDate && (
           <div className="flex items-center gap-1.5 text-slate-400 font-sans truncate text-[11px] sm:text-xs">
             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">{cleanArabicDistance(formatDistanceToNow(new Date(lastChangedDate), { addSuffix: true, locale: ar }))}</span>
+            <span className="truncate">{decimals === 4 ? formatLibyaDate(lastChangedDate) : cleanArabicDistance(formatDistanceToNow(new Date(lastChangedDate), { addSuffix: true, locale: ar }))}</span>
           </div>
         )}
       </div>

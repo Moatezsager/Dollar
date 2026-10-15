@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Download, Send, Facebook, RefreshCw, Copy, Check, Eye, SlidersHorizontal, RotateCcw, ArrowUpRight, ArrowDownRight, Minus, FileText, Banknote, FileCheck2, Euro, Share2, ExternalLink } from 'lucide-react';
+import { Download, Send, Facebook, RefreshCw, Copy, Check, Eye, SlidersHorizontal, RotateCcw, ArrowUpRight, ArrowDownRight, Minus, FileText, Share2, ExternalLink } from 'lucide-react';
 import { toBlob } from 'html-to-image';
 import { harvestNotes, harvestNumber, WeeklyHarvestData, WeeklyItem } from '../../shared/weeklyHarvest';
 import { libyaDayKey } from '../utils/rateHistory';
@@ -8,7 +8,7 @@ import '../styles/weekly-harvest.css';
 interface Props { token: string; config: any; setError: (message: string) => void; setSuccess: (message: string) => void }
 const fields = [['open', 'أول رصد'], ['close', 'آخر رصد'], ['high', 'الأعلى'], ['low', 'الأدنى']] as const;
 const signed = (value: number, id: string) => `${value > 0 ? '+' : ''}${harvestNumber(value, id)}`;
-const highlightIcons = { USD: Banknote, USD_CHECKS: FileCheck2, EUR: Euro };
+const highlightIds = ['USD', 'USD_CHECKS', 'EUR'];
 const telegramUrl = 'https://t.me/libya_index_dollar';
 const facebookUrl = 'https://www.facebook.com/profile.php?id=61593953519936';
 
@@ -148,23 +148,27 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
       <div className="harvest-preview-heading"><h3>نشرة الأسعار</h3><span>1080 px · PNG</span></div>
       <div ref={wrapper} className="harvest-preview"><div style={{ height: height * scale, position: 'relative' }}>
         <article ref={card} id="weekly-harvest-card" className="harvest-sheet" style={{ transform: `scale(${scale})`, transformOrigin: 'top right' }}>
-          <header className="harvest-sheet-head"><div className="harvest-brand"><img src="/logo.png" alt="مؤشر الدينار" width={82} height={82} /><div><strong>مؤشر الدينار</strong><span>رصد أسعار العملات في ليبيا</span></div></div><span className="harvest-edition">النشرة الأسبوعية<br /><b>7 أيام من حركة السوق</b></span></header>
-          <div className="harvest-sheet-title"><div><span className="harvest-sheet-kicker">العملات · الحوالات · المعادن</span><h1>{title}</h1></div><div className="harvest-period"><p>{data.dateRange}</p><span>سبعة أيام مكتملة · توقيت طرابلس</span></div></div>
-          <div className="harvest-highlights">{visible.filter(item => item.id in highlightIcons).map(item => {
-            const Icon = highlightIcons[item.id as keyof typeof highlightIcons];
-            return <div key={item.id} data-currency={item.id}><div className="harvest-highlight-label"><Icon size={23} aria-hidden="true" /><span>{item.name}</span><small>{item.code}</small></div><strong dir="ltr">{harvestNumber(item.close, item.id)} <small>د.ل</small></strong>
-              <span className={`harvest-highlight-change ${item.change && item.change > 0 ? 'harvest-up' : item.change && item.change < 0 ? 'harvest-down' : ''}`} dir="ltr">{item.change === null ? 'بيانات محدودة' : <>{item.change > 0 ? <ArrowUpRight size={16} /> : item.change < 0 ? <ArrowDownRight size={16} /> : <Minus size={16} />}{signed(item.change, item.id)} <small>({item.changePct!.toFixed(2)}%)</small></>}</span><span className="harvest-highlight-caption">آخر رصد خلال الفترة</span></div>;
-          })}</div>
-          <div className="harvest-sheet-body">{Array.from(new Set(visible.map(item => item.category))).map((category, index) => <section key={category} className="harvest-market"><h2><b><small dir="ltr">{String(index + 1).padStart(2, '0')}</small>{category}</b><span>السعر بالدينار الليبي</span></h2>
-            <table><thead><tr><th>الصنف / الوحدة</th><th>أول رصد</th><th>آخر رصد</th><th>الأدنى / الأعلى</th><th>التغير</th><th>أيام الرصد</th></tr></thead>
-              <tbody>{visible.filter(item => item.category === category).map(item => <tr key={item.id}><th scope="row"><b>{item.name}</b><small>{item.unit}</small></th><td dir="ltr">{harvestNumber(item.open, item.id)}</td><td dir="ltr"><b>{harvestNumber(item.close, item.id)}</b></td>
+          <header className="harvest-sheet-head"><div className="harvest-brand"><img src="/logo.png" alt="مؤشر الدينار" width={54} height={54} /><div><strong>مؤشر الدينار</strong><span>أسعار العملات في ليبيا</span></div></div><span className="harvest-edition">تقرير الأسواق<span>عملات · حوالات · معادن</span></span></header>
+          <div className="harvest-sheet-title"><h1>{title}</h1><div className="harvest-period"><p>{data.dateRange}</p><span>سبعة أيام مكتملة · توقيت طرابلس</span></div></div>
+          {visible.some(item => highlightIds.includes(item.id)) && <><p className="harvest-quote-caption">آخر الأسعار المسجلة خلال الفترة · دينار ليبي</p><div className="harvest-highlights">{visible.filter(item => highlightIds.includes(item.id)).map(item =>
+            <div key={item.id} data-currency={item.id}><div className="harvest-highlight-label"><span>{item.name}</span><small>{item.code}</small></div><strong dir="ltr">{harvestNumber(item.close, item.id)} <small>د.ل</small></strong></div>
+          )}</div></>}
+          <div className="harvest-sheet-body"><table className="harvest-table" aria-label="تفاصيل الحصاد الأسبوعي"><caption>تفاصيل الرصد <span>الأسعار بالدينار الليبي لكل وحدة موضحة</span></caption>
+            <thead><tr><th scope="col">الصنف / الوحدة</th><th scope="col">أول رصد</th><th scope="col">آخر رصد</th><th scope="col">الأدنى / الأعلى</th><th scope="col">التغير<small>د.ل / %</small></th></tr></thead>
+            {Array.from(new Set(visible.map(item => item.category))).map(category => <tbody key={category}><tr className="harvest-market"><th scope="rowgroup" colSpan={5}>{category}</th></tr>
+              {visible.filter(item => item.category === category).map(item => <tr key={item.id} data-currency={item.id}><th scope="row"><b>{item.name}</b><small>{item.unit}</small></th><td dir="ltr">{harvestNumber(item.open, item.id)}</td><td dir="ltr"><b>{harvestNumber(item.close, item.id)}</b></td>
                 <td dir="ltr">{harvestNumber(item.low, item.id)} / {harvestNumber(item.high, item.id)}</td><td><span dir="ltr" className={`harvest-delta ${item.change && item.change > 0 ? 'harvest-up' : item.change && item.change < 0 ? 'harvest-down' : ''}`}>
-                  {item.change === null ? 'غير كافٍ' : <>{item.change > 0 ? <ArrowUpRight size={15} /> : item.change < 0 ? <ArrowDownRight size={15} /> : <Minus size={15} />}{Math.abs(item.changePct!).toFixed(2)}%</>}</span></td><td dir="ltr">{item.days} / 7</td></tr>)}</tbody></table></section>)}
-            {!!notes.length && <section className="harvest-summary"><h2>قراءة الأسبوع</h2>{notes.map((note, i) => <p key={i}>{note}</p>)}</section>}
+                  {item.change === null ? 'غير كافٍ' : <><span>{item.change > 0 ? <ArrowUpRight size={13} aria-hidden="true" /> : item.change < 0 ? <ArrowDownRight size={13} aria-hidden="true" /> : <Minus size={13} aria-hidden="true" />}{signed(item.change, item.id)}</span><small>{Math.abs(item.changePct!).toFixed(2)}%</small></>}</span></td></tr>)}</tbody>)}</table>
+            {!!notes.length && <section className="harvest-summary"><h2>قراءة الأسبوع</h2><div>{notes.map((note, i) => {
+              const up = /ارتفع|زاد/.test(note), down = /انخفض|تراجع/.test(note);
+              const tone = up === down ? 'neutral' : up ? 'up' : 'down';
+              const Icon = tone === 'up' ? ArrowUpRight : tone === 'down' ? ArrowDownRight : Minus;
+              return <div key={i} className={`harvest-summary-note harvest-note-${tone}`}><Icon size={15} aria-hidden="true" /><span>{note}</span></div>;
+            })}</div></section>}
             <p className="harvest-method">أول وآخر رصد من السجلات المتاحة داخل الفترة. غياب الرصد في بعض الأيام لا يعني ثبات السعر. الأرقام للاسترشاد ولا تمثل عروض تنفيذ ملزمة.{dirty ? ' تتضمن النشرة تعديلات تحريرية.' : ''}</p>
-          </div><footer className="harvest-sheet-footer"><div className="harvest-follow"><div><span>ابقَ على اطلاع</span><strong>تابع مؤشر الدينار</strong><p>أسعار العملات ونشرات السوق</p></div><div className="harvest-socials">
-            <a href={telegramUrl} target="_blank" rel="noopener noreferrer"><span className="harvest-social-icon harvest-telegram"><Send size={26} aria-hidden="true" /></span><span><b>تيليجرام</b><small dir="ltr">@libya_index_dollar</small></span></a>
-            <a href={facebookUrl} target="_blank" rel="noopener noreferrer"><span className="harvest-social-icon harvest-facebook"><Facebook size={26} aria-hidden="true" /></span><span><b>فيسبوك</b><small>مؤشر الدينار</small></span></a>
+          </div><footer className="harvest-sheet-footer"><div className="harvest-follow"><strong>تابع مؤشر الدينار</strong><div className="harvest-socials">
+            <a href={telegramUrl} target="_blank" rel="noopener noreferrer"><Send size={21} className="harvest-telegram" aria-hidden="true" /><span><b>تيليجرام</b><small dir="ltr">@libya_index_dollar</small></span></a>
+            <a href={facebookUrl} target="_blank" rel="noopener noreferrer"><Facebook size={21} className="harvest-facebook" aria-hidden="true" /><span><b>فيسبوك</b><small>مؤشر الدينار</small></span></a>
           </div></div><div className="harvest-footer-line"><strong>مؤشر الدينار · ليبيا</strong><span dir="ltr">dollar-price-qp14.onrender.com</span></div></footer>
         </article>
       </div></div>

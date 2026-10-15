@@ -32,69 +32,73 @@
 .harvest-preview-heading { margin:22px 0 12px; }
 .harvest-preview-heading>span { font-size:12px; color:var(--muted-ink,#abb9b4); }
 .harvest-preview { max-width:900px; margin:auto; overflow:hidden; border:1px solid var(--line,#34413c); }
-.weekly-harvest .harvest-sheet { width:900px; background:#fff; color:#172d26; position:absolute; right:0; top:0; line-height:1.65; font-family:inherit; }
-.harvest-sheet-head { background:#073e2e; color:#fff; padding:24px 36px; display:flex; align-items:center; justify-content:space-between; border-top:8px solid #28b68b; }
-.harvest-brand { display:flex; align-items:center; gap:16px; }
-.harvest-brand img { object-fit:contain; }
-.harvest-brand strong { display:block; font-size:30px; line-height:1.4; }
-.harvest-brand span { display:block; color:#c3dcd1; font-size:14px; margin-top:5px; }
-.harvest-edition { text-align:left; font-size:15px; color:#d1e7de; }
-.harvest-edition b { font-size:12px; font-weight:400; }
-.harvest-sheet-title { padding:30px 36px 24px; display:flex; justify-content:space-between; align-items:center; gap:24px; }
-.harvest-sheet-kicker { font-size:12px; color:#536c60; }
-.harvest-sheet-title h1 { font-size:40px; line-height:1.45; margin:4px 0 0; font-weight:800; overflow-wrap:anywhere; }
-.harvest-period { max-width:330px; border-inline-start:3px solid #28b68b; padding-inline-start:14px; }
-.harvest-period p { margin:0; font-size:16px; color:#263f33; font-weight:650; }
-.harvest-period>span { font-size:12px; color:#5b6e66; }
-.harvest-highlights { display:flex; margin:0 36px 28px; padding-block:22px; border-block:1px solid #cfddd6; background:#f4f8f6; }
-.harvest-highlights>div { flex:1; min-width:0; padding-inline:20px; border-inline-start:1px solid #cfddd6; }
+.weekly-harvest .harvest-sheet { width:900px; background:#fff; color:#202924; position:absolute; right:0; top:0; line-height:1.65; font-family:Cairo,Tahoma,Arial,sans-serif; padding:26px 32px 20px; border-top:5px solid #124c38; }
+.harvest-sheet-head { display:flex; align-items:center; justify-content:space-between; gap:24px; padding-bottom:16px; border-bottom:2px solid #263d31; }
+.harvest-brand { display:flex; align-items:center; gap:12px; }
+.harvest-brand img { object-fit:contain; background:#073e2e; }
+.harvest-brand strong { display:block; font-size:23px; font-weight:750; line-height:1.4; }
+.harvest-brand span { display:block; color:#66716b; font-size:11.5px; margin-top:3px; }
+.harvest-edition { text-align:left; font-size:13px; font-weight:700; color:#3c5045; }
+.harvest-edition span { display:block; font-size:11px; font-weight:400; color:#66716b; margin-top:3px; }
+.harvest-sheet-title { padding:16px 0 12px; display:flex; justify-content:space-between; align-items:center; gap:24px; }
+.harvest-sheet-title h1 { flex:1; min-width:0; font-size:32px; line-height:1.5; margin:0; font-weight:800; overflow-wrap:anywhere; }
+.harvest-period { max-width:350px; text-align:left; flex:none; }
+.harvest-period p { margin:0; font-size:14px; font-weight:650; }
+.harvest-period>span { font-size:11px; color:#66716b; }
+.harvest-quote-caption { margin:0; padding-top:10px; border-top:1px solid #d4dcd6; color:#66716b; font-size:11.5px; }
+.harvest-highlights { display:flex; gap:12px; padding:10px 0 12px; margin-bottom:14px; border-bottom:1px solid #d4dcd6; }
+.harvest-highlights>div { flex:1; min-width:0; padding:8px 16px; border-inline-start:1px solid #d4dcd6; }
 .harvest-highlights>div:first-child { border:0; }
-.harvest-highlight-label { display:flex; align-items:center; gap:8px; color:#245744; font-weight:700; font-size:16px; }
-.harvest-highlights [data-currency=USD_CHECKS] .harvest-highlight-label { color:#235c8d; }
+.harvest-highlights>div[data-currency=USD] { border:2px solid rgba(16,185,129,.6); border-radius:6px; background:#f3faf6; }
+.harvest-highlight-label { display:flex; align-items:baseline; gap:12px; color:#124c38; font-size:15px; font-weight:700; }
+.harvest-highlights [data-currency=USD_CHECKS] .harvest-highlight-label { color:#315e85; }
 .harvest-highlights [data-currency=EUR] .harvest-highlight-label { color:#923e58; }
-.harvest-highlight-label small { margin-inline-start:auto; font-size:11px; color:#667b70; font-weight:500; }
-.harvest-highlights strong { display:block; text-align:right; font-size:44px; line-height:1.6; font-variant-numeric:tabular-nums; font-weight:800; }
-.harvest-highlights strong small { font-size:14px; font-weight:500; color:#536c60; }
-.harvest-highlight-change { display:flex; align-items:center; justify-content:flex-end; gap:5px; font-size:16px; font-weight:700; }
-.harvest-highlight-change small { font-size:13px; font-weight:500; }
-.harvest-highlight-caption { display:block; font-size:11px; color:#65796e; margin-top:7px; }
-.harvest-sheet-body { padding:0 36px 22px; }
-.harvest-market { margin-top:24px; }
-.harvest-sheet .harvest-market h2,.harvest-sheet .harvest-summary h2 { font-size:18px; font-weight:750; margin:0 0 10px; }
-.harvest-market h2 { display:flex; align-items:center; justify-content:space-between; }
-.harvest-market h2>b { display:flex; align-items:center; gap:10px; }
-.harvest-market h2>b>small { color:#687e72; font-size:12px; border-inline-end:1px solid #b9cdc1; padding-inline-end:10px; font-weight:500; }
-.harvest-market h2 span { font-size:12px; color:#586d63; font-weight:400; }
-.harvest-market table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:14px; font-variant-numeric:tabular-nums; }
-.harvest-market th,.harvest-market td { padding:10px 7px; text-align:center; border-bottom:1px solid #e1e8e4; }
-.harvest-market thead { background:#edf3ef; color:#42584e; font-size:12px; }
-.harvest-market th:first-child { width:25%; text-align:right; }
-.harvest-market th:nth-child(4) { width:23%; }
-.harvest-market th:last-child { width:10%; }
-.harvest-market tbody th { font-weight:500; }
-.harvest-market tbody tr:nth-child(even) { background:#f8faf9; }
-.harvest-market td:nth-child(3) { color:#073e2e; background:#f0f6f2; }
-.harvest-market tbody th small { display:block; color:#65766e; font-size:11px; font-weight:400; }
-.harvest-delta { display:inline-flex; align-items:center; gap:2px; font-size:13px; }
-.harvest-sheet .harvest-up { color:#007a54; }
-.harvest-sheet .harvest-down { color:#b32e4b; }
-.harvest-summary { margin-top:26px; border-top:2px solid #073e2e; padding-top:16px; }
-.harvest-summary p { margin:8px 0; font-size:15px; line-height:1.85; overflow-wrap:anywhere; }
-.harvest-method { margin:20px 0 0; color:#5c7066; font-size:12px; line-height:1.8; }
-.harvest-sheet-footer { padding:26px 36px 18px; background:#073e2e; color:#fff; border-top:5px solid #28b68b; }
-.harvest-follow { display:flex; align-items:center; justify-content:space-between; gap:24px; padding-bottom:24px; }
-.harvest-follow>div>span { font-size:12px; color:#bbd8cb; }
-.harvest-follow>div>strong { display:block; font-size:24px; line-height:1.5; }
-.harvest-follow p { margin:3px 0 0; font-size:12px; color:#bbd8cb; }
-.harvest-socials { display:flex; gap:26px; }
-.harvest-socials a { display:flex; align-items:center; gap:10px; color:white; text-decoration:none; min-height:52px; }
-.harvest-social-icon { display:flex; align-items:center; justify-content:center; width:46px; height:46px; border-radius:50%; color:white; flex:none; }
-.harvest-telegram { background:#067eaf; }
-.harvest-facebook { background:#1877f2; }
-.harvest-socials a b { display:block; font-size:15px; }
-.harvest-socials a small { display:block; font-size:12px; color:#d6e9e0; }
-.harvest-footer-line { border-top:1px solid #43715e; padding-top:14px; display:flex; justify-content:space-between; align-items:center; gap:12px; font-size:12px; color:#c6ded2; }
-.harvest-footer-line strong { font-weight:500; }
+.harvest-highlight-label small { font-size:10px; font-family:Inter,Arial,sans-serif; color:#66716b; font-weight:500; }
+.harvest-highlights strong { display:block; text-align:right; font-size:40px; line-height:1.5; font-family:Inter,Cairo,Arial,sans-serif; font-variant-numeric:tabular-nums; font-weight:750; }
+.harvest-highlights [data-currency=USD] strong { font-size:44px; }
+.harvest-highlights strong small { font-size:12px; font-family:Cairo,Tahoma,sans-serif; font-weight:500; color:#66716b; }
+.harvest-sheet-body { display:flow-root; }
+.harvest-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:14px; font-variant-numeric:tabular-nums; }
+.harvest-table caption { padding-bottom:8px; text-align:right; font-size:15px; font-weight:750; }
+.harvest-table caption span { float:left; font-size:11px; font-weight:400; color:#66716b; }
+.harvest-table th,.harvest-table td { padding:7px 8px; text-align:right; border-bottom:1px solid #c4d0c8; }
+.harvest-table tbody tr:last-child>* { border-bottom:0; }
+.harvest-table thead th { width:20%; border-block:1px solid #718077; font-size:11.5px; font-weight:650; padding-block:8px; color:#4c5d52; white-space:nowrap; }
+.harvest-table thead th small { display:block; font-size:10px; font-weight:400; line-height:1.3; }
+.harvest-table th:not(:first-child),.harvest-table td { text-align:center; }
+.harvest-table .harvest-market th { text-align:right; padding-block:5px; border-bottom:1px solid #bac8bf; background:#edf2ee; font-size:12px; font-weight:750; color:#294f3a; }
+.harvest-table tbody tr[data-currency]:nth-child(odd) { background:#fafbfa; }
+.harvest-table td { font-family:Inter,Cairo,Arial,sans-serif; font-size:13px; white-space:nowrap; }
+.harvest-table td:nth-child(3) { font-weight:800; font-size:14px; color:#202924; }
+.harvest-table tbody th b { display:block; font-weight:650; font-size:13.5px; }
+.harvest-table tbody th small { display:block; color:#66716b; font-size:10.5px; font-weight:400; line-height:1.4; }
+.harvest-delta { display:inline-flex; flex-direction:column; align-items:center; font-size:12px; }
+.harvest-delta>span { display:flex; align-items:center; gap:3px; }
+.harvest-delta small { font-size:10.5px; line-height:1.4; }
+.harvest-sheet .harvest-up { color:#16724c; }
+.harvest-sheet .harvest-down { color:#ae334d; }
+.harvest-summary { display:grid; grid-template-columns:130px minmax(0,1fr); gap:12px; margin-top:14px; border-top:2px solid #263d31; padding-top:12px; }
+.harvest-sheet .harvest-summary h2 { font-size:16px; font-weight:750; margin:0; }
+.harvest-summary>div { display:grid; gap:6px; min-width:0; }
+.harvest-summary-note { display:flex; align-items:flex-start; gap:8px; border-inline-start:3px solid #64748b; border-radius:6px; padding:8px 12px; background:rgba(148,163,184,.06); font-size:13.5px; line-height:1.8; }
+.harvest-summary-note>svg { flex:none; margin-top:5px; color:#64748b; }
+.harvest-summary-note>span { min-width:0; overflow-wrap:anywhere; }
+.harvest-note-up { background:rgba(16,185,129,.08); border-color:#10b981; }
+.harvest-note-down { background:rgba(239,68,68,.08); border-color:#ef4444; }
+.harvest-note-up>svg { color:#16724c; }
+.harvest-note-down>svg { color:#ae334d; }
+.harvest-method { margin:0; padding-block:12px; color:#66716b; font-size:10.5px; line-height:1.8; }
+.harvest-sheet-footer { padding-top:12px; border-top:1px solid #718077; }
+.harvest-follow { display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.harvest-follow>strong { font-size:13px; font-weight:700; }
+.harvest-socials { display:flex; gap:30px; }
+.harvest-socials a { display:flex; align-items:center; gap:9px; color:#202924; text-decoration:none; min-height:44px; }
+.harvest-telegram { color:#067eaf; }
+.harvest-facebook { color:#1877f2; }
+.harvest-socials a b { display:block; font-size:11px; font-weight:600; }
+.harvest-socials a small { display:block; font-size:11px; color:#4c5d52; }
+.harvest-footer-line { padding-top:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; font-size:10.5px; color:#66716b; }
+.harvest-footer-line strong { font-weight:400; }
 .harvest-actions { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid var(--line,#34413c); padding-top:20px; margin-top:24px; }
 .weekly-harvest .harvest-primary { background:#007c59; color:white; border-color:#007c59; }
 .harvest-download { border-block:1px solid var(--line,#34413c); padding-block:18px; margin-top:18px; }

@@ -50,12 +50,39 @@ async function main() {
       assert.equal(await page.locator('#weekly-harvest-card').getByText('الدولار الرسمي',{exact:true}).count(),0);
       assert.equal(await page.locator('.harvest-highlights [data-currency=USD_CHECKS]').count(),1);
       assert.equal(await page.locator('.harvest-highlights>div').count(),3);
+      assert.equal(await page.locator('.harvest-table thead').count(),1);
+      assert.equal(await page.locator('.harvest-table thead th').count(),5);
+      assert.equal(await page.locator('.harvest-table').getByText('أيام الرصد',{exact:true}).count(),0);
+      assert(await page.evaluate(()=>{
+        const widths=[...document.querySelectorAll('.harvest-table thead th')].map(node=>node.getBoundingClientRect().width);
+        return Math.max(...widths)-Math.min(...widths)<1 && [...document.querySelectorAll('.harvest-market th')].every(node=>node.colSpan===5);
+      }),'Redistribute all five columns equally across market groups');
+      assert.equal(await page.locator('.harvest-table tbody tr[data-currency]').count(),await page.evaluate(()=>window.fixtureData.items.length));
+      assert(await page.evaluate(async()=>{
+        const {harvestNumber}=await import('/shared/weeklyHarvest.ts');
+        return window.fixtureData.items.every(item=>{
+          const cells=document.querySelector('.harvest-table tr[data-currency="'+item.id+'"]').cells;
+          return cells.length===5&&cells[0].textContent.includes(item.name)&&cells[0].textContent.includes(item.unit)&&
+            cells[1].textContent===harvestNumber(item.open,item.id)&&cells[2].textContent===harvestNumber(item.close,item.id)&&
+            cells[3].textContent===harvestNumber(item.low,item.id)+' / '+harvestNumber(item.high,item.id)&&
+            (item.change===null?cells[4].textContent==='غير كافٍ':cells[4].textContent.includes((item.change>0?'+':'')+harvestNumber(item.change,item.id))&&cells[4].textContent.includes(Math.abs(item.changePct).toFixed(2)+'%'));
+        });
+      }),'Preserve every price, range, unit and change value in the compact table');
+      assert(await page.evaluate(()=>{
+        const cash=document.querySelector('.harvest-highlights [data-currency=USD]'),euro=document.querySelector('.harvest-highlights [data-currency=EUR]');
+        return parseFloat(getComputedStyle(cash).borderTopWidth)===2&&parseFloat(getComputedStyle(cash.querySelector('strong')).fontSize)>parseFloat(getComputedStyle(euro.querySelector('strong')).fontSize);
+      }),'Cash USD has a green frame and a larger headline price');
+      assert.equal(await page.locator('.harvest-summary-note').count(),await page.evaluate(()=>window.fixtureData.notes.length));
+      assert(await page.locator('.harvest-summary-note').filter({hasText:'دولار كاش'}).evaluate(node=>node.classList.contains('harvest-note-up')));
+      assert(await page.locator('.harvest-summary-note').filter({hasText:'يورو'}).evaluate(node=>node.classList.contains('harvest-note-neutral')),'Mixed rise/fall commentary stays neutral');
+      assert(await page.evaluate(()=>[...document.querySelectorAll('.harvest-table tbody')].every(body=>[...body.lastElementChild.cells].every(cell=>getComputedStyle(cell).borderBottomWidth==='0px'))),'No redundant line after the last row of each group');
       assert.equal(await page.locator('.harvest-socials a').first().getAttribute('href'),'https://t.me/libya_index_dollar');
       assert.equal(await page.locator('.harvest-socials a').last().getAttribute('href'),'https://www.facebook.com/profile.php?id=61593953519936');
       assert(await page.evaluate(()=>{const paper=document.querySelector('#weekly-harvest-card').getBoundingClientRect(); return [...document.querySelectorAll('.harvest-follow a, .harvest-footer-line, .harvest-highlights>div')].every(node=>{const r=node.getBoundingClientRect();return r.left>=paper.left-1&&r.right<=paper.right+1&&r.bottom<=paper.bottom+1;});}),'Highlights and follow links fit the exported image');
       for(const theme of ['light','dark']) {
         await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
         assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal page overflow');
+        assert(await page.evaluate(()=>[...document.querySelectorAll('.harvest-table th,.harvest-table td,.harvest-highlight-label,.harvest-footer-line')].every(node=>node.scrollWidth<=node.clientWidth+1)),'Report text fits its columns');
         await page.screenshot({path:path.join(out,`preview-${width}-${theme}.png`),fullPage:true});
       }
       const downloadPromise=page.waitForEvent('download',{timeout:10000}); await page.getByRole('button',{name:'تحميل الصورة',exact:true}).click(); const download=await downloadPromise;
@@ -63,6 +90,17 @@ async function main() {
       assert.equal(download.suggestedFilename(),'weekly-harvest-2026-10-08.png');
       const save=page.getByRole('link',{name:'حفظ ملف الصورة',exact:true}), savedUrl=await save.getAttribute('href');
       assert(savedUrl.startsWith('blob:'));
+      assert(await page.evaluate(async url=>{
+        const image=new Image();image.src=url;await image.decode();
+        const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+        const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
+        const paper=document.querySelector('#weekly-harvest-card').getBoundingClientRect(),scale=image.naturalWidth/paper.width;
+        return [...document.querySelector('.harvest-table tr[data-currency]').cells].every(cell=>{
+          const r=cell.getBoundingClientRect(),pixels=ctx.getImageData(Math.round((r.left-paper.left)*scale)+12,Math.round((r.top-paper.top)*scale)+8,Math.floor(r.width*scale)-24,Math.floor(r.height*scale)-16).data;
+          let ink=0;for(let i=0;i<pixels.length;i+=4)if(Math.max(pixels[i],pixels[i+1],pixels[i+2])<140)ink++;
+          return ink>12;
+        });
+      },'data:image/png;base64,'+png.toString('base64')),'Every exported table column contains visible text, not only the DOM preview');
       const retry=page.waitForEvent('download');await save.click();assert.equal((await retry).suggestedFilename(),download.suggestedFilename());
       if(width<700){
         const share=page.getByRole('button',{name:'مشاركة الصورة',exact:true});await share.click();
@@ -82,6 +120,11 @@ async function main() {
       assert.deepEqual(await page.evaluate(()=>window.policyViolations),[],'The export must respect production CSP without fetching data URLs');
       await page.screenshot({path:path.join(out,`save-${width}.png`),fullPage:true});
       await page.getByRole('button',{name:'تحرير النشرة',exact:true}).click();
+      await page.getByRole('textbox',{name:/ملاحظات التقرير/}).fill('ارتفع الدولار إلى 10.24 د.ل.\nزاد سعر الصكوك.\nانخفض اليورو إلى 11.14 د.ل.\nتراجع الذهب.\nالأسعار ضمن نطاق الرصد.');
+      assert.equal(await page.locator('.harvest-note-up').count(),2);
+      assert.equal(await page.locator('.harvest-note-down').count(),2);
+      assert.equal(await page.locator('.harvest-note-neutral').count(),1);
+      assert(await page.locator('.harvest-summary-note').first().textContent().then(text=>text.includes('10.24')),'Decimal prices are not split into separate badges');
       await page.getByLabel('آخر رصد دولار كاش',{exact:true}).fill('20');
       assert.equal(await page.getByRole('region',{name:'خيارات حفظ الصورة'}).count(),0,'Discard the generated file after editing');
       await page.waitForFunction(url=>window.revokedUrls.includes(url),savedUrl);
@@ -92,6 +135,8 @@ async function main() {
       assert.equal(await page.locator('#weekly-harvest-card').getByText('جنيه إسترليني',{exact:true}).count(),0);
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
       await page.screenshot({path:path.join(out,`editor-${width}.png`),fullPage:true});
+      for(const name of ['دولار كاش','دولار صكوك','يورو'])await page.getByRole('checkbox',{name,exact:true}).uncheck();
+      assert.equal(await page.locator('.harvest-highlights').count(),0,'Do not leave an empty quote band when key currencies are hidden');
       assert.deepEqual(errors,[]); await context.close();
     }
     console.log('PASS: responsive preview, CSP-safe 1080px PNG with Android touch, Blob download/open, native share/cancel/denial, upload encoding and stale-file cleanup. Screenshots: '+out);

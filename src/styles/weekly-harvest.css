@@ -6,8 +6,8 @@
 .weekly-harvest h3 { font-size:16px; margin:0; font-weight:700; }
 .harvest-eyebrow { font-size:12px; color:var(--official,#34d399); }
 .harvest-heading p,.harvest-toolbar>span { color:var(--muted-ink,#abb9b4); font-size:13px; margin:6px 0 0; }
-.weekly-harvest button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; min-width:44px; padding:9px 14px; border:1px solid var(--line,#34413c); border-radius:6px; color:inherit; background:var(--surface,#19231f); cursor:pointer; font-size:13px; font-weight:650; }
-.weekly-harvest button:hover { border-color:var(--official,#34d399); }
+.weekly-harvest button,.harvest-download a { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; min-width:44px; padding:9px 14px; border:1px solid var(--line,#34413c); border-radius:6px; color:inherit; background:var(--surface,#19231f); cursor:pointer; font-size:13px; font-weight:650; text-decoration:none; }
+.weekly-harvest button:hover,.harvest-download a:hover { border-color:var(--official,#34d399); }
 .weekly-harvest button:disabled { opacity:.5; cursor:not-allowed; }
 .weekly-harvest :focus-visible { outline:2px solid var(--official,#059669); outline-offset:3px; }
 .harvest-toolbar { padding:12px 0; border-block:1px solid var(--line,#34413c); }
@@ -97,11 +97,16 @@
 .harvest-footer-line strong { font-weight:500; }
 .harvest-actions { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid var(--line,#34413c); padding-top:20px; margin-top:24px; }
 .weekly-harvest .harvest-primary { background:#007c59; color:white; border-color:#007c59; }
+.harvest-download { border-block:1px solid var(--line,#34413c); padding-block:18px; margin-top:18px; }
+.harvest-download>div { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.harvest-download>div:first-child { justify-content:space-between; margin-bottom:12px; }
+.harvest-download strong { font-size:15px; }
+.harvest-download span { font-size:12px; color:var(--muted-ink,#abb9b4); }
 @media (max-width:700px) {
   .harvest-editor,.harvest-edit-items { grid-template-columns:minmax(0,1fr); }
   .harvest-edit-items fieldset>div { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .harvest-heading { align-items:flex-start; }
   .harvest-heading>div { width:100%; }
   .weekly-harvest h2 { font-size:22px; }
-  .harvest-actions button { flex:1 1 140px; }
+  .harvest-actions button,.harvest-download a,.harvest-download button { flex:1 1 140px; }
 }

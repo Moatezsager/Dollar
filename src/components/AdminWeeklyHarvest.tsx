@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Download, Send, Facebook, RefreshCw, Copy, Check, Eye, SlidersHorizontal, RotateCcw, ArrowUpRight, ArrowDownRight, Minus, FileText, Banknote, FileCheck2, Euro } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { Download, Send, Facebook, RefreshCw, Copy, Check, Eye, SlidersHorizontal, RotateCcw, ArrowUpRight, ArrowDownRight, Minus, FileText, Banknote, FileCheck2, Euro, Share2, ExternalLink } from 'lucide-react';
+import { toBlob } from 'html-to-image';
 import { harvestNotes, harvestNumber, WeeklyHarvestData, WeeklyItem } from '../../shared/weeklyHarvest';
+import { libyaDayKey } from '../utils/rateHistory';
 import '../styles/weekly-harvest.css';
 
 interface Props { token: string; config: any; setError: (message: string) => void; setSuccess: (message: string) => void }
@@ -25,6 +26,8 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
   const [editing, setEditing] = useState(false);
   const [scale, setScale] = useState(1);
   const [height, setHeight] = useState(1100);
+  const [download, setDownload] = useState<{ file: File; url: string } | null>(null);
+  const downloadOptions = useRef<HTMLElement>(null);
   const wrapper = useRef<HTMLDivElement>(null);
   const card = useRef<HTMLElement>(null);
   const request = useRef<AbortController | null>(null);
@@ -34,6 +37,9 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
   const invalid = visible.some(item => fields.some(([key]) => !Number.isFinite(item[key]) || item[key] <= 0) ||
     item.high < Math.max(item.open, item.close, item.low) || item.low > Math.min(item.open, item.close, item.high));
   const canExport = !!data && visible.length > 0 && !invalid && !!title.trim() && !loading && !busy;
+  useEffect(() => { setDownload(null); setFeedback(''); }, [items, title, noteDraft, hidden, data]);
+  useEffect(() => () => { if (download) URL.revokeObjectURL(download.url); }, [download]);
+  useEffect(() => { if (download) downloadOptions.current?.scrollIntoView({ block: 'nearest' }); }, [download]);
   const reset = (next: WeeklyHarvestData) => { setItems(next.items); setTitle(next.title); setNoteDraft(null); setHidden([]); setDirty(false); };
   const load = async () => {
     if (dirty && !window.confirm('إعادة الاحتساب ستستبدل تعديلات هذه المسودة. هل تتابع؟')) return;
@@ -79,28 +85,48 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
       else {
         await document.fonts.ready;
         await Promise.all([...card.current!.querySelectorAll('img')].map(image => image.decode()));
-        const png = await toPng(card.current!, { pixelRatio: 1.2, backgroundColor: '#ffffff', style: { transform: 'none', position: 'static' } });
-        const blob = await (await fetch(png)).blob();
+        const blob = download?.file || await toBlob(card.current!, { pixelRatio: 1.2, backgroundColor: '#ffffff', style: { transform: 'none', position: 'static' } });
+        if (!blob || !blob.size) throw new Error('تعذر تجهيز الصورة. أعد المحاولة.');
         if (blob.size > 5 * 1024 * 1024) throw new Error('الصورة أكبر من 5 ميجابايت. قلل الأصناف أو طول النص.');
         if (action === 'download') {
-          const link = document.createElement('a'); link.href = png; link.download = `weekly-harvest-${data!.start.slice(0, 10)}.png`; link.click();
+          const file = new File([blob], `weekly-harvest-${libyaDayKey(data!.start)}.png`, { type: 'image/png' });
+          const url = URL.createObjectURL(file);
+          setDownload({ file, url });
+          const link = document.createElement('a'); link.href = url; link.download = file.name;
+          document.body.appendChild(link); link.click(); link.remove();
         } else if (action === 'image') {
           if (!window.ClipboardItem) throw new Error('نسخ الصور غير مدعوم في هذا المتصفح. استخدم تحميل الصورة.');
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
         } else {
           const caption = [title, data!.dateRange, '', ...notes, '', `تابعنا على تيليجرام: ${telegramUrl}`, `فيسبوك: ${facebookUrl}`, 'https://dollar-price-qp14.onrender.com/'].join('\n');
           if (caption.length > 1024) throw new Error('نص النشرة أطول من حد الإرسال. اختصر الملاحظات إلى 1024 حرفًا مع العنوان والتاريخ.');
+          const imageBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader(); reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('تعذرت قراءة ملف الصورة.')); reader.readAsDataURL(blob);
+          });
           const response = await fetch('/api/admin/weekly-harvest/send-telegram', { method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(20000),
-            body: JSON.stringify({ imageBase64: png, caption, destination: action === 'me' ? 'me' : 'channel' }) });
+            body: JSON.stringify({ imageBase64, caption, destination: action === 'me' ? 'me' : 'channel' }) });
           const json = await response.json();
           if (!response.ok || !json.success) throw new Error(json.error || 'تعذر إرسال النشرة.');
         }
       }
-      const message = action === 'download' ? 'تم تحميل النشرة.' : action === 'text' ? 'تم نسخ التقرير.' : action === 'image' ? 'تم نسخ الصورة.' : action === 'me' ? 'أُرسلت المعاينة إلى محادثة الإدارة.' : 'نُشرت النشرة في القناة.';
+      const message = action === 'download' ? 'الصورة جاهزة للحفظ والمشاركة.' : action === 'text' ? 'تم نسخ التقرير.' : action === 'image' ? 'تم نسخ الصورة.' : action === 'me' ? 'أُرسلت المعاينة إلى محادثة الإدارة.' : 'نُشرت النشرة في القناة.';
       setFeedback(message); setSuccess(message);
     } catch (err: any) { const message = err.message || 'تعذر إتمام العملية. حاول مجددًا.'; setLocalError(message); setError(message); }
     finally { operation.current = false; setBusy(''); }
+  };
+  const shareDownload = async () => {
+    if (!download || operation.current) return;
+    operation.current = true; setBusy('share'); setLocalError('');
+    try {
+      // A fresh tap shares the prepared file without losing native user activation.
+      await navigator.share({ files: [download.file], title });
+      setFeedback('تم فتح خيارات مشاركة الصورة.');
+    } catch (err: any) {
+      if (err.name === 'AbortError') setFeedback('أُلغيت المشاركة؛ الصورة ما زالت جاهزة للحفظ.');
+      else setLocalError('تعذرت المشاركة. يمكنك حفظ ملف الصورة أو فتحها مباشرة.');
+    } finally { operation.current = false; setBusy(''); }
   };
   return <div className="weekly-harvest" dir="rtl">
     <header className="harvest-heading"><div><span className="harvest-eyebrow">غرفة النشر</span><h2>الحصاد الأسبوعي</h2><p>{data?.dateRange || 'آخر سبعة أيام مكتملة'} <span>· بتوقيت طرابلس</span></p></div>
@@ -145,7 +171,12 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
       <div className="harvest-actions"><button className="harvest-primary" disabled={!canExport} onClick={() => act('download')}><Download size={18} />تحميل الصورة</button>
         <button disabled={!canExport} onClick={() => act('image')}><Copy size={17} />نسخ الصورة</button><button disabled={!canExport} onClick={() => act('text')}><FileText size={17} />نسخ التقرير</button>
         <button disabled={!canExport} onClick={() => act('me')}><Send size={17} />إرسال للإدارة</button><button disabled={!canExport || !config?.telegramPostChannel} onClick={() => act('channel')}><Send size={17} />نشر في القناة</button>
-        {busy && <span role="status">جارٍ تجهيز النشرة...</span>}</div>
+        {busy && <span role="status">{busy === 'share' ? 'جارٍ فتح خيارات المشاركة...' : 'جارٍ تجهيز النشرة...'}</span>}</div>
+      {download && !loading && <section ref={downloadOptions} className="harvest-download" aria-label="خيارات حفظ الصورة"><div><strong>الصورة جاهزة</strong><span dir="ltr">PNG · {Math.round(download.file.size / 1024)} KB</span></div><div>
+        <a className="harvest-primary" href={download.url} download={download.file.name}><Download size={18} aria-hidden="true" />حفظ ملف الصورة</a>
+        {navigator.canShare?.({ files: [download.file] }) && <button disabled={!!busy} onClick={shareDownload}><Share2 size={18} aria-hidden="true" />مشاركة الصورة</button>}
+        <a href={download.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={18} aria-hidden="true" />فتح الصورة</a>
+      </div></section>}
     </>}
   </div>;
 }

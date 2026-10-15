@@ -14,14 +14,26 @@ export function harvestNumber(value: number, code = '') {
   return value.toLocaleString('en-US', { minimumFractionDigits: precise ? 4 : 2, maximumFractionDigits: precise ? 4 : 3 });
 }
 export function harvestNotes(items: WeeklyItem[]): string[] {
-  return ['USD', 'USD_CHECKS', 'EUR'].flatMap(id => {
-    const item = items.find(row => row.id === id);
-    if (!item) return [];
-    const close = harvestNumber(item.close, item.id);
-    if (item.change === null) return [`آخر سعر مسجل لـ${item.name} هو ${close} د.ل؛ البيانات لا تكفي لاحتساب التغير خلال الفترة.`];
-    if (item.change === 0) return [`أنهى ${item.name} الفترة عند ${close} د.ل، دون تغير بين أول وآخر رصد.`];
-    return [`${item.change > 0 ? 'ارتفع' : 'انخفض'} ${item.name} من ${harvestNumber(item.open, item.id)} إلى ${close} د.ل، بفارق ${harvestNumber(Math.abs(item.change), item.id)} د.ل (${Math.abs(item.changePct!).toFixed(2)}%).`];
-  });
+  const cash = items.find(item => item.id === 'USD'), checks = items.find(item => item.id === 'USD_CHECKS');
+  const euro = items.find(item => item.id === 'EUR'), gold = items.find(item => item.id === 'GOLD_SCRAP_18');
+  const movement = (item: WeeklyItem) => item.change === null ? `${item.name}: لا يكفي الرصد لحساب التغير` :
+    item.change === 0 ? `${item.name} دون تغير بين أول وآخر رصد` : `${item.name} ${item.change > 0 ? 'ارتفع' : 'تراجع'} ${Math.abs(item.changePct!).toFixed(2)}%`;
+  const notes: string[] = [];
+  if (cash) notes.push(`${movement(cash)}؛ نطاق الرصد ${harvestNumber(cash.low, cash.id)} إلى ${harvestNumber(cash.high, cash.id)} د.ل.`);
+  if (checks && cash && Date.parse(checks.lastAt) === Date.parse(cash.lastAt)) {
+    const gap = Number((checks.close - cash.close).toFixed(6));
+    let note = gap === 0 ? 'تعادل سعر الصكوك والكاش عند آخر رصد' : `الصكوك ${gap > 0 ? 'أعلى من' : 'أقل من'} الكاش بـ ${harvestNumber(Math.abs(gap), 'USD_CHECKS')} د.ل عند آخر رصد`;
+    if (checks.change !== null && cash.change !== null && Date.parse(checks.firstAt) === Date.parse(cash.firstAt)) {
+      const firstGap = Number((checks.open - cash.open).toFixed(6));
+      note += gap === firstGap ? '؛ الفارق نفسه عند أول رصد' : `؛ فارق أول الرصد ${firstGap > 0 ? '+' : ''}${harvestNumber(firstGap, 'USD_CHECKS')} د.ل`;
+    }
+    notes.push(`${note}.`);
+  } else if (checks) notes.push(`${movement(checks)}.`);
+  const other = [euro, gold].filter((item): item is WeeklyItem => !!item);
+  if (other.length) notes.push(`${other.map(movement).join('؛ ')}.`);
+  const partial = [cash, checks, ...other].filter((item): item is WeeklyItem => !!item && item.days < 7);
+  if (partial.length) notes.push(`رصد جزئي: ${partial.map(item => `${item.name} ${item.days}/7 أيام`).join('، ')}.`);
+  return notes;
 }
 export function harvestWindow(now = new Date()) {
   const day = dayFormat.format(now);

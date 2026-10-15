@@ -1,7 +1,9 @@
 export const NOTIFICATION_ICON = '/icon-192.png';
 export const NOTIFICATION_BADGE = '/icons/badge-72.png';
-export const RATE_PUSH_INTERVAL = 30 * 60 * 1000;
-export const RATE_PUSH_BATCH_DELAY = 60 * 1000;
+export const RATE_PUSH_INTERVAL = 2 * 60 * 60 * 1000;
+export const RATE_PUSH_BATCH_DELAY = 3 * 60 * 1000;
+export const RATE_PUSH_MAX_DAILY = 3;
+export const IN_APP_DIGEST_INTERVAL = 5 * 60 * 1000;
 export const DEFAULT_PRICE_THRESHOLD = 0.05;
 export const IMPORTANT_CURRENCIES = ['USD', 'EUR', 'USD_CHECKS', 'USD_JBANK', 'GOLD_CAST_24', 'GOLD_CAST_18'];
 
@@ -32,7 +34,7 @@ export function priceChanges(previous: PriceSnapshot, next: PriceSnapshot, thres
 export function priceDigest(changes: PriceChange[]) {
   return {
     title: 'ملخص تغيّرات الأسعار المهمة',
-    body: changes.slice(0, 3).map(change => `${change.name} ${change.market === 'official' ? 'رسمي' : 'موازي'}: ${change.newPrice.toFixed(2)} د.ل`).join(' · ')
+    body: changes.slice(0, 3).map(change => `${change.name} ${change.market === 'official' ? 'رسمي' : 'موازي'}: ${change.newPrice.toFixed(change.market === 'official' ? 4 : 2)} د.ل`).join(' · ')
       + (changes.length > 3 ? ` · و${changes.length - 3} تغيّرات أخرى` : ''),
   };
 }

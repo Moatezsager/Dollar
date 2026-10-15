@@ -6,7 +6,7 @@ import { decodeData } from "../utils/security";
 import { processIncomingVersion } from "../utils/autoUpdater";
 import { logErrorToServer } from "../utils/logger";
 import { enablePush, disablePush, syncPushSubscription } from "../utils/pushNotifications";
-import { DEFAULT_PRICE_THRESHOLD, priceChanges, priceDigest, isQuietTime } from "../../shared/notifications";
+import { DEFAULT_PRICE_THRESHOLD, IN_APP_DIGEST_INTERVAL, priceChanges, priceDigest, isQuietTime } from "../../shared/notifications";
 
 interface UseRatesDataOptions {
   playNotificationSound?: (type: 'up' | 'down') => void;
@@ -152,11 +152,12 @@ export function useRatesData(options?: UseRatesDataOptions) {
       notificationBaseline.current = snapshot;
       digestSnapshot.current = null;
       if (!changes.length || !inAppRef.current || document.visibilityState !== 'visible') return;
+      if (Date.now() - (Number(safeStorage.getItem('last_inapp_digest')) || 0) < IN_APP_DIGEST_INTERVAL) return;
       const digest = priceDigest(changes);
       addToast(digest.title, digest.body, 'info');
       safeStorage.setItem('last_inapp_digest', String(Date.now()));
       if (!isQuietTime()) options?.playNotificationSound?.(changes[0].newPrice > changes[0].oldPrice ? 'up' : 'down');
-    }, Math.max(10000, 30000 - (Date.now() - lastDigest)));
+    }, Math.max(10000, IN_APP_DIGEST_INTERVAL - (Date.now() - lastDigest)));
   };
 
   const fetchConfig = async () => {

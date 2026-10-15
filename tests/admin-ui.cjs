@@ -39,12 +39,18 @@ async function main() {
       localStorage.setItem('colorTheme','dark');
       localStorage.setItem('hasSeenTour','true');
       localStorage.setItem('installPromptDismissed','true');
-      localStorage.setItem('pushPromptDismissed_v4',Date.now().toString());
+      const promptMode=localStorage.getItem('fixturePushPrompt');
+      if(!promptMode)localStorage.setItem('pushPromptDismissed_v4',Date.now().toString());
+      if(promptMode){
+        // Exercise the invitation without waiting 30 seconds on every fixture reload.
+        const timeout=window.setTimeout.bind(window);
+        window.setTimeout=(callback,delay,...args)=>timeout(callback,delay===30000?250:delay,...args);
+      }
       localStorage.setItem('soundEnabled','false');
       const bytes = new Uint8Array(65); bytes[0] = 4; bytes.fill(1, 1);
       const p256dh = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       const auth = btoa(String.fromCharCode(...new Uint8Array(16).fill(2))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      let subscribed = true;
+      let subscribed = !promptMode;
       const subscription = {options:{applicationServerKey: bytes.buffer},
         toJSON: () => ({endpoint:'https://fcm.googleapis.com/fcm/send/fixture-browser',keys:{p256dh,auth}}),
         unsubscribe: async () => {subscribed=false; return true;}};
@@ -52,7 +58,12 @@ async function main() {
         getSubscription: async () => subscribed ? subscription : null,
         subscribe: async () => {subscribed=true;return subscription;},
       }})});
-      Object.defineProperty(window, 'Notification', {value: {permission:'granted', requestPermission:async ()=>'granted'}});
+      window.fixturePermissionRequests=0;
+      Object.defineProperty(window, 'Notification', {value: {permission:promptMode?'default':'granted', requestPermission:async function(){
+        window.fixturePermissionRequests++;
+        if(!navigator.userActivation.isActive)throw new Error('Permission must follow a user tap');
+        this.permission=promptMode==='deny'?'denied':'granted';return this.permission;
+      }}});
     });
     let config = {channels:['fixture'],terms:[{id:'USD',name:'الدولار',flag:'us',regex:'(\\d+)',min:1,max:25}],telegramBotToken:'fixture-bot',telegramAdminChatId:'42',enableUserTracking:false};
     let messages=[
@@ -287,6 +298,39 @@ async function main() {
       await capture('notification-settings-'+width);
     }
     await settings.getByRole('button',{name:'تم',exact:true}).click();
+    const showPrompt=async(mode='allow')=>{
+      await page.evaluate(mode=>{
+        localStorage.setItem('fixturePushPrompt',mode);
+        localStorage.removeItem('pushEnabled');localStorage.removeItem('pushPromptDismissed_v4');
+      },mode);
+      await page.goto(base+'/',{waitUntil:'domcontentloaded'});
+      await page.getByRole('button',{name:'عرض تفاصيل الدولار النقدي في السوق الموازي'}).waitFor();
+      return page.getByRole('complementary',{name:'إشعارات الجهاز',exact:true});
+    };
+    const prompt=await showPrompt();await prompt.waitFor();
+    assert.equal(await page.evaluate(()=>window.fixturePermissionRequests),0,'Displaying the invitation never requests permission automatically');
+    for(const theme of ['light','dark'])for(const width of [1440,390,320]){
+      await page.setViewportSize({width,height:900});
+      await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+      assert(await prompt.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+      await capture('push-activation-'+width+'-'+theme);
+    }
+    pushSaveFailure=true;
+    await prompt.getByRole('button',{name:'تفعيل الإشعارات',exact:true}).click();
+    await prompt.getByRole('alert').waitFor();assert(await prompt.isVisible(),'Keep an activation failure visible for retry');
+    assert.notEqual(await page.evaluate(()=>localStorage.getItem('pushEnabled')),'true');
+    pushSaveFailure=false;
+    await prompt.getByRole('button',{name:'تفعيل الإشعارات',exact:true}).click();await prompt.waitFor({state:'hidden'});
+    assert.equal(await page.evaluate(()=>localStorage.getItem('pushEnabled')),'true');
+    assert.equal(await page.evaluate(()=>window.fixturePermissionRequests),1,'Retry saving without another permission request');
+    const deniedPrompt=await showPrompt('deny');await deniedPrompt.waitFor();
+    await deniedPrompt.getByRole('button',{name:'تفعيل الإشعارات',exact:true}).click();await deniedPrompt.getByRole('alert').waitFor();
+    assert.equal(await deniedPrompt.getByRole('button',{name:'إعدادات الإشعارات',exact:true}).count(),1);
+    await deniedPrompt.getByRole('button',{name:'عدم تذكيري الآن',exact:true}).click();
+    await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(750);
+    assert.equal(await deniedPrompt.count(),0,'Dismissal survives reload without nagging');
+    assert.equal(await page.evaluate(()=>window.fixturePermissionRequests),0);
     assert.equal(errors.length,0,errors.join('\n'));
     console.log('PASS: admin entry/session validation, responsive themes, drafts, bot, inbox, Push preview/test/confirmation/history and settings persistence/failure');
     console.log(`Fixture requests: stats=${statsRequests}, bot-status=${statusRequests}, test-messages=${testRequests}; no production services used.`);

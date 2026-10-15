@@ -88,6 +88,8 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 ### Local verification
 
 - Web Push price summaries originate in the deduplicated Web Socket.IO broadcaster, not per-currency social publishing. Settings must save a real Push subscription, not just browser permission. Admin Push routes require the existing admin token; device tests target only the supplied validated subscription. Never send live production campaigns during verification.
+- Notification policy: batch important price changes for three minutes, at most three automatic summaries per Tripoli day with a two-hour interval, silent, and no automatic price sending from 22:00 to 08:00. In-page price digests have a five-minute interval; live prices are not delayed. Manual admin announcements retain their separate three-per-day/ten-minute limits and device tests.
+- The invitation offers direct activation only on a user tap. Permission cannot be forced; respect denial, explicit opt-out and the existing 30-day dismissal. Hide the invitation only after successful subscription persistence, not permission alone. Shared notification constants supply both settings and admin policy text.
 
 - `npm run lint` checks TypeScript under `src` only; it does not validate server runtime references.
 - `node tests/admin-regression.cjs` checks alerts, private bot delivery, Web stats/report and actual local Socket.IO authorization/live broadcasts with mocked database and HTTP services.

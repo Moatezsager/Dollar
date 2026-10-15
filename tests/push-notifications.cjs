@@ -91,6 +91,11 @@ async function main() {
     }));
     assert.equal(web.priceChanges(snapshot(now),snapshot(now,9.049)).length,0);
     assert.equal(web.priceChanges(snapshot(now),snapshot(now,9.05,10.06)).length,2);
+    assert.equal(web.RATE_PUSH_MAX_DAILY,3);
+    assert.equal(web.RATE_PUSH_INTERVAL,120*60000);
+    assert.equal(web.RATE_PUSH_BATCH_DELAY,3*60000);
+    assert.equal(web.IN_APP_DIGEST_INTERVAL,5*60000);
+    assert(web.priceDigest([{code:'USD',market:'official',name:'الدولار',oldPrice:6.4,newPrice:6.4501}]).body.includes('6.4501'),'Official prices retain four decimals in notifications');
     assert.equal(web.priceChanges({parallel:{GOLD_CAST_24:1000},official:{},lastUpdated:''},{parallel:{GOLD_CAST_24:1004},official:{},lastUpdated:''}).length,0);
     assert.equal(web.isQuietTime(Date.parse('2026-10-10T20:00:00Z')),true);
     assert.equal(web.isQuietTime(Date.parse('2026-10-10T06:00:00Z')),false);
@@ -143,13 +148,15 @@ async function main() {
     assert(sends[0].data.body.includes('9.20') && sends[0].data.body.includes('10.20'));
     now++;web.queueRatePush(snapshot(now,9.3,10.3));await web.flushPricePush();
     assert.equal(sends.length,1,'Cooldown suppresses another summary');
-    now+=31*60000;web.queueRatePush(snapshot(now,9.2,10.2));await web.flushPricePush();
+    now+=web.RATE_PUSH_INTERVAL+60000;web.queueRatePush(snapshot(now,9.2,10.2));await web.flushPricePush();
     assert.equal(sends.length,1,'A reversed change must not produce a misleading notification');
     now++;web.queueRatePush(snapshot(now,9.4,10.4));await web.flushPricePush();assert.equal(sends.length,2);
-    for(let index=0;index<7;index++){now+=31*60000;web.queueRatePush(snapshot(now,10+index,11+index));await web.flushPricePush();}
-    assert.equal(sends.length,6,'No more than six price summaries in a day');
-    now=Date.parse('2026-10-11T00:00:00Z');web.queueRatePush(snapshot(now,20,21));await web.flushPricePush();assert.equal(sends.length,6,'Quiet hours defer price summaries');
-    now=Date.parse('2026-10-11T06:00:00Z');await web.flushPricePush();assert.equal(sends.length,7,'Latest prices resume after quiet hours');
+    for(let index=0;index<3;index++){now+=web.RATE_PUSH_INTERVAL+60000;web.queueRatePush(snapshot(now,10+index,11+index));await web.flushPricePush();}
+    assert.equal(sends.length,3,'No more than three price summaries in a day');
+    assert(sends.every(item=>item.data.silent===true),'Automated price summaries do not request sound');
+    assert.deepEqual((await web.pushOverview()).policy,{batchSeconds:180,intervalMinutes:120,maxRateDaily:3,quietStart:22,quietEnd:8,priceThreshold:0.05});
+    now=Date.parse('2026-10-11T00:00:00Z');web.queueRatePush(snapshot(now,20,21));await web.flushPricePush();assert.equal(sends.length,3,'Quiet hours defer price summaries');
+    now=Date.parse('2026-10-11T06:00:00Z');await web.flushPricePush();assert.equal(sends.length,4,'Latest prices resume after quiet hours');
     console.log('PASS: startup, grouped latest prices, reversal, cooldown, daily cap and quiet-hours resume');
 
     sends=[];
@@ -217,6 +224,7 @@ async function main() {
     await dispatch('push',{data:{json:()=>({kind:'rates',title:'أسعار',body:'ملخص',url:'https://evil.test'})}});
     assert.equal(shown.length,1);assert.equal(shown[0].options.renotify,false);
     assert.equal(shown[0].options.requireInteraction,false);assert(!('vibrate' in shown[0].options));
+    assert.equal(shown[0].options.silent,true,'Price summaries stay silent during the day as well');
     assert.equal(shown[0].options.data.url,origin+'/');assert.equal(shown[0].options.icon,'/icon-192.png');
     await dispatch('push',{data:{json:()=>null}});assert.equal(shown.length,2);
     now=Date.parse('2026-10-11T20:00:00Z');
@@ -234,7 +242,8 @@ async function main() {
     const navigatorMock={userAgent:'desktop',platform:'Win32',maxTouchPoints:0,serviceWorker:{ready:Promise.resolve({
       pushManager:{async getSubscription(){return subscription;},async subscribe(){subscribes++;subscription=makeSubscription();return subscription;}},
     })}};
-    const NotificationMock={permission:'granted',async requestPermission(){return this.permission;}};
+    let permissionRequests=0;
+    const NotificationMock={permission:'granted',async requestPermission(){permissionRequests++;this.permission='granted';return this.permission;}};
     const clientCode=await bundle("export * from './src/utils/pushNotifications';",{
       storage:'export const safeStorage=globalThis.__browserStorage;',
     },'browser','cjs');
@@ -247,6 +256,8 @@ async function main() {
       }};
     vm.runInNewContext(clientCode,clientContext);const client=clientContext.module.exports;
     await client.enablePush();assert.equal(subscribes,0);assert.equal(unsubscribes,0);assert.equal(storage.get('pushEnabled'),'true');
+    assert.equal(permissionRequests,0,'Already-granted permission is not requested again');
+    NotificationMock.permission='default';await client.enablePush();assert.equal(permissionRequests,1,'Only activation requests a missing permission');
     storage.delete('pushEnabled');saveOK=false;
     await assert.rejects(client.enablePush());assert(!storage.has('pushEnabled'),'Do not claim success when persistence failed');
     saveOK=true;saves=0;await Promise.all([client.syncPushSubscription(),client.syncPushSubscription()]);assert.equal(saves,1,'StrictMode callers share one synchronization');

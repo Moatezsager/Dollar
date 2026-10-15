@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {Bell, RefreshCw, Send, Smartphone, Users} from 'lucide-react';
 import {currentPushSubscription, enablePush} from '../utils/pushNotifications';
+import {RATE_PUSH_BATCH_DELAY, RATE_PUSH_INTERVAL, RATE_PUSH_MAX_DAILY} from '../../shared/notifications';
 
 type Campaign = {
   id: string; kind: 'rates' | 'announcement'; title: string; body: string; createdAt: number;
@@ -104,7 +105,7 @@ export function AdminNotifications({token}: {token: string}) {
         <p className="admin-muted">تصل إلى الأجهزة التي وافقت على الاشتراك، حتى بعد إغلاق الصفحة.</p></div>
         <button type="button" className="admin-icon-button" title="تحديث سجل الإشعارات" aria-label="تحديث سجل الإشعارات" disabled={refreshing} onClick={refresh}><RefreshCw size={18} /></button></div>
       <div className="admin-push-summary"><Users size={19} /><strong>{overview?.subscribers ?? '—'}</strong><span>جهاز مشترك</span></div>
-      <p className="admin-muted">تُجمع تغيّرات الأسعار المهمة خلال دقيقة، بفاصل 30 دقيقة وبحد أقصى 6 ملخصات يوميًا. هدوء من 10 مساءً إلى 8 صباحًا بتوقيت ليبيا.</p>
+      <p className="admin-muted">تُجمع تغيّرات الأسعار المهمة خلال {RATE_PUSH_BATCH_DELAY / 60000} دقائق، بفاصل {RATE_PUSH_INTERVAL / 60000} دقيقة وبحد أقصى {RATE_PUSH_MAX_DAILY} ملخصات أسعار يوميًا، دون صوت. هدوء من 10 مساءً إلى 8 صباحًا بتوقيت ليبيا. حدود الرسائل الإدارية مستقلة ولم تتغير.</p>
     </section>
     {error && <p role="alert" className="admin-inline-error">{error}</p>}
     {message && <p role="status" className="admin-push-result">{message}</p>}

@@ -356,7 +356,8 @@ export default function App() {
 
           {/* Installation Prompts & Banners */}
           <InstallPrompt />
-          <PushNotificationPrompt onOpenSettings={() => { setSettingsTab('notifications'); setShowSettingsModal(true); }} />
+          <PushNotificationPrompt enabled={notificationsEnabled} busy={notificationBusy} error={notificationError} onEnable={requestNotificationPermission}
+            onOpenSettings={() => { setSettingsTab('notifications'); setShowSettingsModal(true); }} />
           <AutoUpdateBanner />
 
           {/* App Tour */}

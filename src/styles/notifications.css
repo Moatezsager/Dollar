@@ -41,6 +41,10 @@
   .push-notice strong { font-size: 14px; }
   .push-notice p { color: var(--muted-ink); font-size: 13px; margin-block: 6px; }
   .push-notice button { min-height: 44px; color: var(--positive); font-size: 13px; font-weight: 700; }
+  .push-notice-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; }
+  .push-notice .push-notice-enable { padding: 8px 12px; border-radius: 6px; color: var(--page); background: var(--positive); }
+  .push-notice button:disabled { cursor: wait; opacity: .6; }
+  .push-notice button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
   .push-notice .push-notice-close { width: 44px; flex-shrink: 0; display: grid; place-items: center; color: var(--muted-ink); }
   .admin-shell .admin-push-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: var(--muted-ink); font-size: 14px; }
   .admin-shell .admin-push-summary strong { font-size: 26px; color: var(--ink); font-variant-numeric: tabular-nums; }

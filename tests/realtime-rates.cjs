@@ -12,7 +12,8 @@ async function listen(server) {
 }
 
 async function main() {
-  const baseTime = Date.now() - 60000;
+  // Keep the intraday samples on two Tripoli dates, even when this test runs near midnight.
+  const baseTime = new Date().setUTCHours(10, 0, 0, 0);
   const makeRates = (offset, usd, eur, official, checks) => ({
     parallel: { USD: usd, EUR: eur, USD_CHECKS: checks },
     official: { USD: official, EUR: 7.1 },
@@ -243,6 +244,13 @@ async function main() {
     await page.getByRole('heading',{name:'ملخص تغيّرات الأسعار المهمة',exact:true}).waitFor({timeout:20000});
     assert.equal(await page.getByRole('heading',{name:'ملخص تغيّرات الأسعار المهمة',exact:true}).count(),1,'One summary, not a toast per currency');
     assert((await page.locator('.app-toast').innerText()).includes('9.95'),'Same-timestamp accepted changes must appear in the latest digest');
+    await page.getByRole('button',{name:'إغلاق التنبيه',exact:true}).click();
+    await page.evaluate(()=>localStorage.setItem('last_inapp_digest',String(Date.now()-31000)));
+    snapshot=makeRates(25000,10.0,10.7,6.4005,10.1);
+    io.emit('rates_update',{rates:snapshot});
+    await cash.getByText('10.00',{exact:true}).waitFor();
+    await page.waitForTimeout(11000);
+    assert.equal(await page.locator('.app-toast').count(),0,'Price updates remain immediate without another notification after only 30 seconds');
 
     await context.setOffline(true);
     for (const socket of io.sockets.sockets.values()) socket.conn.close();

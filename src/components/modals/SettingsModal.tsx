@@ -1,5 +1,6 @@
 import React from "react";
 import { pushSupport } from '../../utils/pushNotifications';
+import {RATE_PUSH_INTERVAL, RATE_PUSH_MAX_DAILY, IN_APP_DIGEST_INTERVAL} from '../../../shared/notifications';
 import { motion, AnimatePresence } from "motion/react";
 import { Settings2, X, RefreshCw, CheckCircle2, Bell, Palette, Volume2, Smartphone } from "lucide-react";
 import { safeStorage } from "../../utils/storage";
@@ -148,11 +149,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="settings-threshold">
                     {support === 'install' && <p>على iPhone وiPad: أضف الموقع إلى الشاشة الرئيسية من قائمة المشاركة، ثم افتحه من الأيقونة وفعّل الإشعارات.</p>}
                     {notificationError && <p role="alert" className="settings-notification-error">{notificationError}</p>}
-                    <p className="settings-notification-policy">ملخص للتغيّرات المهمة في الدولار واليورو والذهب، بحد أقصى 6 ملخصات يوميًا وفاصل 30 دقيقة. لا تُرسل ملخصات الأسعار من 10 مساءً إلى 8 صباحًا بتوقيت ليبيا.</p>
+                    <p className="settings-notification-policy">ملخص للتغيّرات المهمة في الدولار واليورو والذهب، بحد أقصى {RATE_PUSH_MAX_DAILY} ملخصات يوميًا وفاصل {RATE_PUSH_INTERVAL / 60000} دقيقة، دون صوت. لا تُرسل ملخصات الأسعار من 10 مساءً إلى 8 صباحًا بتوقيت ليبيا. الرسائل الإدارية المهمة مستقلة عن ملخصات الأسعار.</p>
                   </div>
                   <div className="settings-row">
                     <Bell className="settings-row-icon" aria-hidden="true" />
-                    <div className="settings-copy"><h3>تنبيهات داخل الموقع</h3><p>ملخص صغير أثناء فتح الصفحة؛ مستقل عن إشعارات الجهاز.</p></div>
+                    <div className="settings-copy"><h3>تنبيهات داخل الموقع</h3><p>ملخص أثناء فتح الصفحة، بفاصل {IN_APP_DIGEST_INTERVAL / 60000} دقائق على الأقل؛ مستقل عن إشعارات الجهاز.</p></div>
                     <button role="switch" aria-label="تنبيهات داخل الموقع" aria-checked={inAppNotifications} className="settings-switch"
                       onClick={() => setInAppNotifications(!inAppNotifications)}><span><span /></span></button>
                   </div>

@@ -1,7 +1,7 @@
 import webpush from 'web-push';
 import crypto from 'crypto';
 import { appConfig } from '../config';
-import { PriceSnapshot, priceChanges, priceDigest, tripoliTime, isQuietTime, RATE_PUSH_INTERVAL, RATE_PUSH_BATCH_DELAY, NOTIFICATION_ICON, NOTIFICATION_BADGE } from '../../shared/notifications';
+import { PriceSnapshot, priceChanges, priceDigest, tripoliTime, isQuietTime, DEFAULT_PRICE_THRESHOLD, RATE_PUSH_INTERVAL, RATE_PUSH_BATCH_DELAY, RATE_PUSH_MAX_DAILY, NOTIFICATION_ICON, NOTIFICATION_BADGE } from '../../shared/notifications';
 import { db, supabase, supabaseAnonKey } from '../db';
 
 // VAPID Keys setup
@@ -108,7 +108,7 @@ async function removeExpired(endpoint: string) {
 
 function payload(title: string, body: string, url: string, kind: 'rates' | 'announcement' | 'test', id: string) {
   return JSON.stringify({id, kind, title, body, url, sentAt: Date.now(), icon: NOTIFICATION_ICON, badge: NOTIFICATION_BADGE,
-    tag: kind === 'rates' ? 'dinar-rates-digest' : 'dinar-' + kind, silent: isQuietTime()});
+    tag: kind === 'rates' ? 'dinar-rates-digest' : 'dinar-' + kind, silent: kind === 'rates' || isQuietTime()});
 }
 export async function sendPushNotificationToAll(title: string, body: string, url = '/', kind: 'rates' | 'announcement' = 'announcement', id = crypto.randomUUID()): Promise<PushResult> {
   const targets = await subscriptions();
@@ -152,7 +152,7 @@ async function deliver(record: PushRecord) {
 }
 export async function pushOverview() {
   return {subscribers: (await subscriptions()).length, history: state.history, sending,
-    policy: {batchSeconds: RATE_PUSH_BATCH_DELAY / 1000, intervalMinutes: RATE_PUSH_INTERVAL / 60000, maxRateDaily: 6, quietStart: 22, quietEnd: 8, priceThreshold: 0.05}};
+    policy: {batchSeconds: RATE_PUSH_BATCH_DELAY / 1000, intervalMinutes: RATE_PUSH_INTERVAL / 60000, maxRateDaily: RATE_PUSH_MAX_DAILY, quietStart: 22, quietEnd: 8, priceThreshold: DEFAULT_PRICE_THRESHOLD}};
 }
 export async function startPushCampaign(title: string, body: string, url: string) {
   if (sending) throw Object.assign(new Error('هناك إرسال جارٍ. انتظر اكتماله.'), {status: 409});
@@ -194,11 +194,11 @@ export function queueRatePush(snapshot: PriceSnapshot) {
 }
 export async function flushPricePush() {
   if (!baseline || !latest) return;
-  const changes = priceChanges(baseline, latest, 0.05, appConfig.terms);
+  const changes = priceChanges(baseline, latest, DEFAULT_PRICE_THRESHOLD, appConfig.terms);
   if (!changes.length) { latest = null; return; }
   const now = Date.now(), {day} = tripoliTime(now);
   if (state.rateDay !== day) { state.rateDay = day; state.rateCount = 0; }
-  if (sending || isQuietTime(now) || state.rateCount >= 6) { scheduleDigest(RATE_PUSH_INTERVAL); return; }
+  if (sending || isQuietTime(now) || state.rateCount >= RATE_PUSH_MAX_DAILY) { scheduleDigest(RATE_PUSH_INTERVAL); return; }
   if (now - state.rateSentAt < RATE_PUSH_INTERVAL) { scheduleDigest(RATE_PUSH_INTERVAL - (now - state.rateSentAt)); return; }
   const captured = latest, digest = priceDigest(changes);
   sending = true;

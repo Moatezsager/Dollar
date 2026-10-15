@@ -95,7 +95,7 @@ self.addEventListener('push', event => {
     body, icon: NOTIFICATION_ICON, badge: NOTIFICATION_BADGE,
     tag: kind === 'rates' ? 'dinar-rates-digest' : 'dinar-' + kind,
     renotify: false, requireInteraction: false,
-    silent: data.silent === true || isQuietTime(),
+    silent: kind === 'rates' || data.silent === true || isQuietTime(),
     timestamp: Number.isFinite(data.sentAt) ? data.sentAt : Date.now(),
     dir: 'rtl', lang: 'ar',
     data: {url: safeNotificationUrl(data.url, self.location.origin), kind},

@@ -36,7 +36,7 @@ async function saveSubscription(subscription: PushSubscription) {
 
 export async function enablePush() {
   if (pushSupport() !== 'supported') throw new Error(pushSupport() === 'install' ? 'أضف الموقع إلى الشاشة الرئيسية ثم افتحه لتفعيل الإشعارات.' : 'الإشعارات غير متاحة. راجع أذونات الجهاز والمتصفح.');
-  const permission = await Notification.requestPermission();
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
   if (permission !== 'granted') throw new Error(permission === 'denied' ? 'الإشعارات محظورة. يمكنك تغيير الإذن من إعدادات الجهاز أو المتصفح.' : 'لم يتم منح إذن الإشعارات.');
   const reg = await registration();
   const response = await fetch('/api/push/public-key', {signal: AbortSignal.timeout(10000)});

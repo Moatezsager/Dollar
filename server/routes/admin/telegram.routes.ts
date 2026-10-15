@@ -127,25 +127,31 @@ router.post('/facebook/test-broadcast', async (req: express.Request, res: expres
 // Weekly Harvest Image Dispatch to Telegram
 router.post('/weekly-harvest/send-telegram', async (req: express.Request, res: express.Response) => {
   try {
-    const { imageBase64, caption, destination } = req.body;
-    if (!imageBase64) {
-      return res.status(400).json({ success: false, error: "بيانات الصورة مطلوبة" });
+    const { imageBase64, caption, destination } = req.body || {};
+    if (!['me', 'channel'].includes(destination) || typeof caption !== 'string' || caption.length > 1024 ||
+        typeof imageBase64 !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(imageBase64)) {
+      return res.status(400).json({ success: false, error: 'تحقق من صورة PNG ووجهة الإرسال وطول النص (1024 حرفًا كحد أقصى).' });
+    }
+    const imageBuffer = Buffer.from(imageBase64.slice('data:image/png;base64,'.length), 'base64');
+    if (imageBuffer.length < 24 || imageBuffer.length > 5 * 1024 * 1024 ||
+        !imageBuffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+      return res.status(400).json({ success: false, error: 'الصورة غير صالحة أو تتجاوز 5 ميجابايت.' });
+    }
+    const channel = (appConfig.telegramPostChannel || '').trim();
+    if (destination === 'channel' && (!channel || channel === 'me')) {
+      return res.status(400).json({ success: false, error: 'حدد قناة النشر في إعدادات تيليجرام أولًا.' });
     }
 
     const manager = getOrInitTelegramManager();
     if (!manager) {
-      return res.status(503).json({ success: false, error: "بيانات أو جلسة تيليجرام غير مفعلة في السيرفر." });
+      return res.status(503).json({ success: false, error: 'إعدادات بوت تيليجرام غير متاحة.' });
     }
 
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-
-    const target = destination === 'channel' ? (appConfig.telegramPostChannel || 'me') : 'me';
+    const target = destination === 'channel' ? channel : 'me';
 
     const sent = await manager.sendFile(target, imageBuffer, {
-      caption: caption || '📊 حصاد الأسبوع | التقرير المالي المعتمد لأسعار الصرف والذهب',
+      caption: caption || 'حصاد الأسبوع | مؤشر الدينار',
       filename: `weekly-harvest-${Date.now()}.png`,
-      parseMode: 'md'
     });
 
     if (sent) {

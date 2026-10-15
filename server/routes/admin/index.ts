@@ -36,6 +36,7 @@ export function createAdminRouter(deps: AdminRouterDeps): express.Router {
 
   // 2. Authentication Middleware - Protect all subsequent admin endpoints
   router.use(requireAdmin);
+  router.use('/weekly-harvest/send-telegram', express.json({ limit: '8mb' }));
 
   router.use('/', pushRouter);
 

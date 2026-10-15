@@ -45,7 +45,9 @@ export async function createApp(io: SocketIOServer) {
 
   // Core Express Middlewares
   app.use(compression());
-  app.use(express.json());
+  const jsonBody = express.json();
+  // The image route parses its larger payload after admin authentication.
+  app.use((req, res, next) => /^\/api\/admin\/weekly-harvest\/send-telegram\/?$/i.test(req.path) ? next() : jsonBody(req, res, next));
   app.set('trust proxy', 1);
   app.use(['/api/public/rates', '/api/premium/rates'], developerApiHeaders);
 

@@ -1,4 +1,5 @@
 import express from 'express';
+import { readWeeklyHarvest } from '../../services/weekly-harvest.service';
 import { readAnalytics } from '../../services/analytics.service';
 import { analyticsWriteHealth } from '../../services/analytics-tracking';
 import { db, supabase, supabaseAnonKey } from '../../db';
@@ -439,137 +440,14 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
     }
   });
 
-  // Weekly Harvest Data
-  router.get('/weekly-harvest/data', async (req: express.Request, res: express.Response) => {
+  router.get('/weekly-harvest/data', async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
     try {
-      const now = new Date();
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const sevenDaysAgoIso = sevenDaysAgo.toISOString();
-
-      let historyRecords: any[] = [];
-      if (supabase && supabaseAnonKey && !supabaseAnonKey.includes('dummy')) {
-        try {
-          const { data, error } = await supabase
-            .from('parallel_rates')
-            .select('rates, recorded_at')
-            .gte('recorded_at', sevenDaysAgoIso)
-            .order('recorded_at', { ascending: true });
-          if (!error && Array.isArray(data)) {
-            historyRecords = data;
-          }
-        } catch (dbErr) {
-          console.warn("[WeeklyHarvest] Failed to fetch 7-day parallel rates from Supabase:", dbErr);
-        }
-      }
-
-      const KEY_ITEMS = [
-        { id: 'USD', name: 'الدولار الأمريكي (كاش)', flag: 'us', category: 'currency' },
-        { id: 'USD_CHECKS', name: 'الدولار الأمريكي (صكوك)', flag: 'us', category: 'currency' },
-        { id: 'EUR', name: 'اليورو الأوروبي', flag: 'eu', category: 'currency' },
-        { id: 'GBP', name: 'الجنيه الإسترليني', flag: 'gb', category: 'currency' },
-        { id: 'TND', name: 'الدينار التونسي', flag: 'tn', category: 'currency' },
-        { id: 'EGP', name: 'الجنيه المصري', flag: 'eg', category: 'currency' },
-        { id: 'USD_TR', name: 'حوالات تركيا', flag: 'tr', category: 'transfer' },
-        { id: 'USD_AE', name: 'حوالات دبي (الإمارات)', flag: 'ae', category: 'transfer' },
-        { id: 'USD_CN', name: 'حوالات الصين', flag: 'cn', category: 'transfer' },
-        { id: 'GOLD_SCRAP_18', name: 'ذهب كسر عيار 18', flag: 'gold', category: 'metal' },
-        { id: 'GOLD_SCRAP_21', name: 'ذهب كسر عيار 21', flag: 'gold', category: 'metal' },
-        { id: 'GOLD_CAST_24', name: 'ذهب مسبوك عيار 24', flag: 'gold', category: 'metal' },
-        { id: 'GOLD_LIRA_8G', name: 'ليرة ذهب (8 جرام)', flag: 'gold', category: 'metal' },
-        { id: 'SILVER_CAST_1000', name: 'مسبوك فضة (1000)', flag: 'silver', category: 'metal' }
-      ];
-
-      const computedItems = KEY_ITEMS.map(item => {
-        const currentClose = rates.parallel[item.id] || rates.previousParallel[item.id] || 0;
-        
-        let allValues: number[] = [];
-        let earliestVal: number | null = null;
-
-        for (const record of historyRecords) {
-          const val = record.rates?.[item.id];
-          if (typeof val === 'number' && val > 0) {
-            allValues.push(val);
-            if (earliestVal === null) earliestVal = val;
-          }
-        }
-
-        const openPrice = earliestVal || rates.previousParallel[item.id] || currentClose;
-        if (allValues.length === 0 && currentClose > 0) {
-          allValues = [openPrice, currentClose];
-        }
-
-        const highPrice = allValues.length > 0 ? Math.max(...allValues, currentClose) : currentClose;
-        const lowPrice = allValues.length > 0 ? Math.min(...allValues, currentClose) : currentClose;
-        const diff = currentClose - openPrice;
-        const changePct = openPrice > 0 ? (diff / openPrice) * 100 : 0;
-
-        return {
-          id: item.id,
-          name: item.name,
-          flag: item.flag,
-          category: item.category,
-          open: Number(openPrice.toFixed(3)),
-          high: Number(highPrice.toFixed(3)),
-          low: Number(lowPrice.toFixed(3)),
-          close: Number(currentClose.toFixed(3)),
-          change: Number(diff.toFixed(3)),
-          changePct: Number(changePct.toFixed(2)),
-          trend: diff > 0.005 ? 'up' : diff < -0.005 ? 'down' : 'steady'
-        };
-      });
-
-      const startFormatted = sevenDaysAgo.toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli', month: 'long', day: 'numeric' });
-      const endFormatted = now.toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli', month: 'long', day: 'numeric', year: 'numeric' });
-      const dateRangeStr = `من ${startFormatted} إلى ${endFormatted}`;
-
-      // Professional financial trader market analysis (Realistic, concise, no AI buzzwords)
-      const usdItem = computedItems.find(i => i.id === 'USD');
-      const checksItem = computedItems.find(i => i.id === 'USD_CHECKS');
-      const goldItem = computedItems.find(i => i.id === 'GOLD_SCRAP_18');
-
-      const usdDiff = usdItem ? usdItem.change : 0;
-      let usdSummary = '';
-      if (usdDiff > 0.02) {
-        usdSummary = `سجل الدولار كاش ارتفاعاً أسبوعياً بمقدار (+${usdDiff.toFixed(2)} د.ل) ليغلق عند ${usdItem?.close.toFixed(2)} د.ل وسط زيادة في حجم الطلب التجاري.`;
-      } else if (usdDiff < -0.02) {
-        usdSummary = `تراجع سعر الدولار كاش بنحو (${usdDiff.toFixed(2)} د.ل) مستقراً عند ${usdItem?.close.toFixed(2)} د.ل مع هدوء التداولات النقدية.`;
-      } else {
-        usdSummary = `حافظ الدولار كاش على ثباته السعري حول مستويات ${usdItem?.close.toFixed(2) || '---'} د.ل مع تقارب عروض البيع والشراء بسوق المشير.`;
-      }
-
-      const checkDiff = checksItem && usdItem ? (checksItem.close - usdItem.close).toFixed(2) : '0.00';
-      const checksSummary = `فارق تداول الصكوك المصرفية استقر عند (+${checkDiff} د.ل) مقارنة بالكاش، مع وتيرة تنفيذ منتظمة لمقاصة المصارف التجارية.`;
-
-      let goldSummary = '';
-      const gClose = goldItem ? goldItem.close.toFixed(1) : '---';
-      const gDiff = goldItem ? goldItem.change : 0;
-      if (gDiff > 1) {
-        goldSummary = `ارتفع الذهب كسر 18 بمقدار (+${gDiff.toFixed(1)} د.ل) ليقفل عند ${gClose} د.ل/جرام متأثراً بصعود البورصة العالمية.`;
-      } else if (gDiff < -1) {
-        goldSummary = `تراجع الذهب كسر 18 بمقدار (${gDiff.toFixed(1)} د.ل) لينهي الأسبوع عند ${gClose} د.ل/جرام في ظل هدوء الطلب المحلي.`;
-      } else {
-        goldSummary = `استقرار نسبي لأسعار الذهب كسر 18 عند مستويات ${gClose} د.ل/جرام وسط توازن حركة البيع والشراء في أسواق الذهب.`;
-      }
-
-      const defaultNotes = [
-        usdSummary,
-        checksSummary,
-        goldSummary
-      ];
-
-      res.json({
-        success: true,
-        title: "حصاد الأسبوع | التقرير المالي وحركة التداول",
-        dateRange: dateRangeStr,
-        notes: defaultNotes,
-        items: computedItems
-      });
-    } catch (err: any) {
-      console.error("[WeeklyHarvest] Data calculation error:", err);
-      res.status(500).json({ success: false, error: err.message || "فشل احتساب بيانات الحصاد الأسبوعي" });
+      res.json({ success: true, ...await readWeeklyHarvest() });
+    } catch (error: any) {
+      res.status(503).json({ success: false, error: error.message || 'تعذر إعداد الحصاد الأسبوعي.' });
     }
   });
-
   return router;
 }
 

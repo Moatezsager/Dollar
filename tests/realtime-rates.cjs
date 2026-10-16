@@ -30,6 +30,7 @@ async function main() {
   let historyFailure = false;
   let rateRequests = 0;
   let connections = 0;
+  const deviceReports = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     res.setHeader('Content-Type', 'application/json');
@@ -64,7 +65,11 @@ async function main() {
     }
   });
   const io = new Server(server);
-  io.on('connection', () => { connections++; });
+  io.on('connection', socket => {
+    connections++;
+    socket.on('visitor_device', data => deviceReports.push(data));
+    socket.emit('visitor_details_request');
+  });
   const fixturePort = await listen(server);
   const reservation = http.createServer();
   const vitePort = await listen(reservation);
@@ -100,6 +105,12 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
     await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'doNotTrack', { value: '0' });
+      window.deviceHintReads = 0;
+      Object.defineProperty(navigator, 'userAgentData', { value: { getHighEntropyValues: async keys => {
+        if (JSON.stringify(keys) !== '["model"]') throw Error('Unexpected device data requested');
+        window.deviceHintReads++; return { model: 'SM-S918B' };
+      } } });
       localStorage.setItem('hasSeenTour', 'true');
       localStorage.setItem('installPromptDismissed', 'true');
       localStorage.setItem('pushPromptDismissed_v4', Date.now().toString());
@@ -115,6 +126,8 @@ async function main() {
       throw new Error('Fixture condition timeout');
     };
     await waitFor(() => connections > 0 && pendingResponse);
+    await waitFor(() => deviceReports.length > 0);
+    assert.equal(deviceReports[0].model, 'SM-S918B');
     const initialRequestCount = rateRequests;
     snapshot = makeRates(10000, 9.8, 10.5, 6.4004, 9.9);
     io.emit('rates_update', { rates: snapshot });
@@ -302,8 +315,26 @@ async function main() {
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_history')).length), correctedHistory.length + 1, 'Live prices arriving after correction read began are retained');
     assert.equal(navigations, 1, 'Live updates must not reload the document');
     assert.equal(errors.length, 0, errors.join('\n'));
+    assert.equal(await page.evaluate(() => window.deviceHintReads), 1, 'Device hints are read once, including reconnects');
     await page.close();
     await waitFor(() => io.sockets.sockets.size === 0);
+    const privateContext = await browser.newContext({ serviceWorkers: 'block' });
+    await privateContext.addInitScript(() => {
+      Object.defineProperty(navigator, 'globalPrivacyControl', { value: true });
+      Object.defineProperty(navigator, 'userAgentData', { value: { getHighEntropyValues: () => { throw Error('Privacy opt-out must not request a model'); } } });
+      localStorage.setItem('hasSeenTour', 'true');
+    });
+    const beforePrivate = deviceReports.length;
+    const privatePage = await privateContext.newPage();
+    await privatePage.goto(baseURL);
+    await waitFor(() => io.sockets.sockets.size === 1);
+    assert.equal([...io.sockets.sockets.values()][0].handshake.auth.tracking, false);
+    assert.equal([...io.sockets.sockets.values()][0].handshake.query.deviceId, undefined);
+    await privatePage.waitForTimeout(300);
+    assert.equal(deviceReports.length, beforePrivate);
+    assert.equal(await privatePage.evaluate(() => localStorage.getItem('__deviceId')), null);
+    await privateContext.close();
+    console.log('PASS: on-demand browser model, one read across reconnects, GPC suppresses model and tracking identifier');
     console.log('PASS: real Socket.IO updates USD/EUR/official/checks, cache and history');
     console.log('PASS: official 0.0001 changes, previous price, nonzero percent, copy and one daily official reading/Tripoli date on desktop/mobile');
     console.log('PASS: delayed HTTP preserves older chart history, desktop/mobile main/analysis/detail charts render real data');

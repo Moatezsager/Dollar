@@ -15,9 +15,36 @@ import {
   logPriceChange, 
   syncCheckRates 
 } from '../../services/db.service';
-import { broadcastRateChanges } from '../../services/social.service';
 import { updateStats } from '../../services/reporting.service';
 import { ALLOWED_GOLD_IDS } from '../../utils/helpers';
+
+async function notifyWorkerManualBroadcast(
+  updates: { id: string; name: string; oldVal: number; newVal: number; flag: string }[],
+  target: 'all' | 'telegram' | 'facebook' = 'all'
+): Promise<void> {
+  const workerUrl = (process.env.WORKER_SERVER_URL || '').trim();
+  const secret = (process.env.WORKER_INTERNAL_SECRET || '').trim();
+  if (!workerUrl || !secret) {
+    throw new Error('WORKER_SERVER_URL or WORKER_INTERNAL_SECRET is not configured; social publishing was not requested.');
+  }
+
+  const response = await fetch(`${workerUrl.replace(/\/+$/, '')}/api/internal/manual-broadcast`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Worker-Secret': secret,
+      'User-Agent': 'Dollar-Price-Web/1.0'
+    },
+    body: JSON.stringify({ updates, target }),
+    signal: AbortSignal.timeout(10000),
+    redirect: 'error'
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.success !== true) {
+    throw new Error(`Worker manual broadcast was not confirmed (HTTP ${response.status}). Check Worker publishing logs.`);
+  }
+  console.log(`[WebServer] Worker confirmed the manual broadcast request for ${updates.length} updates.`);
+}
 
 export interface AdminRatesDeps {
   broadcastRatesUpdate: (rates: Rates) => void;
@@ -29,15 +56,15 @@ export interface AdminRatesDeps {
  * Returns the Worker's response or a fallback error object.
  */
 async function callWorkerJob(jobName: string): Promise<{ status: number; body: any }> {
-  const workerUrl = process.env.WORKER_URL;
-  const workerSecret = process.env.WORKER_INTERNAL_SECRET;
+  const workerUrl = (process.env.WORKER_SERVER_URL || '').trim();
+  const workerSecret = (process.env.WORKER_INTERNAL_SECRET || '').trim();
 
   if (!workerUrl || !workerSecret) {
     return {
       status: 503,
       body: {
         success: false,
-        error: "Worker Server URL or secret is not configured (WORKER_URL, WORKER_INTERNAL_SECRET)."
+        error: "Worker Server URL or secret is not configured (WORKER_SERVER_URL, WORKER_INTERNAL_SECRET)."
       }
     };
   }
@@ -47,8 +74,10 @@ async function callWorkerJob(jobName: string): Promise<{ status: number; body: a
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-worker-secret': workerSecret
+        'x-worker-secret': workerSecret,
+        'User-Agent': 'Dollar-Price-Web/1.0'
       },
+      redirect: 'error',
       signal: AbortSignal.timeout(10000) // 10 second timeout for the proxy call
     });
     const body = await res.json().catch(() => ({}));
@@ -202,7 +231,7 @@ export function createAdminRatesRouter(deps: AdminRatesDeps): express.Router {
       deps.broadcastRatesUpdate(rates);
 
       if (manualUpdates.length > 0) {
-        broadcastRateChanges(manualUpdates, false, 'all', true).catch(e => {
+        notifyWorkerManualBroadcast(manualUpdates, 'all').catch(e => {
           console.error("[Manual Extract Broadcast Error]:", e);
         });
       }
@@ -388,19 +417,17 @@ export function createAdminRatesRouter(deps: AdminRatesDeps): express.Router {
         deps.broadcastRatesUpdate(rates);
 
         if (changedCurrencies.length > 0) {
-          console.log(`[Admin Update] Broadcasting ${changedCurrencies.length} manual updates to social media (bypassing all conditions)...`);
-          try {
-            await broadcastRateChanges(changedCurrencies, false, 'all', true);
-          } catch (err) {
-            console.error("[Admin Update] Social broadcast failed:", err);
-          }
+          console.log(`[Admin Update] Requesting Worker publication of ${changedCurrencies.length} manual updates...`);
+          notifyWorkerManualBroadcast(changedCurrencies, 'all').catch(err => {
+            console.error("[Admin Update] Social broadcast error:", err);
+          });
         }
       }
 
       res.json({ 
         success: true, 
         message: anyChanged || changedCurrencies.length > 0
-          ? `تم تحديث الأسعار وحفظها ونشرها تلقائياً للمتابعين بنجاح (${changedCurrencies.length} صنف/عملة)` 
+          ? `تم تحديث الأسعار وحفظها (${changedCurrencies.length} صنف/عملة). النشر عبر Worker يُتابَع في سجل النشر.`
           : "لم يتم تحديد أي أسعار صالحة للحفظ" 
       });
     } catch (err: any) {

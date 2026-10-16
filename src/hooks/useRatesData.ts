@@ -296,21 +296,35 @@ export function useRatesData(options?: UseRatesDataOptions) {
   useEffect(() => {
     let socket: any = null;
     let hasConnected = false;
+    const allowTracking = navigator.doNotTrack !== '1' && !(navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl;
+    let deviceModel: Promise<string | undefined> | undefined;
 
     const connect = () => {
       try {
-        let deviceId = safeStorage.getItem('__deviceId');
-        if (!deviceId) {
+        let deviceId = allowTracking ? safeStorage.getItem('__deviceId') : null;
+        if (allowTracking && !deviceId) {
           deviceId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
           safeStorage.setItem('__deviceId', deviceId);
         }
         socket = io('/', {
-          query: { deviceId },
+          query: deviceId ? { deviceId } : {},
+          auth: { tracking: allowTracking },
           transports: ['polling', 'websocket'],
           reconnectionAttempts: Infinity,
           reconnectionDelay: 2000,
           reconnectionDelayMax: 10000,
           timeout: 15000
+        });
+        socket.on('visitor_details_request', () => {
+          if (!allowTracking) return;
+          const uaData = (navigator as Navigator & { userAgentData?: {
+            getHighEntropyValues?: (keys: string[]) => Promise<{ model?: string }>
+          } }).userAgentData;
+          if (!uaData?.getHighEntropyValues) return;
+          deviceModel ||= Promise.resolve().then(() => uaData.getHighEntropyValues!(['model'])).then(data => data.model).catch(() => undefined);
+          void deviceModel.then(model => {
+            if (socket?.connected && typeof model === 'string' && model.length <= 80 && model.trim()) socket.emit('visitor_device', { model });
+          });
         });
         socket.on('connect', () => {
           if (hasConnected) fetchData().catch(() => {});

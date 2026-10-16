@@ -79,7 +79,8 @@ export function createAdminConfigRouter(deps: AdminConfigDeps): express.Router {
 
   // User tracking
   router.get('/tracking/logs', (req: express.Request, res: express.Response) => {
-    res.json({ success: true, logs: deps.getUserLogs() });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ success: true, logs: deps.getUserLogs(), capturedAt: new Date().toISOString(), trackingEnabled: appConfig.enableUserTracking });
   });
 
   router.post('/tracking/toggle', async (req: express.Request, res: express.Response) => {

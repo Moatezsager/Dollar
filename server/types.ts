@@ -102,6 +102,10 @@ export interface DeviceLogEntry {
   timestamp: string;
   deviceType: string;
   deviceName: string;
+  deviceModel?: string;
+  modelSource?: 'browser';
+  location?: string;
+  locationStatus?: 'pending' | 'approximate' | 'local' | 'unavailable' | 'limited';
   os?: string;
   browser?: string;
   visits?: number;

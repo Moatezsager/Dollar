@@ -1,6 +1,6 @@
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute, NavigationRoute } from 'workbox-routing';
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { NOTIFICATION_ICON, NOTIFICATION_BADGE, isQuietTime, safeNotificationUrl } from '../shared/notifications';
 
@@ -46,6 +46,10 @@ registerRoute(
   new NavigationRoute(
     new NetworkFirst({
       cacheName: 'navigation-cache',
+      networkTimeoutSeconds: 3,
+      plugins: [
+        new ExpirationPlugin({ maxEntries: 12, maxAgeSeconds: 60 * 60 * 24 * 7 })
+      ]
     })
   )
 );
@@ -66,7 +70,7 @@ registerRoute(
   /^\/api\/rates/i,
   new NetworkFirst({
     cacheName: 'rates-cache',
-    networkTimeoutSeconds: 5,
+    networkTimeoutSeconds: 3,
     plugins: [
       new ExpirationPlugin({ maxEntries: 5, maxAgeSeconds: 60 * 60 })
     ]

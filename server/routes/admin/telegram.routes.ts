@@ -32,10 +32,12 @@ router.post('/telegram/official-broadcast', async (req: express.Request, res: ex
     
     const originalChannel = appConfig.telegramPostChannel;
     appConfig.telegramPostChannel = targetChannel;
-    
-    await broadcastOfficialRates(true);
-    
-    appConfig.telegramPostChannel = originalChannel;
+
+    try {
+      await broadcastOfficialRates(true);
+    } finally {
+      appConfig.telegramPostChannel = originalChannel;
+    }
     
     res.json({ success: true, message: "تم إرسال أسعار المصرف المركزي بنجاح" });
   } catch (err: any) {
@@ -60,29 +62,31 @@ router.post('/telegram/test-broadcast', async (req: express.Request, res: expres
     
     const originalChannel = appConfig.telegramPostChannel;
     appConfig.telegramPostChannel = targetChannel;
-    
-    const sampleUpdates: {id: string, name: string, oldVal: number, newVal: number, flag: string}[] = [];
-    for (const t of appConfig.terms) {
-      const currentR = rates.parallel[t.id];
-      const prevR = rates.previousParallel[t.id];
-      if (currentR) {
-        sampleUpdates.push({ 
-          id: t.id,
-          name: t.name, 
-          oldVal: prevR || currentR, 
-          newVal: currentR, 
-          flag: t.flag || 'us' 
-        });
+
+    try {
+      const sampleUpdates: {id: string, name: string, oldVal: number, newVal: number, flag: string}[] = [];
+      for (const t of appConfig.terms) {
+        const currentR = rates.parallel[t.id];
+        const prevR = rates.previousParallel[t.id];
+        if (currentR) {
+          sampleUpdates.push({
+            id: t.id,
+            name: t.name,
+            oldVal: prevR || currentR,
+            newVal: currentR,
+            flag: t.flag || 'us'
+          });
+        }
       }
+
+      if (sampleUpdates.length === 0) {
+        return res.status(400).json({ success: false, error: "لا توجد أسعار متاحة لإرسالها." });
+      }
+
+      await broadcastRateChanges(sampleUpdates, true, 'telegram');
+    } finally {
+      appConfig.telegramPostChannel = originalChannel;
     }
-    
-    if (sampleUpdates.length === 0) {
-      return res.status(400).json({ success: false, error: "لا توجد أسعار متاحة لإرسالها." });
-    }
-    
-    await broadcastRateChanges(sampleUpdates, true, 'telegram');
-    
-    appConfig.telegramPostChannel = originalChannel;
     
     res.json({ success: true, message: "تم إرسال رسالة تجريبية" });
   } catch (err: any) {

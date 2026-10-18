@@ -7,6 +7,7 @@ import fs from "fs";
 import { db, supabase, supabaseAnonKey } from "../db";
 import { messageRateLimiter } from "../middleware/security";
 import { forwardVisitorMessageToTelegram } from "../services/social.service";
+import { visitorIp } from "../services/visitor-details.service";
 
 const router = express.Router();
 
@@ -91,7 +92,7 @@ router.post("/messages", messageRateLimiter, async (req: express.Request, res: e
       messageId = info.lastInsertRowid;
     }
 
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '';
+    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket.remoteAddress);
     const userAgent = (req.headers['user-agent'] as string) || '';
     const referrer = (req.headers['referer'] as string) || (req.headers['referrer'] as string) || '';
     
@@ -188,7 +189,7 @@ router.post("/telegram-click", express.json(), express.text(), (req: express.Req
     if (!ref) {
       ref = (req.headers['referer'] || req.headers['referrer'] || '') as string;
     }
-    const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '') as string;
+    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket?.remoteAddress);
     const ipHash = crypto.createHash('sha256').update(ip + '_salt_tg').digest('hex').slice(0, 16);
 
     if (!isBot) {
@@ -207,7 +208,7 @@ export function handleTelegramPageRoute(req: express.Request, res: express.Respo
     const ua = (req.headers["user-agent"] || "") as string;
     const isBot = /bot|crawler|spider|facebookexternalhit|facebookcatalog|meta|twitter|whatsapp|telegram|preview/i.test(ua) ? 1 : 0;
     const ref = (req.headers["referer"] || req.headers["referrer"] || "") as string;
-    const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "") as string;
+    const ip = visitorIp(req.headers["x-forwarded-for"], req.socket?.remoteAddress);
     const ipHash = crypto.createHash("sha256").update(ip + "_salt_tg").digest("hex").slice(0, 16);
 
     const filePath = process.env.NODE_ENV === "production"

@@ -8,7 +8,7 @@ import './index.css';
 
 import { logErrorToServer } from './utils/logger';
 
-import { initAutoUpdater, purgeAllCachesAndReload } from './utils/autoUpdater';
+import { initAutoUpdater } from './utils/autoUpdater';
 
 // Restore here too when a cached HTML page lacks the external theme bootstrap.
 const savedTheme = safeStorage.getItem('colorTheme');

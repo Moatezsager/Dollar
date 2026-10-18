@@ -1,6 +1,6 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Server as HttpServer } from 'http';
-import { appConfig } from '../config';
+import { appConfig, getAdminSafeConfig } from '../config';
 import { userLogs } from '../services/maintenance.service';
 import { getAppBuildSignature, serverStartTime } from '../utils/version';
 import { obfuscateData } from '../utils/helpers';
@@ -71,7 +71,7 @@ export function broadcastConfigUpdate() {
   if (ioInstance) {
     removeExpiredAdminSockets();
     ioInstance.except('admin').emit('config_update', { config: { terms: appConfig.terms } });
-    ioInstance.to('admin').emit('config_update', { config: appConfig });
+    ioInstance.to('admin').emit('config_update', { config: getAdminSafeConfig() });
   }
 }
 

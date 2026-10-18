@@ -36,7 +36,7 @@ router.get("/refresh-official", cronOfficialLimiter, (req: express.Request, res:
 
 
 router.get("/cleanup-db", cronCleanupLimiter, async (req: express.Request, res: express.Response) => {
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const ip = req.ip || req.socket.remoteAddress;
   const providedKey = extractProvidedCronKey(req);
   
   if (!isValidCronSecret(providedKey)) {

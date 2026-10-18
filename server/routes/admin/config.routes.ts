@@ -1,5 +1,5 @@
 import express from 'express';
-import { appConfig, updateAppConfig, saveConfigToSupabase } from '../../config';
+import { appConfig, getAdminSafeConfig, updateAppConfig, saveConfigToSupabase } from '../../config';
 import { serverStartTime } from '../../state';
 import { AppConfig, DeviceLogEntry, Rates } from '../../types';
 import { facebookBroadcastStatus, telegramBroadcastStatus } from '../../services/social.service';
@@ -53,7 +53,7 @@ export function createAdminConfigRouter(deps: AdminConfigDeps): express.Router {
 
   // App Config
   router.get('/config', (req: express.Request, res: express.Response) => {
-    res.json({ ...appConfig, serverStartTime: serverStartTime.toISOString(), facebookBroadcastStatus, telegramBroadcastStatus });
+    res.json({ ...getAdminSafeConfig(), serverStartTime: serverStartTime.toISOString(), facebookBroadcastStatus, telegramBroadcastStatus });
   });
 
   router.post('/config', async (req: express.Request, res: express.Response) => {
@@ -67,7 +67,11 @@ export function createAdminConfigRouter(deps: AdminConfigDeps): express.Router {
 
       // Note: Re-fetching rates from Telegram after config save is now handled by the Worker Server.
       deps.broadcastConfigUpdate();
-      res.json({ success: true, message: saved ? "تم حفظ الإعدادات بنجاح" : "تم حفظ الإعدادات وتطبيقها بنجاح (وضع الذاكرة المؤقتة)" });
+      res.json({
+        success: true,
+        message: saved ? "تم حفظ الإعدادات بنجاح" : "تم حفظ الإعدادات وتطبيقها بنجاح (وضع الذاكرة المؤقتة)",
+        config: getAdminSafeConfig(),
+      });
     } catch (err) {
       console.error("Error saving config:", err);
       if (!res.headersSent) {

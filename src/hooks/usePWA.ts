@@ -28,10 +28,11 @@ export function usePWA() {
     // Initial check
     checkStandalone();
 
-    // Listen for display mode changes (e.g., when the user installs and it opens in standalone)
-    window.matchMedia('(display-mode: standalone)').addEventListener('change', (e) => {
-      setIsInstalled(e.matches);
-    });
+    // Safari still exposes the older MediaQueryList listener API.
+    const displayMode = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayModeChange = () => checkStandalone();
+    if (displayMode.addEventListener) displayMode.addEventListener('change', handleDisplayModeChange);
+    else displayMode.addListener(handleDisplayModeChange);
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -51,6 +52,8 @@ export function usePWA() {
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
+      if (displayMode.removeEventListener) displayMode.removeEventListener('change', handleDisplayModeChange);
+      else displayMode.removeListener(handleDisplayModeChange);
     };
   }, [checkStandalone]);
 

@@ -6,8 +6,12 @@ const router = express.Router();
 // Messages management
 router.get('/messages', (req: express.Request, res: express.Response) => {
   try {
-    const stmt = db.prepare('SELECT * FROM messages ORDER BY created_at DESC');
-    const messages = stmt.all();
+    const requestedLimit = Number.parseInt(String(req.query.limit || ''), 10);
+    const requestedOffset = Number.parseInt(String(req.query.offset || ''), 10);
+    const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 500) : 200;
+    const offset = Number.isInteger(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
+    const stmt = db.prepare('SELECT * FROM messages ORDER BY created_at DESC LIMIT ? OFFSET ?');
+    const messages = stmt.all(limit, offset);
     res.json(messages);
   } catch (error) {
     console.error("Error fetching messages:", error);

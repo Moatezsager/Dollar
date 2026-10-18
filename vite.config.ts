@@ -37,7 +37,8 @@ export default defineConfig(({mode}) => {
           background_color: '#091121',
           display: 'standalone',
           display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
-          orientation: 'portrait',
+          // Let installed desktop/tablet windows rotate naturally.
+          orientation: 'any',
           dir: 'rtl',
           lang: 'ar',
           start_url: '/',

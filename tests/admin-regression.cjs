@@ -8,12 +8,12 @@ const { io: connectSocket } = require('socket.io-client');
 
 async function loadIsolatedWeb() {
   const mock = {
-    config: "export const appConfig = globalThis.__adminTest.config;",
+    config: "export const appConfig = globalThis.__adminTest.config; export const getAdminSafeConfig = () => { const { telegramApiId, telegramApiHash, telegramSessionString, telegramBotToken, facebookAccessToken, whatsappAuth, ...safe } = globalThis.__adminTest.config; return safe; }; export const updateAppConfig = value => Object.assign(appConfig, value); export const saveConfigToSupabase = async () => true;",
     db: "export const db = globalThis.__adminTest.db; export const supabase = globalThis.__adminTest.supabase; export const supabaseAnonKey = 'fixture-key';",
     state: "export const rates = globalThis.__adminTest.rates; export const serverStartTime = new Date();",
     'maintenance.service': "export const userLogs = [{id:'fixture-visitor'}];",
     'push.service': "export const queueRatePush = () => {};",
-    'social.service': "export const getOrInitTelegramManager = () => ({}); export const broadcastOfficialRates = async () => {}; export const broadcastRateChanges = async () => {}; export const forwardVisitorMessageToTelegram = async () => true;",
+    'social.service': "export const getOrInitTelegramManager = () => ({}); export const broadcastOfficialRates = async () => {}; export const broadcastRateChanges = async () => {}; export const forwardVisitorMessageToTelegram = async () => true; export const facebookBroadcastStatus = {}; export const telegramBroadcastStatus = {};",
     version: "export const serverStartTime = new Date(); export const getAppBuildSignature = () => 'fixture';",
     helpers: "export const obfuscateData = data => data;",
   };
@@ -24,6 +24,7 @@ async function loadIsolatedWeb() {
       export * from './server/services/alert.service';
       export * from './server/routes/admin/system.routes';
       export { default as authRouter } from './server/routes/admin/auth.routes';
+      export { createAdminConfigRouter } from './server/routes/admin/config.routes';
       export { TelegramManager } from './telegramClient';
       export { default as telegramRouter } from './server/routes/admin/telegram.routes';
     `, resolveDir: process.cwd(), loader: 'ts' },
@@ -157,11 +158,25 @@ async function main() {
     app.use('/api/admin', web.authRouter);
     app.use('/api/admin', web.telegramRouter);
     const apiStats = {public:{totalRequests:0},premium:{totalRequests:0},bannedIPsCount:0};
+    app.use('/api/admin', web.createAdminConfigRouter({
+      apiStats,
+      getUserLogs: () => [],
+      clearUserLogs: () => {},
+      broadcastRatesUpdate: () => {},
+      broadcastConfigUpdate: () => {},
+      broadcastUserLogs: () => {},
+    }));
     app.use('/api/admin', web.createAdminSystemRouter({getOnlineUsers:()=>2,getUserLogs:()=>[],apiStats}));
     server = http.createServer(app);
     io = web.initSocketIO(server);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
+    const configResponse = await fetch(base + '/api/admin/config');
+    const configBody = await configResponse.json();
+    assert.equal(configResponse.status, 200);
+    for (const secretField of ['telegramApiHash', 'telegramSessionString', 'telegramBotToken', 'facebookAccessToken', 'whatsappAuth']) {
+      assert.equal(Object.hasOwn(configBody, secretField), false, `HTTP config must not expose ${secretField}`);
+    }
     for (const step of ['send-code', 'verify-code']) {
       const disabled = await fetch(base + '/api/admin/telegram/' + step, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
@@ -205,7 +220,7 @@ async function main() {
     web.broadcastUserLogs();
     await pause(50);
     assert.deepEqual(Object.keys(publicConfig.at(-1).config), ['terms']);
-    assert.equal(adminConfig.at(-1).config.telegramBotToken, token);
+    assert.equal(adminConfig.at(-1).config.telegramBotToken, undefined, 'Admin socket config must not expose bot tokens');
     assert.equal(publicLogs.length, 0, 'Client admin flags cannot expose visitor logs');
     assert.equal(adminLogs.length, 1);
     assert(prices.length > 0, 'Public live prices still receive a connection snapshot');

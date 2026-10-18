@@ -13,7 +13,7 @@ const adminLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req: express.Request, res: express.Response) => {
-    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown') as string;
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
     console.warn(`[Admin Login Rate Limit] Limit exceeded for IP: ${ip}`);
 
     sendCriticalErrorAlert({

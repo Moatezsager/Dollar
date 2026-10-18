@@ -68,6 +68,7 @@ export default function Admin() {
   const [checkingSession, setCheckingSession] = useState(!!token);
   const [config, setConfig] = useState<any>(null);
   const [savedConfig, setSavedConfig] = useState('');
+  const [liveUserLogs, setLiveUserLogs] = useState<any[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -188,6 +189,7 @@ export default function Admin() {
     if (!token) return;
 
     let socket: any = null;
+    setLiveUserLogs(null);
 
     const connect = () => {
       try {
@@ -203,6 +205,10 @@ export default function Admin() {
 
         socket.on('online_count', (data: any) => {
           setStats(prev => prev ? { ...prev, onlineUsers: data.count } : null);
+        });
+
+        socket.on('user_logs', (data: any) => {
+          if (Array.isArray(data?.logs)) setLiveUserLogs(data.logs);
         });
         
         socket.on('config_update', (data: any) => {
@@ -369,7 +375,9 @@ export default function Admin() {
       const data = await res.json();
       if (res.ok && data.success) {
         setSuccess("تم حفظ الإعدادات بنجاح وتحديث السيرفر!");
-        setSavedConfig(JSON.stringify(config));
+        const safeConfig = data.config || config;
+        setConfig(safeConfig);
+        setSavedConfig(JSON.stringify(safeConfig));
         setLoading(false);
         return true;
       } else {
@@ -740,7 +748,7 @@ export default function Admin() {
 
           {activeTab === 'messages' && <AdminMessages token={token} />}
 
-          {activeTab === 'tracking' && <AdminTracking token={token} />}
+          {activeTab === 'tracking' && <AdminTracking token={token} liveLogs={liveUserLogs} />}
                     {activeTab === 'report' && <AdminReport token={token} />}
           {activeTab === 'logs' && <AdminLogs token={token} setError={setError} setSuccess={setSuccess} />}
           {activeTab === 'ai' && <AdminAI token={token} config={config} setError={setError} setSuccess={setSuccess} triggerRefresh={triggerRefresh} decodeData={decodeData} />}

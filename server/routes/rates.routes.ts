@@ -24,7 +24,13 @@ router.get("/rates", async (req: express.Request, res: express.Response) => {
   } catch (err) {
     console.error("Error in /api/rates:", err);
     if (!res.headersSent) {
-      res.json(obfuscateData(rates));
+      res.status(503).json({
+        success: false,
+        stale: true,
+        error: 'RATES_UNAVAILABLE',
+        lastUpdated: rates.lastUpdated || null,
+        data: null,
+      });
     }
   }
 });
@@ -126,7 +132,7 @@ router.all("/premium/rates", premiumApiLimiter, async (req: express.Request, res
   }
 
   const startTime = Date.now();
-  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string || 'Unknown';
+  const ip = req.ip || req.socket.remoteAddress || 'Unknown';
   const userAgent = req.headers['user-agent'] || 'Unknown';
   apiStats.premium.totalRequests++;
 

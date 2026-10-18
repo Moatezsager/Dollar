@@ -15,7 +15,7 @@ async function main() {
   };
   const f = globalThis.__apiFixture;
   const mocks = {
-    config: 'export const appConfig = globalThis.__apiFixture.config; export const updateAppConfig = c => Object.assign(appConfig,c); export const saveConfigToSupabase = async () => globalThis.__apiFixture.persisted;',
+    config: 'export const appConfig = globalThis.__apiFixture.config; export const getAdminSafeConfig = () => ({ ...appConfig }); export const updateAppConfig = c => Object.assign(appConfig,c); export const saveConfigToSupabase = async () => globalThis.__apiFixture.persisted;',
     state: 'export const rates = globalThis.__apiFixture.rates; export const history = []; export const serverStartTime = new Date();',
     db: 'export const supabase = null; export const supabaseAnonKey = "";',
     'db.service': 'export const getParallelUpdatedAt = () => globalThis.__apiFixture.updatedAt; export const initializeRatesFromDB = async () => globalThis.__apiFixture.read(); export const fetchHistoryFromSupabase = async () => []; export const recentChangesLog = [];',
@@ -49,6 +49,10 @@ async function main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = 'http://127.0.0.1:' + server.address().port;
   const headers = { 'User-Agent': 'Dollar-API-Test/1.0', 'Content-Type': 'application/json' };
+  const originalCronSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'fixture-cron-secret-1234';
+  assert(api.isValidCronSecret('fixture-cron-secret-1234'));
+  assert(!api.isValidCronSecret('fixture-cron-secret-1234x'), 'Cron secrets must match exactly');
   let isolatedIPs = true, address = 0;
   const get = (suffix = '', options = {}) => fetch(base + '/api/public/rates' + suffix, {
     headers: { ...headers, 'X-Forwarded-For': isolatedIPs ? '198.51.100.' + (++address) : '127.0.0.1' }, ...options });
@@ -132,6 +136,7 @@ async function main() {
     console.log('PASS: USD/EUR-only live snapshot, no DB work, stale/missing/future data, methods/CORS, real dynamic quotas, trusted proxy IP, bounded logs, admin validation/auth and premium credentials.');
   } finally {
     if (originalPremium === undefined) delete process.env.PREMIUM_API_KEY; else process.env.PREMIUM_API_KEY = originalPremium;
+    if (originalCronSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = originalCronSecret;
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); delete globalThis.__apiFixture;
   }
 }

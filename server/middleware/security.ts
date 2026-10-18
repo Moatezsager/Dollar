@@ -30,6 +30,14 @@ export const apiStats = {
 };
 
 export const bannedIPs = new Map<string, number>();
+const MAX_BANNED_IPS = 10000;
+
+function pruneBannedIPs(now = Date.now()) {
+  for (const [ip, expiry] of bannedIPs) {
+    if (expiry <= now) bannedIPs.delete(ip);
+  }
+  apiStats.bannedIPsCount = bannedIPs.size;
+}
 
 export const developerApiHeaders: express.RequestHandler = (_req, res, next) => {
   res.set({ 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*',
@@ -39,7 +47,8 @@ export const developerApiHeaders: express.RequestHandler = (_req, res, next) => 
 };
 
 export const ipBanMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
+  pruneBannedIPs();
+  const ip = req.ip || req.socket.remoteAddress || '';
   if (ip && bannedIPs.has(ip)) {
     const banExpiry = bannedIPs.get(ip)!;
     if (Date.now() < banExpiry) {
@@ -47,6 +56,7 @@ export const ipBanMiddleware = (req: express.Request, res: express.Response, nex
       return;
     } else {
       bannedIPs.delete(ip);
+      apiStats.bannedIPsCount = bannedIPs.size;
     }
   }
   next();
@@ -55,9 +65,16 @@ export const ipBanMiddleware = (req: express.Request, res: express.Response, nex
 export const suspiciousRoutes = ['/.env', '/wp-admin', '/wp-login.php', '/config.php', '/phpmyadmin'];
 export const suspiciousActivityMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (suspiciousRoutes.some(route => req.path.toLowerCase().includes(route))) {
-    const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress) as string;
+    const ip = req.ip || req.socket.remoteAddress || '';
     if (ip) {
+      pruneBannedIPs();
+      while (bannedIPs.size >= MAX_BANNED_IPS) {
+        const oldest = bannedIPs.keys().next().value;
+        if (oldest === undefined) break;
+        bannedIPs.delete(oldest);
+      }
       bannedIPs.set(ip, Date.now() + 30 * 24 * 60 * 60 * 1000);
+      apiStats.bannedIPsCount = bannedIPs.size;
       console.warn(`[Security] Banned IP ${ip} for accessing suspicious route: ${req.path}`);
     }
     res.status(403).json({ success: false, error: "Suspicious activity detected. IP banned." });
@@ -142,14 +159,8 @@ export function isValidCronSecret(providedKey: unknown): boolean {
   const knownKeys = [process.env.CRON_SECRET].filter(Boolean) as string[];
 
   for (const validKey of knownKeys) {
-    if (cleanProvided === validKey) {
-      return true;
-    }
-    if (cleanProvided.startsWith(validKey) && cleanProvided.length <= validKey.length + 2) {
-      return true;
-    }
     try {
-      const expectedBuffer = Buffer.from(validKey, 'utf8');
+      const expectedBuffer = Buffer.from(validKey.trim(), 'utf8');
       const providedBuffer = Buffer.from(cleanProvided, 'utf8');
       if (expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
         return true;
@@ -201,7 +212,7 @@ export const cronParallelLimiter = rateLimit({
     return isValidCronSecret(key);
   },
   handler: (req: express.Request, res: express.Response) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ip = req.ip || req.socket.remoteAddress;
     console.warn(`[Cron-RateLimit] Rate limit exceeded for /api/refresh-parallel from IP: ${ip}`);
     res.status(429).json({ success: false, error: "Too many requests. Please try again later." });
   }
@@ -217,7 +228,7 @@ export const cronOfficialLimiter = rateLimit({
     return isValidCronSecret(key);
   },
   handler: (req: express.Request, res: express.Response) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ip = req.ip || req.socket.remoteAddress;
     console.warn(`[Cron-RateLimit] Rate limit exceeded for /api/refresh-official from IP: ${ip}`);
     res.status(429).json({ success: false, error: "Too many requests. Please try again later." });
   }
@@ -233,7 +244,7 @@ export const cronCleanupLimiter = rateLimit({
     return isValidCronSecret(key);
   },
   handler: (req: express.Request, res: express.Response) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const ip = req.ip || req.socket.remoteAddress;
     console.warn(`[Cron-RateLimit] Rate limit exceeded for /api/cleanup-db from IP: ${ip}`);
     res.status(429).json({ success: false, error: "Too many requests. Please try again later." });
   }

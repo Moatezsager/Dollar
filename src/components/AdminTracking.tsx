@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Users, Eye, ChartNoAxesCombined, Search, Smartphone, Monitor, Tablet, MapPin, Bot, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import '../styles/admin-analytics.css';
@@ -20,7 +20,7 @@ const pageNames: Record<string, string> = { '/': 'الأسعار', '/api': 'بو
 const deviceNames: Record<string, string> = { Mobile: 'هاتف', Tablet: 'جهاز لوحي', Desktop: 'كمبيوتر', Bot: 'أداة آلية', Other: 'جهاز آخر', Unknown: 'غير محدد' };
 const deviceIcons: Record<string, typeof Smartphone> = { Mobile: Smartphone, Tablet, Desktop: Monitor, Bot };
 
-export function AdminTracking({ token }: { token: string }) {
+export function AdminTracking({ token, liveLogs = null }: { token: string; liveLogs?: any[] | null }) {
   const [days, setDays] = useState(7), [refresh, setRefresh] = useState(0);
   const [report, setReport] = useState<Report | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
@@ -30,6 +30,16 @@ export function AdminTracking({ token }: { token: string }) {
   const [device, setDevice] = useState('all'), [logsBusy, setLogsBusy] = useState(true);
   const [capturedAt, setCapturedAt] = useState(''), [trackingEnabled, setTrackingEnabled] = useState<boolean | null>(null);
   const [expandedVisitor, setExpandedVisitor] = useState<string | null>(null);
+  const liveLogsRef = useRef<any[] | null>(liveLogs);
+  useEffect(() => {
+    liveLogsRef.current = liveLogs;
+    if (Array.isArray(liveLogs)) {
+      setLogs(liveLogs);
+      setCapturedAt(new Date().toISOString());
+      setLogsError('');
+      setLogsBusy(false);
+    }
+  }, [liveLogs]);
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -49,7 +59,7 @@ export function AdminTracking({ token }: { token: string }) {
     setLogs([]); setLogsError(''); setLogsBusy(true); setCapturedAt(''); setTrackingEnabled(null); setExpandedVisitor(null);
     fetch('/api/admin/tracking/logs', { headers: { Authorization: 'Bearer ' + token }, signal: controller.signal, cache: 'no-store' })
       .then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); if (!data.success || !Array.isArray(data.logs)) throw new Error(); return data; })
-      .then(data => { if (!controller.signal.aborted) { setLogs(data.logs); setCapturedAt(data.capturedAt || new Date().toISOString()); setTrackingEnabled(data.trackingEnabled ?? null); } })
+      .then(data => { if (!controller.signal.aborted) { setLogs(liveLogsRef.current || data.logs); setCapturedAt(data.capturedAt || new Date().toISOString()); setTrackingEnabled(data.trackingEnabled ?? null); } })
       .catch(() => { if (!controller.signal.aborted) setLogsError('تعذّر تحميل لقطة الاتصالات.'); })
       .finally(() => { clearTimeout(timeout); if (!controller.signal.aborted) setLogsBusy(false); });
     const onAbort = () => { setLogsBusy(false); setLogsError('انتهت مهلة تحميل لقطة الاتصالات.'); };
@@ -101,21 +111,21 @@ export function AdminTracking({ token }: { token: string }) {
     </>}
     <section className="visitor-connections" aria-busy={logsBusy}><h3><Users size={20} aria-hidden="true" /> سجل اتصالات الزوار</h3>
       <p>أحدث الاتصالات حسب توقيت طرابلس. إعادة الاتصال لا تعني زيارة جديدة، والحالة تعكس وقت أخذ اللقطة.</p>
-      {capturedAt && <div className="visitor-snapshot"><span>وقت اللقطة: {date(capturedAt)}</span><span>{number(logs.filter(log => log.isOnline).length)} متصل وقت اللقطة</span><span>{number(filtered.length)} نتيجة</span></div>}
+      {capturedAt && <div className="visitor-snapshot"><span>آخر مزامنة: {date(capturedAt)}</span><span>{number(logs.filter(log => log.isOnline).length)} متصل الآن</span><span>{number(filtered.length)} نتيجة</span></div>}
       {trackingEnabled === false && <p className="analytics-warning">جمع سجل الزوار متوقف حاليًا. البيانات الظاهرة، إن وجدت، سابقة لإيقافه.</p>}
       <div className="analytics-actions"><label className="analytics-search"><Search size={18} aria-hidden="true" /><input aria-label="بحث في الاتصالات" placeholder="المدينة، البلد، الجهاز أو عنوان IP" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <select aria-label="نوع الجهاز" value={device} onChange={e => setDevice(e.target.value)}><option value="all">كل الأجهزة</option>{Object.entries(deviceNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
         <select aria-label="حالة الاتصال" value={status} onChange={e => setStatus(e.target.value)}><option value="all">كل الاتصالات</option><option value="online">متصل وقت اللقطة</option><option value="offline">غير متصل</option></select></div>
       <details className="visitor-accuracy"><summary>دقة الموقع والجهاز</summary><p>البلد والمدينة تقدير من عنوان الشبكة، وقد يشيران إلى مزوّد الإنترنت أو VPN. لا نطلب موقع GPS. اسم الجهاز وطرازه معلومات يبلّغ عنها المتصفح، وليسا تحققًا من الجهاز الفعلي؛ وقد لا يتيح المتصفح الطراز، خصوصًا إصدار iPhone. «غير متاح» تعني غياب المعلومة، ولا تعني أن الزائر بلا موقع.</p><p>السجل مؤقت لأحدث 200 جهاز؛ تُنظّف الاتصالات الأقدم من 24 ساعة دوريًا، ويُفقد السجل عند إعادة تشغيل الخادم. مرات الاتصال تشمل إعادة الاتصال ولا تمثل عدد زيارات الصفحات.</p></details>
-      {logsBusy ? <p role="status">جاري تحميل سجل الاتصالات...</p> : logsError ? <p role="alert">{logsError}</p> : <div className="analytics-table visitor-table"><table><caption className="sr-only">لقطة اتصالات الزوار ومعلومات الموقع والجهاز التقريبية</caption><thead><tr><th scope="col">معرّف المتصفح</th><th scope="col">الجهاز</th><th scope="col">الموقع التقريبي</th><th scope="col">حالة الاتصال</th><th scope="col"><span className="sr-only">تفاصيل الاتصال</span></th></tr></thead><tbody>{filtered.slice(0, 100).map((log, i) => {
+      {logsBusy ? <p role="status">جاري تحميل سجل الاتصالات...</p> : logsError ? <p role="alert">{logsError}</p> : <div className="analytics-table visitor-table"><table><caption className="sr-only">لقطة اتصالات الزوار ومعلومات الموقع والجهاز التقريبية</caption><thead><tr><th scope="col">الجهاز</th><th scope="col">الموقع التقريبي</th><th scope="col">آخر نشاط</th><th scope="col">حالة الاتصال</th><th scope="col"><span className="sr-only">تفاصيل الاتصال</span></th></tr></thead><tbody>{filtered.slice(0, 100).map((log, i) => {
         const Icon = deviceIcons[log.deviceType] || HelpCircle;
         const id = String(log.id || i), expanded = expandedVisitor === id;
         const recordId = String(log.deviceId || log.id || 'غير متاح');
         const detailId = `visitor-detail-${i}`;
         return <React.Fragment key={id}><tr className="visitor-main-row" data-expanded={expanded}>
-          <td data-label="معرّف المتصفح"><bdi className="visitor-id">{recordId.length > 10 ? recordId.slice(0, 10) + '…' : recordId}</bdi></td>
           <td data-label="الجهاز"><div className="visitor-device"><Icon size={20} aria-hidden="true" /><div><strong dir="auto">{log.deviceName || deviceNames[log.deviceType] || 'غير محدد'}</strong><small>{deviceNames[log.deviceType] || 'غير محدد'}</small></div></div></td>
           <td data-label="الموقع التقريبي"><div className="visitor-place"><MapPin size={16} aria-hidden="true" /><span>{log.location || 'غير متاح'}</span></div>{log.locationStatus === 'approximate' && <small>تقدير شبكة · IPWhois</small>}</td>
+          <td data-label="آخر نشاط"><time className="visitor-last-activity" dateTime={log.last_active || log.timestamp}>{date(log.last_active || log.timestamp)}</time></td>
           <td data-label="حالة الاتصال"><span className="visitor-status" data-online={Boolean(log.isOnline)}>{log.isOnline ? 'متصل' : 'غير متصل'}</span></td>
           <td className="visitor-more"><button type="button" aria-expanded={expanded} aria-controls={detailId} aria-label={`${expanded ? 'إخفاء' : 'عرض'} تفاصيل الاتصال ${recordId}`} onClick={() => setExpandedVisitor(expanded ? null : id)}>{expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}{expanded ? 'إخفاء' : 'التفاصيل'}</button></td>
         </tr>{expanded && <tr className="visitor-detail-row" id={detailId}><td colSpan={5}><dl className="visitor-details">

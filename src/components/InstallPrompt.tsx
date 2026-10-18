@@ -19,6 +19,8 @@ export default function InstallPrompt() {
       return;
     }
 
+    let promptTimer: number | undefined;
+
     // Detect iOS
     const isIosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -34,31 +36,34 @@ export default function InstallPrompt() {
     if (isIosDevice) {
       setIsIOS(true);
       // Delay showing prompt slightly
-      setTimeout(() => setShowPrompt(true), 3000);
+      promptTimer = window.setTimeout(() => setShowPrompt(true), 3000);
     }
 
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setTimeout(() => setShowPrompt(true), 3000);
+      promptTimer = window.setTimeout(() => setShowPrompt(true), 3000);
     };
 
-    window.addEventListener('beforeinstallprompt', handler);
-
-    window.addEventListener('appinstalled', async () => {
+    const handleAppInstalled = async () => {
       try {
         await fetch('/api/track/install', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ platform: 'appinstalled_event' })
         });
-      } catch (e) {}
+      } catch {}
       setShowPrompt(false);
       setDeferredPrompt(null);
-    });
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
+      if (promptTimer) window.clearTimeout(promptTimer);
       window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 

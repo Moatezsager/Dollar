@@ -6,6 +6,7 @@ import { db, supabase, supabaseAnonKey } from '../../db';
 import { appConfig } from '../../config';
 import { rates, serverStartTime } from '../../state';
 import { DeviceLogEntry } from '../../types';
+import { getIO } from '../../socket/socket.service';
 
 // Note: activeClient (GramJS) and whatsappManager are managed by the Worker Server.
 // Note: lastSuccessfulScrape, channelStatusTracker, lastSuccessfulFetchTime are Worker-side metrics.
@@ -423,7 +424,7 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
           public_api_requests: deps.apiStats.public.totalRequests,
           premium_api_requests: deps.apiStats.premium.totalRequests,
           banned_ips_count: deps.apiStats.bannedIPsCount,
-          active_websocket_connections: deps.io?.engine ? deps.io.engine.clientsCount : 0,
+          active_websocket_connections: getIO()?.engine?.clientsCount || 0,
           unique_visitors_tracked: deps.getUserLogs().length
         },
         installs: {

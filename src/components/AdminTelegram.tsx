@@ -95,7 +95,8 @@ export function AdminTelegram({ token, config, setConfig, setError, setSuccess, 
         });
         
         if (saveRes.ok) {
-          onSaved(newConfig);
+          const savedData = await saveRes.json().catch(() => ({}));
+          onSaved(savedData.config || newConfig);
           setSuccess("تم ربط حساب تليجرام بنجاح وحفظ الإعدادات");
           setTgStep('init');
           setTgPhoneNumber("");

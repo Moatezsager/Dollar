@@ -1,10 +1,11 @@
 /**
  * Smart Auto-Updater and Cache Purge Engine
  * ─────────────────────────────────────────────────────────────────────────────
- * Detects newly deployed versions on the server, intelligently purges stale
- * browser CacheStorage and ServiceWorker caches, and smoothly reloads the
- * application to prevent white screens, stale UIs, and chunk load errors.
+ * Detects newly deployed versions on the server and refreshes the application
+ * without deleting user preferences or the last usable offline snapshot.
  */
+
+import { safeSessionStorage, safeStorage } from './storage';
 
 export const VERSION_STORAGE_KEY = 'dinar_app_build_signature';
 const LAST_RELOAD_KEY = 'dinar_last_auto_update_reload';
@@ -27,42 +28,42 @@ function notifyUpdateListeners(newVersion: string) {
   }
 }
 
+const waitForWorker = (worker: ServiceWorker | null, timeoutMs = 6000): Promise<void> => {
+  if (!worker || ['activated', 'redundant'].includes(worker.state)) return Promise.resolve();
+
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      worker.removeEventListener('statechange', finish);
+      clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = window.setTimeout(finish, timeoutMs);
+    worker.addEventListener('statechange', finish);
+  });
+};
+
 /**
- * Hard purges all caches (ServiceWorker CacheStorage, session storages) and reloads
+ * Apply a new service worker before reloading. Runtime caches and local data
+ * stay intact so older installs can update without losing their offline view.
  */
 export async function purgeAllCachesAndReload(): Promise<void> {
   try {
-    console.log('[AutoUpdater] 🧹 Starting comprehensive cache purge...');
-    
-    // 1. Purge CacheStorage (Service Worker caches)
-    if (typeof window !== 'undefined' && 'caches' in window) {
-      const keys = await window.caches.keys();
-      await Promise.all(keys.map(k => window.caches.delete(k)));
-      console.log('[AutoUpdater] 🧹 Cleared CacheStorage keys:', keys);
-    }
-
-    // 2. Tell active Service Workers to skip waiting and clear
+    console.log('[AutoUpdater] Applying the latest service worker...');
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
-        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        if (reg.active) reg.active.postMessage({ type: 'CLEAR_CACHE' });
         await reg.update().catch(() => {});
+        const worker = reg.waiting || reg.installing;
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        await waitForWorker(worker);
       }
     }
-
-    // 3. Clear temporary data caches in storage while preserving favorites & preferences
-    try {
-      sessionStorage.clear();
-      localStorage.removeItem('lyd_rates');
-      localStorage.removeItem('lyd_history');
-      localStorage.removeItem('lyd_recent_changes');
-    } catch (e) {}
-
   } catch (err) {
-    console.warn('[AutoUpdater] Notice while purging caches:', err);
+    console.warn('[AutoUpdater] Notice while applying update:', err);
   } finally {
-    // 4. Force hard reload bypassing cache
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
@@ -75,11 +76,11 @@ export async function purgeAllCachesAndReload(): Promise<void> {
 export async function processIncomingVersion(serverVersion: string, autoReload = true): Promise<boolean> {
   if (!serverVersion || typeof serverVersion !== 'string') return false;
 
-  const currentVersion = localStorage.getItem(VERSION_STORAGE_KEY);
+  const currentVersion = safeStorage.getItem(VERSION_STORAGE_KEY);
 
   if (!currentVersion) {
     // First recorded session on this device
-    localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
+    safeStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
     return false;
   }
 
@@ -87,14 +88,14 @@ export async function processIncomingVersion(serverVersion: string, autoReload =
     console.log(`[AutoUpdater] 🚀 New app version detected! (${currentVersion} -> ${serverVersion})`);
     
     // Prevent reload loops if update happened less than 10 seconds ago
-    const lastReload = parseInt(sessionStorage.getItem(LAST_RELOAD_KEY) || '0', 10);
+    const lastReload = parseInt(safeSessionStorage.getItem(LAST_RELOAD_KEY) || '0', 10);
     if (Date.now() - lastReload < 10000) {
-      localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
+      safeStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
       return false;
     }
 
-    sessionStorage.setItem(LAST_RELOAD_KEY, Date.now().toString());
-    localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
+    safeSessionStorage.setItem(LAST_RELOAD_KEY, Date.now().toString());
+    safeStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
     notifyUpdateListeners(serverVersion);
 
     // The banner owns its visible countdown; keep the fallback for pages without it.
@@ -146,11 +147,25 @@ export async function manualCachePurgeAndReload(): Promise<void> {
     if (res.ok) {
       const data = await res.json();
       if (data?.version) {
-        localStorage.setItem(VERSION_STORAGE_KEY, data.version);
+        safeStorage.setItem(VERSION_STORAGE_KEY, data.version);
       }
     }
   } catch (e) {}
-  await purgeAllCachesAndReload();
+
+  // This is an explicit repair action, so it may clear runtime caches. User
+  // preferences and cached rates/history remain available after the reload.
+  try {
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      await Promise.all((await window.caches.keys()).map(key => window.caches.delete(key)));
+    }
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(reg => reg.update().catch(() => {})));
+    }
+  } catch (e) {
+    console.warn('[AutoUpdater] Notice while repairing runtime caches:', e);
+  }
+  window.location.reload();
 }
 
 /**

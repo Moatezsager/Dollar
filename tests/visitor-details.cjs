@@ -63,7 +63,7 @@ async function main() {
   const state = { config: { enableUserTracking: true, terms: [] }, logs: [], lookups: [], rates: { parallel: { USD: 10 }, official: { USD: 6 }, lastUpdated: new Date().toISOString() } };
   global.__visitorFixture = { ...state, describeVisitor: details.describeVisitor, visitorIp: details.visitorIp };
   const mocks = {
-    config: 'export const appConfig = globalThis.__visitorFixture.config;',
+    config: 'export const appConfig = globalThis.__visitorFixture.config; export const getAdminSafeConfig = () => ({ ...appConfig });',
     'maintenance.service': 'export const userLogs = globalThis.__visitorFixture.logs;',
     state: 'export const rates = globalThis.__visitorFixture.rates;',
     version: "export const serverStartTime = new Date(); export const getAppBuildSignature = () => 'fixture';",

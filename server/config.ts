@@ -74,6 +74,20 @@ export function updateAppConfig(newConfig: Partial<AppConfig>) {
   if (newConfig.whatsappAuth === undefined && preservedWhatsappAuth) appConfig.whatsappAuth = preservedWhatsappAuth;
 }
 
+/** Return the configuration shape that is safe to expose to an authenticated browser. */
+export function getAdminSafeConfig(): Omit<AppConfig, 'telegramApiId' | 'telegramApiHash' | 'telegramSessionString' | 'telegramBotToken' | 'facebookAccessToken' | 'whatsappAuth'> {
+  const {
+    telegramApiId,
+    telegramApiHash,
+    telegramSessionString,
+    telegramBotToken,
+    facebookAccessToken,
+    whatsappAuth,
+    ...safeConfig
+  } = appConfig;
+  return safeConfig;
+}
+
 export let telegramManager: TelegramManager | null = null;
 
 export function setTelegramManager(manager: TelegramManager | null) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import React, { lazy, Suspense, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence, MotionConfig } from "motion/react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import InstallPrompt from "./components/InstallPrompt";
@@ -17,25 +17,25 @@ import { MobileNav } from "./components/MobileNav";
 import { Footer } from "./components/Footer";
 
 // Pages
-import { Developers } from "./Developers";
-import { Terms } from "./components/Terms";
-import { Privacy } from "./components/Privacy";
-import { Contact } from "./Contact";
-import About from "./components/About";
+import { PdfExportModal } from "./components/modals/PdfExportModal";
+const Developers = lazy(() => import("./Developers").then(module => ({ default: module.Developers })));
+const Terms = lazy(() => import("./components/Terms").then(module => ({ default: module.Terms })));
+const Privacy = lazy(() => import("./components/Privacy").then(module => ({ default: module.Privacy })));
+const Contact = lazy(() => import("./Contact").then(module => ({ default: module.Contact })));
+const About = lazy(() => import("./components/About"));
 
 // Sections
 import { MainRatesGrid } from "./components/rates/MainRatesGrid";
 import { GoldMetalsSection } from "./components/rates/GoldMetalsSection";
-import { AdvancedChartsSection } from "./components/charts/AdvancedChartsSection";
+const AdvancedChartsSection = lazy(() => import("./components/charts/AdvancedChartsSection").then(module => ({ default: module.AdvancedChartsSection })));
 import { CurrencyConverterSection } from "./components/CurrencyConverterSection";
 import { MoreTabMobile } from "./components/MoreTabMobile";
 
 // Modals
-import { CurrencyChartModal } from "./components/modals/CurrencyChartModal";
-import { SettingsModal } from "./components/modals/SettingsModal";
-import { SearchModal } from "./components/modals/SearchModal";
-import { PdfExportModal } from "./components/modals/PdfExportModal";
-import AppGuide from './components/modals/AppGuide';
+const CurrencyChartModal = lazy(() => import("./components/modals/CurrencyChartModal").then(module => ({ default: module.CurrencyChartModal })));
+const SettingsModal = lazy(() => import("./components/modals/SettingsModal").then(module => ({ default: module.SettingsModal })));
+const SearchModal = lazy(() => import("./components/modals/SearchModal").then(module => ({ default: module.SearchModal })));
+const AppGuide = lazy(() => import('./components/modals/AppGuide'));
 import { PrintableBulletin } from "./components/PrintableBulletin";
 
 // Custom Hooks
@@ -362,7 +362,7 @@ export default function App() {
 
           {/* App Tour */}
           {runTour && <AppTour runTour={runTour} initialStep={tourStartIndex} onNavigate={navigateTour} setRunTour={setRunTour} triggerHaptic={triggerHaptic} />}
-          {showGuide && <AppGuide
+          {showGuide && <Suspense fallback={null}><AppGuide
               onClose={() => {
                 setShowGuide(false);
                 requestAnimationFrame(() => {
@@ -386,7 +386,7 @@ export default function App() {
                 safeStorage.removeItem('tourCompleted');
                 setRunTour(true);
               }}
-            />}
+            /></Suspense>}
 
 
           {/* Floating Telegram & Facebook Action Buttons (Desktop Only) */}
@@ -443,6 +443,7 @@ export default function App() {
           />
 
           {/* Page Routing / Subpages View */}
+          <Suspense fallback={<div className="min-h-[180px] flex items-center justify-center text-slate-400" role="status">جارٍ تحميل القسم…</div>}>
           <AnimatePresence mode="wait">
             {currentPage === 'api' ? (
               <motion.div key="api" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -520,14 +521,14 @@ export default function App() {
                 />
 
                 {/* ===================== TAB: CHARTS ===================== */}
-                <AdvancedChartsSection
+                {activeTab === 'charts' && <AdvancedChartsSection
                   activeTab={activeTab}
                   chartAnalysisCurrency={chartAnalysisCurrency}
                   setChartAnalysisCurrency={setChartAnalysisCurrency}
                   chartAnalysisRange={chartAnalysisRange}
                   setChartAnalysisRange={setChartAnalysisRange}
                   history={history}
-                />
+                />}
 
                 {/* ===================== TAB: CONVERTER ===================== */}
                 <CurrencyConverterSection
@@ -580,7 +581,7 @@ export default function App() {
           {/* ===================== MODALS & DIALOGS ===================== */}
 
           {/* Currency Chart Details Modal */}
-          <CurrencyChartModal
+          {selectedRate && <CurrencyChartModal
             selectedRate={selectedRate}
             setSelectedRate={setSelectedRate}
             rates={rates}
@@ -592,10 +593,10 @@ export default function App() {
             setChartRange={setChartRange}
             triggerHaptic={triggerHaptic}
             handleShareCardImage={handleShareCardImage}
-          />
+          />}
 
           {/* Settings Modal */}
-          <SettingsModal
+          {showSettingsModal && <SettingsModal
             showSettingsModal={showSettingsModal}
             setShowSettingsModal={setShowSettingsModal}
             settingsTab={settingsTab}
@@ -621,10 +622,10 @@ export default function App() {
             setFontSizePreference={setFontSizePreference}
             triggerHaptic={triggerHaptic}
             addToast={addToast}
-          />
+          />}
 
           {/* Global Smart Search Modal */}
-          <SearchModal
+          {showSearchModal && <SearchModal
             showSearchModal={showSearchModal}
             setShowSearchModal={setShowSearchModal}
             searchQuery={searchQuery}
@@ -633,10 +634,10 @@ export default function App() {
             triggerHaptic={triggerHaptic}
             setSelectedRate={setSelectedRate}
             handleShareCardImage={handleShareCardImage}
-          />
+          />}
 
           {/* PDF Customization & Export Modal */}
-          <PdfExportModal
+          {showCurrencyModal && <PdfExportModal
             showCurrencyModal={showCurrencyModal}
             setShowCurrencyModal={setShowCurrencyModal}
             configTerms={configTerms}
@@ -649,7 +650,7 @@ export default function App() {
             rates={rates}
             triggerHaptic={triggerHaptic}
             generatePDF={generatePDF}
-          />
+          />}
 
           {/* Hidden PDF Printable Bulletin */}
           <PrintableBulletin
@@ -665,6 +666,7 @@ export default function App() {
             usdChecksRate={usdChecksRate}
             prevUsdChecksRate={prevUsdChecksRate}
           />
+          </Suspense>
 
           {/* Scroll To Top Floating Button */}
           <ScrollToTop triggerHaptic={triggerHaptic} />

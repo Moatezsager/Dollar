@@ -101,6 +101,14 @@ Server-side fetch calls to `/api/` must send a descriptive User-Agent: `Dollar-P
 
 ## Required working rules
 
+### Monthly history retention (2026-10-19)
+
+- Worker and explicit Web cleanup preserve all observations from Tripoli midnight 30 days ago through today, plus the last pre-window row per price table. They no longer downsample the retained month. The last/only available quote is never pruned; shared cleanup failures are reported, not silently accepted. Manual Web price saves no longer trigger independent history deletion.
+- Web history reads the complete retained window in ordered 500-row pages, with a ten-second shared deadline and 10,000-row cap per table. Exceeding the cap or a failed page returns an error, never a successful truncated month. Concurrent reads coalesce; the existing 60-second cache and generation protection remain. History/explicit cleanup HTTP routes have a 15-second timeout; other API limits remain unchanged.
+- `/api/history` and correction `history_update` include the full loaded window instead of the last 120 points. Optional `HistoryPoint.observed.{parallel,official}` lists actual observations at each timestamp so carried-forward currencies do not bias chart means. Live snapshots with known previous prices mark only changed markets; unchanged-source observations are restored by authoritative history reads rather than guessed from a global snapshot time. Older clients/points remain compatible. Client cached history is bounded by the retained calendar window.
+- Advanced monthly charts show daily arithmetic observation means in Africa/Tripoli; high/low, latest/close and change remain based on real observations. Daily display grouping is not a database rewrite and does not fabricate missing days. The official market still uses its last quote per day, including four-decimal precision.
+- `tests/history-data.cjs`, `tests/history-corrections.cjs`, `tests/developer-api.cjs` and `tests/realtime-rates.cjs` cover pagination, full-month HTTP/socket history, daily means, raw extrema, correction rebuilds and desktop/mobile charts. Paired Worker regression/integration tests also exercise Web's real cleanup policy/routes. Previously deleted data and deployed database health are not established by these isolated tests.
+
 ### Visitor analytics
 
 - The admin connection snapshot is separate from pageview analytics: at most 200 in-memory device records, periodic 24-hour cleanup, lost on server restart. Reconnect counts are not visits. Show device/location/status first; expand browser, IP, model and timestamps on demand without another API call.

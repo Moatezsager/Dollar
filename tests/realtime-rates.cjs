@@ -164,6 +164,7 @@ async function main() {
     };
     await checkChart(page.locator('.usd-chart'));
     await saveChart(page.locator('.usd-chart'), 'chart-desktop');
+    await page.getByRole('navigation', { name: 'أقسام لوحة الأسعار' }).getByRole('link', { name: 'التحليل', exact: true }).click();
     await checkChart(page.locator('.analysis-chart'));
     const checkOfficialDetail = async name => {
       await official.click();
@@ -211,6 +212,7 @@ async function main() {
     await saveChart(page.locator('.currency-detail-dialog'), 'chart-details-desktop');
     await page.getByRole('dialog').locator('button[aria-label="إغلاق"]').click();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#mobile-bottom-nav').getByRole('button', { name: 'الرئيسية', exact: true }).click();
     await checkChart(page.locator('.usd-chart'));
     await saveChart(page.locator('.usd-chart'), 'chart-mobile');
     await page.locator('#mobile-bottom-nav').getByRole('button', { name: 'التحليل', exact: true }).click();
@@ -280,6 +282,8 @@ async function main() {
     snapshot.previousOfficial.USD = 6.4006;
     io.emit('rates_update', { rates: snapshot });
     await official.getByText('-0.0001', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_history')).at(-1).observed.parallel), [],
+      'An official-only socket update cannot add another cash-dollar sample to the monthly mean');
     snapshot = makeRates(50000, 10.1, 10.8, 6.4005, 10.2);
     snapshot.previousOfficial.USD = 6.4005;
     io.emit('rates_update', { rates: snapshot });
@@ -313,6 +317,38 @@ async function main() {
     io.emit('history_update', { history: correctedHistory, readStartedAt: started });
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('lyd_history')).at(-1).usdParallel === 10.2);
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_history')).length), correctedHistory.length + 1, 'Live prices arriving after correction read began are retained');
+    await page.waitForTimeout(1200);
+    const month = Array.from({ length: 300 }, (_, i) => {
+      const usd = i === 104 ? 12 : 10 + (i % 10) / 100;
+      return { time: new Date(baseTime - 30 * 86400000 + Math.floor(i / 10) * 86400000 + (i % 10) * 1800000).toISOString(),
+        usdParallel: usd, usdOfficial: 6.4005, ratesParallel: { USD: usd, EUR: 11 },
+        ratesOfficial: { USD: 6.4005 }, observed: { parallel: ['USD', 'EUR'], official: [] } };
+    });
+    io.emit('history_update', { history: month, readStartedAt: new Date().toISOString() });
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('lyd_history')).length === 300);
+    await page.getByRole('navigation', { name: 'أقسام لوحة الأسعار' }).getByRole('link', { name: 'التحليل', exact: true }).click();
+    const analysis = page.locator('.analysis-section');
+    await analysis.getByRole('button', { name: 'شهر', exact: true }).click();
+    await analysis.getByText('متوسطات القراءات اليومية · 30 يوم رصد بتوقيت ليبيا', { exact: true }).waitFor();
+    assert.equal(await analysis.locator('.analysis-latest strong').innerText(), '10.09', 'Latest remains the real closing observation, not its daily mean');
+    assert.equal(await analysis.locator('.analysis-statistics > div').filter({ hasText: 'أعلى سعر' }).locator('strong').innerText(), '12.00', 'Monthly high survives daily chart grouping');
+    await page.waitForTimeout(500);
+    const desktopMonthlyCurve = await analysis.locator('.recharts-area-curve').getAttribute('d');
+    assert.equal((desktopMonthlyCurve.match(/L/g) || []).length, 29, 'Ten readings per day become 30 plotted averages, not 300 markers');
+    await checkChart(page.locator('.analysis-chart'));
+    await saveChart(analysis, 'monthly-analysis-desktop');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#mobile-bottom-nav').getByRole('button', { name: 'التحليل', exact: true }).click();
+    await checkChart(page.locator('.analysis-chart'));
+    await saveChart(analysis, 'monthly-analysis-mobile');
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const mobileMonthlyCurve = await analysis.locator('.recharts-area-curve').getAttribute('d');
+    const revisedMonth = month.map((point, i) => i === 104 ? { ...point, usdParallel: 10.04, ratesParallel: { ...point.ratesParallel, USD: 10.04 } } : point);
+    io.emit('history_update', { history: revisedMonth, readStartedAt: new Date().toISOString() });
+    await analysis.locator('.analysis-statistics > div').filter({ hasText: 'أعلى سعر' }).getByText('10.09', { exact: true }).waitFor();
+    await page.waitForTimeout(500);
+    assert.notEqual(await analysis.locator('.recharts-area-curve').getAttribute('d'), mobileMonthlyCurve, 'Correction updates the aggregated monthly curve without a reload');
+    assert.equal(rateRequests, beforeCorrectionRequests, 'Monthly grouping/corrections add no price polling');
     assert.equal(navigations, 1, 'Live updates must not reload the document');
     assert.equal(errors.length, 0, errors.join('\n'));
     assert.equal(await page.evaluate(() => window.deviceHintReads), 1, 'Device hints are read once, including reconnects');
@@ -340,6 +376,7 @@ async function main() {
     console.log('PASS: delayed HTTP preserves older chart history, desktop/mobile main/analysis/detail charts render real data');
     console.log('PASS: delayed HTTP, stale/malformed events, reconnect with failed history, no reload or rate polling, cleanup');
     console.log('PASS: pushed historical corrections/deletions, empty authoritative history, stale HTTP rejection and concurrent live price preservation');
+    console.log('PASS: full 300-observation month becomes 30 Tripoli daily averages on desktop/mobile, preserving raw high/close and live corrections');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => io.close(resolve));

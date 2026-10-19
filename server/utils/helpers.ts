@@ -145,6 +145,11 @@ export function getLibyaDateString(now: Date = new Date()): string {
   return getLibyaTimeInfo(now).dateStr;
 }
 
+export function getPriceHistoryCutoff(now: Date = new Date()): string {
+  // Keep 30 complete Tripoli days plus today, including the start of a rolling month.
+  return new Date(Date.parse(`${getLibyaDateString(now)}T00:00:00+02:00`) - 30 * 86400000).toISOString();
+}
+
 /**
  * Helper to detect if a number is likely part of a date or time (e.g. 2024, 21-03, 12/05, 15:48)
  */

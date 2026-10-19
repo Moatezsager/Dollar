@@ -15,7 +15,8 @@ export function libyaDayKey(value: string | number) {
 }
 
 export function getRateHistory(history: HistoryPoint[], target: { code: string; market: 'official' | 'parallel' }) {
-  const points = history.map(point => ({ time: point.time, value: Number(
+  const points = history.filter(point => !point.observed || point.observed[target.market]?.includes(target.code))
+    .map(point => ({ time: point.time, value: Number(
     (target.market === 'official' ? point.ratesOfficial : point.ratesParallel)?.[target.code] ||
     (target.code === 'USD' ? target.market === 'official' ? point.usdOfficial : point.usdParallel : 0)
   ) })).filter(point => Number.isFinite(Date.parse(point.time)) && Date.parse(point.time) <= Date.now() && Number.isFinite(point.value) && point.value > 0)
@@ -25,4 +26,17 @@ export function getRateHistory(history: HistoryPoint[], target: { code: string; 
   const days = new Map<string, typeof points[number]>();
   for (const point of points) days.set(libyaDayKey(point.time), point);
   return [...days.values()];
+}
+
+export function getDailyRateAverages(points: { time: string; value: number }[]) {
+  const days = new Map<string, { time: string; sum: number; count: number }>();
+  for (const point of points) {
+    const day = libyaDayKey(point.time);
+    if (!day || !Number.isFinite(point.value) || point.value <= 0) continue;
+    const previous = days.get(day);
+    days.set(day, { time: previous && Date.parse(previous.time) > Date.parse(point.time) ? previous.time : point.time,
+      sum: (previous?.sum || 0) + point.value, count: (previous?.count || 0) + 1 });
+  }
+  return [...days.values()].sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
+    .map(day => ({ time: day.time, value: day.sum / day.count, count: day.count }));
 }

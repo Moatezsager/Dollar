@@ -64,6 +64,12 @@ async function main() {
     assert.equal(partial.data.success, true); assert.equal(partial.data.historyUpdated, false);
     assert.equal(events.length, before + 1, 'Unavailable history must not clear client charts');
     assert.equal(invalidations, 4);
+    historyFailure = false;
+    rows = Array.from({ length: 151 }, (_, i) => ({ id: String(i), usd: 10, rates: { USD: 10 },
+      recorded_at: new Date(Date.parse('2026-10-01T00:00:00Z') + i * 3600000).toISOString() }));
+    await send('PUT', '0', { currency: 'USD', value: 10.0001 });
+    assert.equal(events.at(-1).data.history.length, 151, 'Pushed corrections retain the full month, not only the latest 120 points');
+    assert.equal(events.at(-1).data.history[0].usdParallel, 10.0001);
     console.log('PASS: actual admin correction/delete routes, USD fields, untouched currencies, historical publishing guard, validation and honest partial failures.');
   } finally { await new Promise(resolve => server.close(resolve)); }
 }

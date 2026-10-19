@@ -97,7 +97,7 @@ export const userAgentMiddleware = (req: express.Request, res: express.Response,
 export const timeoutMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (req.path.startsWith('/api/')) {
     const limit = req.path === '/api/internal/notify-rates-updated' && req.query.wait === 'true' ? 20000
-      : /^\/api\/(?:admin\/)?push\//.test(req.path) ? 15000 : 5000;
+      : /^\/api\/(?:admin\/)?push\//.test(req.path) || ['/api/history', '/api/cleanup-db', '/api/admin/cleanup'].includes(req.path) ? 15000 : 5000;
     res.setTimeout(limit, () => {
       if (!res.headersSent) {
         res.status(408).json({ success: false, error: `Request Timeout (${limit / 1000}s limit exceeded)` });

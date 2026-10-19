@@ -6,6 +6,7 @@ const { transformSync } = require('esbuild');
 
 async function main() {
   let queries = 0;
+  let readFailure = false;
   const rows = {
     metal_rates: [
       { recorded_at: '2026-10-10T10:00:00Z', rates: { GOLD_SCRAP_18: 100 } },
@@ -24,8 +25,11 @@ async function main() {
   };
   const supabase = { from(table) {
     queries++;
+    let start = 0, end = Infinity;
     const query = { select: () => query, order: () => query, limit: () => query,
-      then: resolve => Promise.resolve({ data: rows[table], error: null }).then(resolve) };
+      gte: () => query, lte: () => query, abortSignal: () => query,
+      range(a, b) { start = a; end = b; return query; },
+      then: resolve => Promise.resolve({ data: rows[table].slice(start, end + 1), error: readFailure ? { message: 'Fixture page failed' } : null }).then(resolve) };
     return query;
   } };
   const helpers = { exports: {} };
@@ -43,7 +47,7 @@ async function main() {
   const filename = path.join(process.cwd(), 'server/services/db.service.ts');
   const source = transformSync(fs.readFileSync(filename, 'utf8'), { loader: 'ts', format: 'cjs', target: 'node20' }).code;
   const mod = { exports: {} };
-  vm.runInNewContext(source, { module: mod, exports: mod.exports, console, Date, Map,
+  vm.runInNewContext(source, { module: mod, exports: mod.exports, console, Date, Map, AbortSignal,
     require(name) { if (Object.hasOwn(mocks, name)) return mocks[name]; throw Error('Unexpected dependency: ' + name); },
   }, { filename });
   const history = await mod.exports.fetchHistoryFromSupabase();
@@ -57,6 +61,8 @@ async function main() {
   assert.equal(history[3].usdParallel, 9.2);
   assert.equal(history[3].ratesParallel.EUR, 10, 'Known earlier observations still carry forward');
   assert.equal(history[3].ratesParallel.GOLD_SCRAP_18, 110, 'Equivalent timestamps merge markets and metals');
+  assert.deepEqual([...history[0].observed.parallel], ['GOLD_SCRAP_18']);
+  assert.deepEqual([...history[2].observed.parallel], [], 'Carried USD is not another USD observation');
   assert.equal(await mod.exports.fetchHistoryFromSupabase(), history);
   assert.equal(queries, 3, 'Repeated history requests reuse the existing cache');
   mod.exports.clearDbCache();
@@ -109,6 +115,7 @@ async function main() {
     loader: 'ts', format: 'cjs', target: 'node20'
   }).code, { module: dailyModule, exports: dailyModule.exports, Date: Clock, Intl, Map });
   const daily = dailyModule.exports;
+  assert.equal(daily.getRateHistory(history, { code: 'USD', market: 'parallel' }).length, 2, 'Metal/official rows must not bias parallel averages');
   const observations = [
     { time: '2026-10-10T22:05:00Z', usdOfficial: 6.4004, usdParallel: 9.8 },
     { time: '2026-10-10T21:59:00Z', usdOfficial: 6.4003, usdParallel: 9.7 },
@@ -127,6 +134,13 @@ async function main() {
   assert.equal(daily.getRateHistory(observations, { code: 'EUR', market: 'official' }).length, 0, 'Missing currencies are not invented');
   assert.equal(daily.libyaDayKey('invalid'), ''); assert.equal(daily.formatLibyaDate('invalid'), 'غير متاح');
   assert.equal(JSON.stringify(observations), before, 'Display grouping never changes the shared history');
+  const averages = daily.getDailyRateAverages([
+    { time: '2026-10-10T22:01:00Z', value: 10 }, { time: '2026-10-11T12:00:00Z', value: 12 },
+    { time: '2026-10-11T21:59:00Z', value: 11 }, { time: '2026-10-11T22:00:00Z', value: 14 },
+    { time: 'invalid', value: 18 }, { time: '2026-10-11T23:00:00Z', value: NaN },
+  ]);
+  assert.equal(averages.length, 2); assert.equal(averages[0].value, 11); assert.equal(averages[0].count, 3);
+  assert.equal(averages[1].value, 14); assert.equal(averages[0].time, '2026-10-11T21:59:00Z');
   console.log('PASS: one official quote per Tripoli calendar day, midnight boundary, no fabricated dates, and unchanged parallel intraday data');
 
   const hook = { exports: {} };
@@ -143,6 +157,34 @@ async function main() {
   assert.equal(calculated.chartStats.avg.toFixed(6), '6.400350', 'Period average is daily, not weighted by parallel updates');
   assert.equal(calculated.advancedStats.ma30.toFixed(6), '6.400350', 'The 30-day summary also uses one price per day');
   console.log('PASS: actual React calculations use daily official prices for period and 30-day statistics');
+
+  rows.parallel_rates = Array.from({ length: 2501 }, (_, i) => ({
+    recorded_at: new Date(Date.parse('2026-10-01T00:00:00Z') + i * 300000).toISOString(),
+    usd: i === 3 ? 12 : 10 + i / 100000, rates: { USD: i === 3 ? 12 : 10 + i / 100000, EUR: 11.1234 }
+  }));
+  rows.official_rates = []; rows.metal_rates = [];
+  mod.exports.clearDbCache(); queries = 0;
+  const [month, sameMonth] = await Promise.all([mod.exports.fetchHistoryFromSupabase(true), mod.exports.fetchHistoryFromSupabase(true)]);
+  assert.equal(month, sameMonth); assert.equal(queries, 8, 'Six 500-row parallel pages plus two empty market reads, shared by concurrent visitors');
+  assert.equal(month.length, 2501, 'A month is not silently capped at 120/1000/3000 latest points');
+  const values = daily.getRateHistory(month, { code: 'USD', market: 'parallel' });
+  assert.equal(Math.max(...values.map(p => p.value)), 12, 'Daily display compression must not erase the actual monthly high');
+  const dailyMonth = daily.getDailyRateAverages(values);
+  assert(dailyMonth.length > 7 && dailyMonth.length < month.length);
+  assert.equal(month.at(-1).ratesParallel.EUR, 11.1234, 'No early rounding during reads/aggregation');
+  rows.parallel_rates[3] = { ...rows.parallel_rates[3], usd: 10.0001, rates: { USD: 10.0001, EUR: 11.1234 } };
+  mod.exports.clearDbCache();
+  const revised = await mod.exports.fetchHistoryFromSupabase(true);
+  assert(daily.getDailyRateAverages(daily.getRateHistory(revised, { code: 'USD', market: 'parallel' }))[0].value < dailyMonth[0].value,
+    'Manual corrections rebuild the daily mean from the preserved observations');
+  mod.exports.clearDbCache(); readFailure = true;
+  await assert.rejects(mod.exports.fetchHistoryFromSupabase(true), /Incomplete history read/);
+  assert.equal(mod.exports.cachedHistory, null, 'Failed pages must not become a partial successful month');
+  readFailure = false; rows.parallel_rates = Array.from({ length: 10001 }, (_, i) => ({
+    usd: 10, recorded_at: new Date(Date.parse('2026-10-01T00:00:00Z') + i * 60000).toISOString(), rates: { USD: 10 }
+  }));
+  await assert.rejects(mod.exports.fetchHistoryFromSupabase(true), /safe read limit/);
+  console.log('PASS: complete paginated month, shared reads, daily means, raw highs, manual corrections, precision and fail-closed limits');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

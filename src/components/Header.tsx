@@ -34,6 +34,7 @@ interface HeaderProps {
   triggerHaptic: (pattern?: number | number[]) => void;
   setCurrentPage: (page: 'dashboard' | 'api' | 'contact' | 'terms' | 'privacy' | 'about') => void;
   onOpenGuide: () => void;
+  onOpenAnalysis: () => void;
   handleOpenPdfModal: () => void;
   isGeneratingPDF: boolean;
   setShowSettingsModal: (show: boolean) => void;
@@ -55,6 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
   triggerHaptic,
   setCurrentPage,
   onOpenGuide,
+  onOpenAnalysis,
   handleOpenPdfModal,
   isGeneratingPDF,
   setShowSettingsModal,
@@ -119,7 +121,13 @@ export const Header: React.FC<HeaderProps> = ({
               ['charts-section', 'التحليل'],
               ['currency-converter-section', 'المحول'],
             ].map(([id, label]) => (
-              <a key={id} href={`#${id}`}>{label}</a>
+              <a key={id} href={`#${id}`} onClick={event => {
+                if (id === 'charts-section' && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                  event.preventDefault();
+                  onOpenAnalysis();
+                  document.getElementById(id)?.scrollIntoView({ block: 'start' });
+                }
+              }}>{label}</a>
             ))}
           </nav>
         )}

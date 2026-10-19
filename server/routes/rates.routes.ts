@@ -222,10 +222,7 @@ router.get("/history", async (req: express.Request, res: express.Response) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
     const dbHistory = await fetchHistoryFromSupabase(true);
-    const trimmed = Array.isArray(dbHistory) && dbHistory.length > 120 
-      ? dbHistory.slice(-120) 
-      : dbHistory;
-    res.json(obfuscateData(trimmed));
+    res.json(obfuscateData(dbHistory));
   } catch (err) {
     if (!res.headersSent) {
       res.status(503).json({ error: 'History temporarily unavailable' });

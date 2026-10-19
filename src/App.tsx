@@ -437,6 +437,7 @@ export default function App() {
             triggerHaptic={triggerHaptic}
             setCurrentPage={setCurrentPage}
             onOpenGuide={() => setShowGuide(true)}
+            onOpenAnalysis={() => setActiveTab('charts')}
             handleOpenPdfModal={handleOpenPdfModal}
             isGeneratingPDF={isGeneratingPDF}
             setShowSettingsModal={setShowSettingsModal}

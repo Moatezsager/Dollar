@@ -20,6 +20,7 @@ export interface Rates {
 
 export interface HistoryPoint {
   time: string;
+  observed?: { parallel: string[]; official: string[] };
   usdParallel: number;
   usdOfficial: number;
   ratesParallel?: RateMap;

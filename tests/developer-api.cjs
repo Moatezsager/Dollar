@@ -10,7 +10,7 @@ async function main() {
   globalThis.__apiFixture = {
     config: { apiConfig: { enabled: true, rateLimitWindowMs: 60000, rateLimitMaxRequests: 120 } },
     rates: { parallel: { USD: 9.87, EUR: 10.91, GBP: 12.1 }, official: { USD: 6.4 }, lastUpdated: new Date().toISOString(), lastChanged: { parallel: { USD: new Date().toISOString() } } },
-    updatedAt: new Date().toISOString(), persisted: true,
+    updatedAt: new Date().toISOString(), persisted: true, history: Array.from({ length: 151 }, (_, i) => ({ time: i })),
     read: () => { databaseReads++; },
   };
   const f = globalThis.__apiFixture;
@@ -18,7 +18,7 @@ async function main() {
     config: 'export const appConfig = globalThis.__apiFixture.config; export const getAdminSafeConfig = () => ({ ...appConfig }); export const updateAppConfig = c => Object.assign(appConfig,c); export const saveConfigToSupabase = async () => globalThis.__apiFixture.persisted;',
     state: 'export const rates = globalThis.__apiFixture.rates; export const history = []; export const serverStartTime = new Date();',
     db: 'export const supabase = null; export const supabaseAnonKey = "";',
-    'db.service': 'export const getParallelUpdatedAt = () => globalThis.__apiFixture.updatedAt; export const initializeRatesFromDB = async () => globalThis.__apiFixture.read(); export const fetchHistoryFromSupabase = async () => []; export const recentChangesLog = [];',
+    'db.service': 'export const getParallelUpdatedAt = () => globalThis.__apiFixture.updatedAt; export const initializeRatesFromDB = async () => globalThis.__apiFixture.read(); export const fetchHistoryFromSupabase = async () => globalThis.__apiFixture.history; export const recentChangesLog = [];',
     'social.service': 'export const facebookBroadcastStatus = {}; export const telegramBroadcastStatus = {};',
     helpers: 'export const obfuscateData = value => value;',
   };
@@ -58,6 +58,8 @@ async function main() {
     headers: { ...headers, 'X-Forwarded-For': isolatedIPs ? '198.51.100.' + (++address) : '127.0.0.1' }, ...options });
   const originalPremium = process.env.PREMIUM_API_KEY;
   try {
+    const history = await fetch(base + '/api/history', { headers });
+    assert.equal((await history.json()).length, 151, 'HTTP history must not truncate the month to 120 observations');
     let response = await get();
     let data = await response.json();
     assert.equal(response.status, 200);

@@ -7,6 +7,7 @@ import { processIncomingVersion } from "../utils/autoUpdater";
 import { logErrorToServer } from "../utils/logger";
 import { enablePush, disablePush, syncPushSubscription } from "../utils/pushNotifications";
 import { DEFAULT_PRICE_THRESHOLD, IN_APP_DIGEST_INTERVAL, priceChanges, priceDigest, isQuietTime } from "../../shared/notifications";
+import { libyaDayKey } from '../utils/rateHistory';
 
 interface UseRatesDataOptions {
   playNotificationSound?: (type: 'up' | 'down') => void;
@@ -67,24 +68,29 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
   const applyHistory = (next: HistoryPoint[]) => {
     const byTime = new Map<number, HistoryPoint>();
+    const firstDay = libyaDayKey(Date.now() - 30 * 86400000);
     for (const point of next) {
       const time = Date.parse(point?.time);
-      if (Number.isFinite(time)) byTime.set(time, { ...point, time: new Date(time).toISOString() });
+      if (Number.isFinite(time) && libyaDayKey(time) >= firstDay && time <= Date.now() + 60000) byTime.set(time, { ...point, time: new Date(time).toISOString() });
     }
     const ordered = [...byTime.entries()].sort(([a], [b]) => a - b).map(([, point]) => point);
     historyRef.current = ordered;
     setHistory(ordered);
     safeStorage.setItem('lyd_history', JSON.stringify(ordered));
   };
-  const appendRateHistory = (next: Rates, points = historyRef.current) => {
+  const appendRateHistory = (next: Rates, previous: Rates | null) => {
+    // A full socket snapshot carries both markets; only changed markets are new live observations.
+    const observedCodes = (market: 'parallel' | 'official') => Object.keys(next[market])
+      .some(code => next[market][code] !== previous?.[market]?.[code]) ? Object.keys(next[market]) : [];
     const point: HistoryPoint = {
       time: next.lastUpdated,
       usdParallel: next.parallel.USD || 0,
       usdOfficial: next.official.USD || 0,
       ratesParallel: { ...next.parallel },
       ratesOfficial: { ...next.official },
+      ...(previous ? { observed: { parallel: observedCodes('parallel'), official: observedCodes('official') } } : {}),
     };
-    applyHistory([...points, point]);
+    applyHistory([...historyRef.current, point]);
   };
 
   useEffect(() => {
@@ -231,7 +237,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
       if (!applyRates(newRates)) return;
       queuePriceDigest(currentRates, newRates);
-      if (!validHistory && historyRevision === historyRevisionRef.current) appendRateHistory(newRates);
+      if (!validHistory && historyRevision === historyRevisionRef.current) appendRateHistory(newRates, currentRates);
 
       // Fetch status
       try {
@@ -343,7 +349,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
           if (!applyRates(decodedRates)) return;
           queuePriceDigest(currentRates, decodedRates);
           socketRevisionRef.current++;
-          appendRateHistory(decodedRates);
+          appendRateHistory(decodedRates, currentRates);
           const point = historyRef.current.find(item => Date.parse(item.time) === Date.parse(decodedRates.lastUpdated));
           if (point) liveHistoryRef.current = [...liveHistoryRef.current.slice(-119), { revision: socketRevisionRef.current, point }];
           setLoading(false);

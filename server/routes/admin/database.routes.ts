@@ -25,7 +25,7 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
     try {
       const readStartedAt = new Date().toISOString();
       const corrected = await fetchHistoryFromSupabase(true);
-      getIO()?.emit('history_update', { history: obfuscateData(corrected.slice(-120)), readStartedAt });
+      getIO()?.emit('history_update', { history: obfuscateData(corrected), readStartedAt });
       return true;
     } catch {
       console.error('[History] Record saved, but corrected history could not be broadcast.');

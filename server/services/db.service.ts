@@ -2,7 +2,7 @@ import { db, supabase, supabaseAnonKey } from '../db';
 import { rates, history } from '../state';
 import { appConfig } from '../config';
 import { HistoryPoint, PriceChangeLog, RateMap, AppConfig } from '../types';
-import { isSignificantChange, METAL_IDS } from '../utils/helpers';
+import { isSignificantChange, METAL_IDS, getPriceHistoryCutoff } from '../utils/helpers';
 import { updateStats } from './reporting.service';
 
 // Half of one four-decimal unit avoids losing a 0.0001 change to floating-point noise.
@@ -372,17 +372,7 @@ export async function saveToSupabase(type: 'parallel' | 'official' | 'both' = 'b
       }
     });
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const cutoff30 = thirtyDaysAgo.toISOString();
-    
-    await Promise.allSettled([
-      supabase.from('parallel_rates').delete().lt('recorded_at', cutoff30),
-      supabase.from('official_rates').delete().lt('recorded_at', cutoff30),
-      supabase.from('exchange_rates').delete().lt('recorded_at', cutoff30),
-      supabase.from('metal_rates').delete().lt('recorded_at', cutoff30)
-    ]);
-        
+    // Price retention belongs to the shared cleanup path, never each manual price save.
     clearDbCache();
     
     const typeLabel = type === 'parallel' ? 'سوق موازي' : type === 'official' ? 'رسمي' : 'متكامل';
@@ -393,32 +383,61 @@ export async function saveToSupabase(type: 'parallel' | 'official' | 'both' = 'b
   }
 }
 
-export async function fetchHistoryFromSupabase(strict = false) {
+let historyRead: { generation: number; promise: Promise<HistoryPoint[]> } | null = null;
+
+export function fetchHistoryFromSupabase(strict = false): Promise<HistoryPoint[]> {
+  if (cachedHistory && Date.now() - lastHistoryFetchTime < HISTORY_CACHE_TTL) return Promise.resolve(cachedHistory);
+  if (!historyRead || historyRead.generation !== historyGeneration) {
+    const pending = { generation: historyGeneration, promise: readHistoryFromSupabase() };
+    historyRead = pending;
+    pending.promise = pending.promise.finally(() => { if (historyRead === pending) historyRead = null; });
+  }
+  return strict ? historyRead.promise : historyRead.promise.catch(() => history);
+}
+
+async function readHistoryRows(table: string, fields: string, cutoff: string, until: string, signal: AbortSignal) {
+  const rows: any[] = [];
+  // shortcut: cap each monthly market read at 10,000 rows; add stored daily aggregates if this is exceeded.
+  const pageSize = 500, maxRows = 10000;
+  for (let offset = 0; offset <= maxRows; offset += pageSize) {
+    const result = await supabase!.from(table).select(fields).gte('recorded_at', cutoff).lte('recorded_at', until)
+      .order('recorded_at', { ascending: true }).order('id', { ascending: true })
+      .range(offset, offset + (offset === maxRows ? 0 : pageSize - 1)).abortSignal(signal);
+    if (result.error) return result;
+    if (!Array.isArray(result.data)) throw new Error(`History read failed: ${table}`);
+    if (offset === maxRows && result.data.length) throw new Error(`Monthly history exceeds safe read limit: ${table}`);
+    rows.push(...result.data);
+    if (result.data.length < pageSize) return { data: rows, error: null };
+  }
+  throw new Error('Incomplete monthly history');
+}
+
+async function readHistoryFromSupabase() {
   const generation = historyGeneration;
   if (cachedHistory && Date.now() - lastHistoryFetchTime < HISTORY_CACHE_TTL) {
     return cachedHistory;
   }
 
   if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) {
-    if (strict) throw new Error('History database unavailable');
-    return history;
+    throw new Error('History database unavailable');
   }
   
   try {
+    const cutoff = getPriceHistoryCutoff(), until = new Date().toISOString(), signal = AbortSignal.timeout(10000);
     const [parallelRes, officialRes, metalRes] = await Promise.all([
-      supabase.from('parallel_rates').select('recorded_at, usd, rates').order('recorded_at', { ascending: false }).limit(3000),
-      supabase.from('official_rates').select('recorded_at, usd, rates').order('recorded_at', { ascending: false }).limit(3000),
-      supabase.from('metal_rates').select('recorded_at, rates').order('recorded_at', { ascending: false }).limit(3000)
+      readHistoryRows('parallel_rates', 'recorded_at, usd, rates', cutoff, until, signal),
+      readHistoryRows('official_rates', 'recorded_at, usd, rates', cutoff, until, signal),
+      readHistoryRows('metal_rates', 'recorded_at, rates', cutoff, until, signal)
     ]);
 
     if (parallelRes.error?.message.includes('relation "parallel_rates" does not exist') || 
         officialRes.error?.message.includes('relation "official_rates" does not exist')) {
         
-        const { data, error } = await supabase.from('exchange_rates').select('*').order('recorded_at', { ascending: false }).limit(3000);
-        if (strict && (error || !data)) throw new Error('History read failed');
+        const { data, error } = await readHistoryRows('exchange_rates', '*', cutoff, until, signal);
+        if (error || !data) throw new Error('History read failed');
         if (generation !== historyGeneration) throw new Error('History changed during read');
         if (!error && data) {
-           cachedHistory = data.reverse().map((row: any) => ({
+           cachedHistory = data.map((row: any) => ({
               time: row.recorded_at,
               usdParallel: row.usd_parallel || (row.rates_parallel ? row.rates_parallel.USD : 0),
               usdOfficial: row.usd_official || (row.rates_official ? row.rates_official.USD : 0),
@@ -433,7 +452,7 @@ export async function fetchHistoryFromSupabase(strict = false) {
         return history;
     }
 
-    if (strict && [parallelRes, officialRes, metalRes].some(result => result.error || !result.data)) throw new Error('Incomplete history read');
+    if ([parallelRes, officialRes, metalRes].some(result => result.error || !result.data)) throw new Error('Incomplete history read');
     if (generation !== historyGeneration) throw new Error('History changed during read');
     const parallelData = parallelRes.data || [];
     const officialData = officialRes.data || [];
@@ -495,6 +514,9 @@ export async function fetchHistoryFromSupabase(strict = false) {
     let lastUsdOfficial = 0;
     
     const completedHistory = sortedPoints.map(p => {
+      const observed = { parallel: Object.keys(p.ratesParallel || {}), official: Object.keys(p.ratesOfficial || {}) };
+      if (p.usdParallel !== undefined && p.usdParallel > 0 && !observed.parallel.includes('USD')) observed.parallel.push('USD');
+      if (p.usdOfficial !== undefined && p.usdOfficial > 0 && !observed.official.includes('USD')) observed.official.push('USD');
       if (p.usdParallel !== undefined) lastUsdParallel = p.usdParallel;
       if (p.usdOfficial !== undefined) lastUsdOfficial = p.usdOfficial;
       if (p.ratesParallel) lastParallelRates = { ...lastParallelRates, ...p.ratesParallel };
@@ -502,6 +524,7 @@ export async function fetchHistoryFromSupabase(strict = false) {
       
       return {
         time: p.time!,
+        observed,
         usdParallel: lastUsdParallel,
         usdOfficial: lastUsdOfficial,
         ratesParallel: { ...lastParallelRates },
@@ -509,16 +532,13 @@ export async function fetchHistoryFromSupabase(strict = false) {
       };
     }) as HistoryPoint[];
 
-    if (completedHistory.length > 0 || strict) {
-      cachedHistory = completedHistory;
-      lastHistoryFetchTime = Date.now();
-      return cachedHistory;
-    }
+    cachedHistory = completedHistory;
+    lastHistoryFetchTime = Date.now();
+    return cachedHistory;
   } catch (err) {
     console.error("Error fetching history from separated tables:", err);
-    if (strict) throw err;
+    throw err;
   }
-  return history;
 }
 
 export const CHECK_TRIO = ["USD_CHECKS", "USD_JBANK", "USD_NCB"] as const;
@@ -590,118 +610,59 @@ export async function syncCheckRates(source: string = "تزامن تلقائي",
   return false;
 }
 
-export async function downsampleTable(tableName: string) {
-  try {
-    if (!supabase) return;
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const cutoff = sevenDaysAgo.toISOString();
+let cleanupRun: Promise<Record<string, number | string>> | null = null;
 
-    const { data, error } = await supabase
-      .from(tableName)
-      .select('id, recorded_at, usd')
-      .lt('recorded_at', cutoff)
-      .order('recorded_at', { ascending: true })
-      .limit(10000);
-
-    if (error || !data || data.length === 0) return;
-
-    const groupedByDay: Record<string, any[]> = {};
-    for (const row of data) {
-      if (!row.recorded_at) continue;
-      const day = row.recorded_at.split('T')[0];
-      if (!groupedByDay[day]) groupedByDay[day] = [];
-      groupedByDay[day].push(row);
-    }
-
-    let idsToDelete: any[] = [];
-    for (const day in groupedByDay) {
-      const records = groupedByDay[day];
-      if (records.length <= 3) continue;
-
-      let highId = records[0].id;
-      let lowId = records[0].id;
-      let highUsd = records[0].usd || 0;
-      let lowUsd = records[0].usd || 999999;
-      const closeId = records[records.length - 1].id;
-
-      for (const row of records) {
-        const usd = row.usd || 0;
-        if (usd > highUsd) { highUsd = usd; highId = row.id; }
-        if (usd < lowUsd) { lowUsd = usd; lowId = row.id; }
-      }
-
-      const keepIds = new Set([highId, lowId, closeId]);
-      for (const row of records) {
-        if (!keepIds.has(row.id)) idsToDelete.push(row.id);
+export function cleanupOldData(onUserLogsCleanup?: () => void): Promise<Record<string, number | string>> {
+  if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) return Promise.reject(new Error('Cleanup database unavailable'));
+  if (!cleanupRun) cleanupRun = (async () => {
+    const cutoff30 = getPriceHistoryCutoff();
+    const cutoff1 = new Date(Date.now() - 86400000).toISOString();
+    const signal = AbortSignal.timeout(10000);
+    const removed: Record<string, number> = {};
+    const tables = ['exchange_rates', 'parallel_rates', 'official_rates', 'metal_rates', 'error_logs', 'price_changes_log'];
+    const failures: string[] = [];
+    for (const table of tables) {
+      const priceTable = table.endsWith('_rates');
+      let cutoff = priceTable ? cutoff30 : cutoff1;
+      try {
+        if (priceTable) {
+          const latest = await supabase!.from(table).select('recorded_at').lt('recorded_at', cutoff)
+            .order('recorded_at', { ascending: false }).limit(1).abortSignal(signal);
+          if (latest.error) throw latest.error;
+          if (!Array.isArray(latest.data)) throw new Error('Missing cleanup boundary');
+          if (!latest.data.length) { removed[table] = 0; continue; }
+          const boundary = Date.parse(latest.data[0].recorded_at);
+          if (!Number.isFinite(boundary) || boundary >= Date.parse(cutoff)) throw new Error('Invalid cleanup boundary');
+          // Retain the last pre-month observation; never delete the only/latest quote.
+          cutoff = new Date(boundary).toISOString();
+        }
+        const result = await supabase!.from(table).delete({ count: 'exact' })
+          .lt(priceTable ? 'recorded_at' : 'created_at', cutoff).abortSignal(signal);
+        if (result.error) throw result.error;
+        removed[table] = result.count || 0;
+      } catch (error: any) {
+        if (['42P01', 'PGRST205'].includes(error?.code) && !['parallel_rates', 'official_rates'].includes(table)) {
+          removed[table] = 0;
+        } else {
+          failures.push(table);
+          console.error(`[Cleanup] ${table} failed:`, error?.message || 'Database request failed');
+        }
       }
     }
-
-    const chunkSize = 200;
-    for (let i = 0; i < idsToDelete.length; i += chunkSize) {
-      const chunk = idsToDelete.slice(i, i + chunkSize);
-      await supabase.from(tableName).delete().in('id', chunk);
+    clearDbCache();
+    if (failures.length) {
+      throw new Error(`Cleanup incomplete: ${failures.join(', ')}`);
     }
-    
-    if (idsToDelete.length > 0) {
-      console.log(`[Cleanup] Downsampled ${tableName}: deleted ${idsToDelete.length} redundant historical records.`);
-    }
-  } catch (err) {
-    console.error(`[Cleanup] Error downsampling ${tableName}:`, err);
-  }
+    const details = {
+      removed_exchange_rates: removed.exchange_rates, removed_parallel_rates: removed.parallel_rates,
+      removed_official_rates: removed.official_rates, removed_metal_rates: removed.metal_rates,
+      total_removed_rates: removed.exchange_rates + removed.parallel_rates + removed.official_rates + removed.metal_rates,
+      removed_logs: removed.error_logs, removed_changes: removed.price_changes_log,
+      cutoff_rates_date: cutoff30, cutoff_logs_date: cutoff1
+    };
+    console.log('[Cleanup] Completed; monthly observations and boundary quotes preserved.', details);
+    return details;
+  })().finally(() => { cleanupRun = null; });
+  return cleanupRun.then(details => { onUserLogsCleanup?.(); return details; });
 }
-
-export const cleanupOldData = async (onUserLogsCleanup?: () => void) => {
-  if (!supabase || !supabaseAnonKey || supabaseAnonKey.includes('dummy')) return;
-  
-  try {
-    console.log("Running scheduled database cleanup...");
-    
-    await downsampleTable('parallel_rates');
-    await downsampleTable('official_rates');
-    
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const cutoff30 = thirtyDaysAgo.toISOString();
-
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-    const cutoff1 = oneDayAgo.toISOString();
-
-    const [legacyRes, parallelRes, officialRes, metalRes, logsRes, changesRes] = await Promise.all([
-      supabase.from('exchange_rates').delete({ count: 'exact' }).lt('recorded_at', cutoff30),
-      supabase.from('parallel_rates').delete({ count: 'exact' }).lt('recorded_at', cutoff30),
-      supabase.from('official_rates').delete({ count: 'exact' }).lt('recorded_at', cutoff30),
-      supabase.from('metal_rates').delete({ count: 'exact' }).lt('recorded_at', cutoff30),
-      supabase.from('error_logs').delete({ count: 'exact' }).lt('created_at', cutoff1),
-      supabase.from('price_changes_log').delete({ count: 'exact' }).lt('created_at', cutoff1)
-    ]);
-
-    const removedRates = (legacyRes.count || 0) + (parallelRes.count || 0) + (officialRes.count || 0) + (metalRes.count || 0);
-    const removedLogs = logsRes.count || 0;
-    const removedChanges = changesRes.count || 0;
-
-    const errors = [legacyRes.error, parallelRes.error, officialRes.error, metalRes.error, logsRes.error, changesRes.error]
-      .filter(err => err && err.code !== '42P01');
-
-    if (errors.length > 0) {
-      console.error("Cleanup partial error:", { 
-        legacy: legacyRes.error?.message, 
-        parallel: parallelRes.error?.message, 
-        official: officialRes.error?.message, 
-        metal: metalRes.error?.message,
-        logs: logsRes.error?.message,
-        changes: changesRes.error?.message
-      });
-    }
-
-    console.log(`Database cleanup completed. Removed ${removedRates} rates (older than 30 days), ${removedLogs} logs, and ${removedChanges} price changes (older than 1 day).`);
-    
-    if (onUserLogsCleanup) {
-      onUserLogsCleanup();
-    }
-  } catch (error) {
-    console.error("Failed to run database cleanup:", error);
-  }
-};
 

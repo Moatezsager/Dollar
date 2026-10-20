@@ -21,11 +21,37 @@ export function describeVisitor(ua: string) {
   };
 }
 
-// Match the Web app's single trusted reverse-proxy hop, not the client-supplied leftmost address.
-export function visitorIp(forwarded: unknown, remote: string = ''): string {
-  const value = typeof forwarded === 'string' ? forwarded.split(',').at(-1)!.trim() : remote;
-  const ip = value.replace(/^::ffff:(?=\d+\.)/i, '');
-  return isIP(ip) ? ip : '';
+// Match the Web app's single trusted reverse-proxy hop, skipping internal private proxy add-ons (Render/Cloudflare)
+export function visitorIp(forwarded: unknown, remote: string = '', directHeader?: unknown): string {
+  // 1. Direct trusted proxy header if supplied (e.g. CF-Connecting-IP, X-Real-IP)
+  if (typeof directHeader === 'string' && directHeader.trim()) {
+    const direct = directHeader.split(',')[0].trim().replace(/^::ffff:(?=\d+\.)/i, '');
+    if (isIP(direct)) {
+      const v = isIP(direct);
+      const isPriv = v === 4 ? privateRanges.check(direct, 'ipv4') : (!globalV6.check(direct, 'ipv6') || privateRanges.check(direct, 'ipv6'));
+      if (!isPriv) return direct;
+    }
+  }
+
+  // 2. Comma-separated X-Forwarded-For chain:
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    const list = forwarded.split(',').map(s => s.trim().replace(/^::ffff:(?=\d+\.)/i, '')).filter(s => isIP(s));
+    if (list.length > 0) {
+      // Find the rightmost public (non-private) IP in the chain to avoid internal load-balancer hops (Render/K8s/Docker)
+      const publicIp = [...list].reverse().find(ip => {
+        const v = isIP(ip);
+        if (v === 4) return !privateRanges.check(ip, 'ipv4');
+        return globalV6.check(ip, 'ipv6') && !privateRanges.check(ip, 'ipv6');
+      });
+      if (publicIp) return publicIp;
+      // If all are private or local, return the rightmost valid IP
+      return list.at(-1)!;
+    }
+  }
+
+  // 3. Fallback to clean remoteAddress
+  const cleanRemote = String(remote || '').trim().replace(/^::ffff:(?=\d+\.)/i, '');
+  return isIP(cleanRemote) ? cleanRemote : '';
 }
 
 const privateRanges = new BlockList();
@@ -37,6 +63,15 @@ privateRanges.addSubnet('2001::', 23, 'ipv6');
 privateRanges.addSubnet('2002::', 16, 'ipv6');
 const globalV6 = new BlockList();
 globalV6.addSubnet('2000::', 3, 'ipv6');
+
+const LOCATION_ARABIC: Record<string, string> = {
+  'Libya': 'ليبيا', 'Tripoli': 'طرابلس', 'Benghazi': 'بنغازي', 'Misrata': 'مصراتة',
+  'Zawiya': 'الزاوية', 'Al Bayda': 'البيضاء', 'Tobruk': 'طبرق', 'Sabha': 'سبها',
+  'Sirte': 'سرت', 'Zliten': 'زليتن', 'Tunisia': 'تونس', 'Egypt': 'مصر',
+  'Turkey': 'تركيا', 'United States': 'الولايات المتحدة', 'United Kingdom': 'المملكة المتحدة',
+  'Germany': 'ألمانيا', 'Italy': 'إيطاليا', 'France': 'فرنسا', 'United Arab Emirates': 'الإمارات',
+  'Saudi Arabia': 'السعودية', 'Jordan': 'الأردن'
+};
 
 export type VisitorLocation = { location: string; locationStatus: 'approximate' | 'local' | 'unavailable' | 'limited' };
 const unavailable: VisitorLocation = { location: 'غير متاح', locationStatus: 'unavailable' };
@@ -69,7 +104,12 @@ export async function locateVisitor(ip: string): Promise<VisitorLocation> {
       if (response.status === 429) blockedUntil = Date.now() + DAY;
       if (response.ok) {
         const data = await response.json();
-        const parts = [data.country, data.city].filter(part => typeof part === 'string' && part.trim()).map(part => part.trim().slice(0, 80));
+        const parts = [data.country, data.city]
+          .filter(part => typeof part === 'string' && part.trim())
+          .map(part => {
+            const raw = part.trim().slice(0, 80);
+            return LOCATION_ARABIC[raw] ? `${LOCATION_ARABIC[raw]} (${raw})` : raw;
+          });
         if (data.success === true && parts.length) value = { location: [...new Set(parts)].join('، '), locationStatus: 'approximate' };
       }
     } catch { /* Location failure must not interrupt live prices or leave a pending label. */ }

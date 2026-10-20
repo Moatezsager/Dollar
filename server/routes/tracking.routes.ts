@@ -92,7 +92,7 @@ router.post("/messages", messageRateLimiter, async (req: express.Request, res: e
       messageId = info.lastInsertRowid;
     }
 
-    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket.remoteAddress);
+    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket.remoteAddress, req.headers['cf-connecting-ip'] || req.headers['x-real-ip']);
     const userAgent = (req.headers['user-agent'] as string) || '';
     const referrer = (req.headers['referer'] as string) || (req.headers['referrer'] as string) || '';
     
@@ -189,7 +189,7 @@ router.post("/telegram-click", express.json(), express.text(), (req: express.Req
     if (!ref) {
       ref = (req.headers['referer'] || req.headers['referrer'] || '') as string;
     }
-    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket?.remoteAddress);
+    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket?.remoteAddress, req.headers['cf-connecting-ip'] || req.headers['x-real-ip']);
     const ipHash = crypto.createHash('sha256').update(ip + '_salt_tg').digest('hex').slice(0, 16);
 
     if (!isBot) {
@@ -208,7 +208,7 @@ export function handleTelegramPageRoute(req: express.Request, res: express.Respo
     const ua = (req.headers["user-agent"] || "") as string;
     const isBot = /bot|crawler|spider|facebookexternalhit|facebookcatalog|meta|twitter|whatsapp|telegram|preview/i.test(ua) ? 1 : 0;
     const ref = (req.headers["referer"] || req.headers["referrer"] || "") as string;
-    const ip = visitorIp(req.headers["x-forwarded-for"], req.socket?.remoteAddress);
+    const ip = visitorIp(req.headers["x-forwarded-for"], req.socket?.remoteAddress, req.headers["cf-connecting-ip"] || req.headers["x-real-ip"]);
     const ipHash = crypto.createHash("sha256").update(ip + "_salt_tg").digest("hex").slice(0, 16);
 
     const filePath = process.env.NODE_ENV === "production"

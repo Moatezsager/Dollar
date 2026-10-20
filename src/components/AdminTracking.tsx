@@ -123,14 +123,14 @@ export function AdminTracking({ token, liveLogs = null }: { token: string; liveL
         const recordId = String(log.deviceId || log.id || 'غير متاح');
         const detailId = `visitor-detail-${i}`;
         return <React.Fragment key={id}><tr className="visitor-main-row" data-expanded={expanded}>
-          <td data-label="الجهاز"><div className="visitor-device"><Icon size={20} aria-hidden="true" /><div><strong dir="auto">{log.deviceName || deviceNames[log.deviceType] || 'غير محدد'}</strong><small>{deviceNames[log.deviceType] || 'غير محدد'}</small></div></div></td>
-          <td data-label="الموقع التقريبي"><div className="visitor-place"><MapPin size={16} aria-hidden="true" /><span>{log.location || 'غير متاح'}</span></div>{log.locationStatus === 'approximate' && <small>تقدير شبكة · IPWhois</small>}</td>
+          <td data-label="الجهاز"><div className="visitor-device"><div className="visitor-device-icon"><Icon size={20} aria-hidden="true" /></div><div><strong dir="auto">{log.deviceName || deviceNames[log.deviceType] || 'غير محدد'}</strong><small>{log.deviceModel && log.deviceModel !== log.deviceName ? `${log.deviceModel} · ` : ''}{deviceNames[log.deviceType] || 'غير محدد'}</small></div></div></td>
+          <td data-label="الموقع التقريبي"><div className="visitor-place"><MapPin size={16} aria-hidden="true" /><span>{log.location || 'غير متاح'}</span></div>{log.locationStatus === 'approximate' && <small>تقدير شبكة · IPWhois</small>}{log.locationStatus === 'local' && <small>شبكة محلية</small>}</td>
           <td data-label="آخر نشاط"><time className="visitor-last-activity" dateTime={log.last_active || log.timestamp}>{date(log.last_active || log.timestamp)}</time></td>
           <td data-label="حالة الاتصال"><span className="visitor-status" data-online={Boolean(log.isOnline)}>{log.isOnline ? 'متصل' : 'غير متصل'}</span></td>
           <td className="visitor-more"><button type="button" aria-expanded={expanded} aria-controls={detailId} aria-label={`${expanded ? 'إخفاء' : 'عرض'} تفاصيل الاتصال ${recordId}`} onClick={() => setExpandedVisitor(expanded ? null : id)}>{expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}{expanded ? 'إخفاء' : 'التفاصيل'}</button></td>
         </tr>{expanded && <tr className="visitor-detail-row" id={detailId}><td colSpan={5}><dl className="visitor-details">
-          <div><dt>معرّف المتصفح الكامل</dt><dd><bdi className="visitor-id">{recordId}</bdi></dd></div>
-          <div><dt>عنوان الشبكة IP</dt><dd><bdi className="visitor-ip">{log.ip || 'غير متاح'}</bdi></dd></div>
+          <div className="visitor-detail-full"><dt>معرّف المتصفح الكامل</dt><dd><bdi className="visitor-id">{recordId}</bdi></dd></div>
+          <div className="visitor-detail-full"><dt>عنوان الشبكة IP</dt><dd><bdi className="visitor-ip">{log.ip || 'غير متاح'}</bdi></dd></div>
           <div><dt>المتصفح</dt><dd dir="auto">{log.browser || 'غير متاح'}</dd></div>
           <div><dt>نظام التشغيل</dt><dd dir="auto">{log.os || 'غير متاح'}</dd></div>
           <div><dt>الطراز المبلّغ عنه</dt><dd><bdi>{log.deviceModel || 'غير متاح'}</bdi><small>{log.modelSource === 'browser' ? 'كما أبلغ عنه المتصفح' : 'مستنتج من تعريف المتصفح عند توفره'}</small></dd></div>

@@ -162,7 +162,7 @@ export function initSocketIO(server: HttpServer): SocketIOServer {
       }
     } catch (e) {}
 
-    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket?.remoteAddress);
+    const ip = visitorIp(req.headers['x-forwarded-for'], req.socket?.remoteAddress, req.headers['cf-connecting-ip'] || req.headers['x-real-ip']);
     const ua = String(req.headers['user-agent'] || '').slice(0, 500);
     const suppliedId = socket.handshake?.query?.deviceId;
     const clientDeviceId = typeof suppliedId === 'string' && /^[a-zA-Z0-9_-]{8,100}$/.test(suppliedId) ? suppliedId : socket.id;

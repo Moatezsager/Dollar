@@ -197,6 +197,7 @@ export default function App() {
   }, []);
 
   // Advanced Charts Section State
+  const [chartAnalysisView, setChartAnalysisView] = useState<'prices' | 'spread'>('prices');
   const [chartAnalysisCurrency, setChartAnalysisCurrency] = useState('USD_CASH');
   const [chartAnalysisRange, setChartAnalysisRange] = useState<'1w' | '1m' | '6m' | '1y' | 'all'>('1m');
 
@@ -488,6 +489,11 @@ export default function App() {
                   activeTab={activeTab}
                   rates={rates}
                   history={history}
+                  isOffline={isOffline}
+                  onOpenSpread={() => {
+                    setChartAnalysisView('spread'); setActiveTab('charts');
+                    document.getElementById('analysis-tab-spread')?.focus();
+                  }}
                   configTerms={configTerms}
                   dynamicCurrencies={dynamicCurrencies}
                   staleCurrencies={staleCurrencies}
@@ -524,11 +530,15 @@ export default function App() {
                 {/* ===================== TAB: CHARTS ===================== */}
                 {activeTab === 'charts' && <AdvancedChartsSection
                   activeTab={activeTab}
+                  view={chartAnalysisView}
+                  setView={setChartAnalysisView}
                   chartAnalysisCurrency={chartAnalysisCurrency}
                   setChartAnalysisCurrency={setChartAnalysisCurrency}
                   chartAnalysisRange={chartAnalysisRange}
                   setChartAnalysisRange={setChartAnalysisRange}
                   history={history}
+                  rates={rates}
+                  isOffline={isOffline}
                 />}
 
                 {/* ===================== TAB: CONVERTER ===================== */}

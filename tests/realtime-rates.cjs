@@ -349,6 +349,46 @@ async function main() {
     await page.waitForTimeout(500);
     assert.notEqual(await analysis.locator('.recharts-area-curve').getAttribute('d'), mobileMonthlyCurve, 'Correction updates the aggregated monthly curve without a reload');
     assert.equal(rateRequests, beforeCorrectionRequests, 'Monthly grouping/corrections add no price polling');
+    const commonHistory = revisedMonth.map(point => ({ ...point, ratesParallel: { ...point.ratesParallel, USD_CHECKS: point.usdParallel + .4 },
+      observed: { parallel: ['USD', 'USD_CHECKS', 'EUR'], official: [] } }));
+    io.emit('history_update', { history: commonHistory, readStartedAt: new Date().toISOString() });
+    await analysis.getByRole('tab', { name: 'الكاش والصكوك', exact: true }).click();
+    const spread = page.locator('.cash-spread');
+    await spread.locator('.spread-main-value strong').getByText('+0.40', { exact: true }).waitFor();
+    snapshot = makeRates(Date.now() - baseTime, 10.2, 10.9, 6.4005, 10.7);
+    io.emit('rates_update', { rates: snapshot });
+    await spread.locator('.spread-main-value strong').getByText('+0.50', { exact: true }).waitFor();
+    const spreadAmount = spread.getByLabel('المبلغ بالدولار', { exact: true });
+    await spreadAmount.fill('2000');
+    await spread.locator('.spread-amount-difference strong').getByText('+1,000.00', { exact: true }).waitFor();
+    const sharedTime = await spread.locator('.spread-status time').getAttribute('datetime');
+    assert.equal(sharedTime, snapshot.lastUpdated);
+    assert.equal(await spread.getByText('بانتظار لقطة أحدث', { exact: true }).count(), 0);
+    snapshot = makeRates(Date.now() - baseTime, 10.2, 10.9, 6.4006, 10.7);
+    io.emit('rates_update', { rates: snapshot });
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('lyd_rates')).official.USD === 6.4006);
+    assert.equal(await spread.locator('.spread-status time').getAttribute('datetime'), sharedTime,
+      'Official-only Socket.IO updates cannot make the parallel spread look fresher');
+    const revisedShared = { time: sharedTime, usdParallel: 10.2, usdOfficial: 6.4006,
+      ratesParallel: { USD: 10.2, USD_CHECKS: 10.6 }, ratesOfficial: { USD: 6.4006 }, observed: { parallel: ['USD', 'USD_CHECKS'], official: [] } };
+    io.emit('history_update', { history: [...commonHistory, revisedShared], readStartedAt: new Date().toISOString() });
+    await spread.locator('.spread-main-value strong').getByText('+0.40', { exact: true }).waitFor();
+    await spread.getByText('بانتظار لقطة أحدث', { exact: true }).waitFor();
+    assert.equal(await spreadAmount.inputValue(), '2000', 'History corrections preserve the chosen comparison amount');
+    await spread.locator('.spread-amount-difference strong').getByText('+800.00', { exact: true }).waitFor();
+    assert.equal(rateRequests, beforeCorrectionRequests, 'Spread mode, live changes and historical corrections add no requests');
+    await saveChart(spread, 'cash-checks-spread-app-mobile');
+    await page.locator('#mobile-bottom-nav').getByRole('button', { name: 'الرئيسية', exact: true }).click();
+    const summary = page.getByRole('region', { name: 'ملخص فجوة الكاش والصكوك' });
+    await summary.locator('dd strong').getByText('+0.40', { exact: true }).waitFor();
+    await summary.getByText('بانتظار لقطة أحدث', { exact: true }).waitFor();
+    assert.equal(await summary.locator('time').getAttribute('datetime'), sharedTime, 'Home uses the same authoritative shared pair as detailed analysis');
+    await saveChart(summary, 'spread-summary-app-mobile');
+    await summary.getByRole('button', { name: 'عرض المزيد عن فجوة الكاش والصكوك' }).click();
+    await page.waitForFunction(() => document.activeElement?.id === 'analysis-tab-spread');
+    assert.equal(await analysis.getByRole('tab', { name: 'الكاش والصكوك', exact: true }).getAttribute('aria-selected'), 'true');
+    await spread.locator('.spread-main-value strong').getByText('+0.40', { exact: true }).waitFor();
+    assert.equal(rateRequests, beforeCorrectionRequests, 'Home summary and direct analysis navigation add no price requests');
     assert.equal(navigations, 1, 'Live updates must not reload the document');
     assert.equal(errors.length, 0, errors.join('\n'));
     assert.equal(await page.evaluate(() => window.deviceHintReads), 1, 'Device hints are read once, including reconnects');
@@ -377,6 +417,7 @@ async function main() {
     console.log('PASS: delayed HTTP, stale/malformed events, reconnect with failed history, no reload or rate polling, cleanup');
     console.log('PASS: pushed historical corrections/deletions, empty authoritative history, stale HTTP rejection and concurrent live price preservation');
     console.log('PASS: full 300-observation month becomes 30 Tripoli daily averages on desktop/mobile, preserving raw high/close and live corrections');
+    console.log('PASS: integrated cash/check spread reacts to real Socket.IO and history corrections, never refreshes its age on official-only updates and adds no price requests');
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => io.close(resolve));

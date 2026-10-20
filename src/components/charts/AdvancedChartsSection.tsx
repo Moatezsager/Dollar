@@ -1,18 +1,23 @@
 import React, { useMemo, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
-import { ChartNoAxesCombined, TrendingUp, TrendingDown, Minus, List, ChevronDown } from "lucide-react";
+import { ChartNoAxesCombined, TrendingUp, TrendingDown, Minus, List, ChevronDown, Scale } from "lucide-react";
 import { useReducedMotion } from "motion/react";
-import { HistoryPoint } from "../../types/rates";
+import { HistoryPoint, Rates } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { formatLibyaDate, getDailyRateAverages, libyaDayKey } from '../../utils/rateHistory';
+import { CashChecksSpreadSection } from './CashChecksSpreadSection';
 
 interface AdvancedChartsSectionProps {
   activeTab: string;
+  view: 'prices' | 'spread';
+  setView: (view: 'prices' | 'spread') => void;
   chartAnalysisCurrency: string;
   setChartAnalysisCurrency: (curr: string) => void;
   chartAnalysisRange: '1w' | '1m' | '6m' | '1y' | 'all';
   setChartAnalysisRange: (range: '1w' | '1m' | '6m' | '1y' | 'all') => void;
   history: HistoryPoint[];
+  rates: Rates | null;
+  isOffline: boolean;
 }
 
 const currencies = [
@@ -32,11 +37,14 @@ const ranges = [
 ] as const;
 
 export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
-  activeTab, chartAnalysisCurrency, setChartAnalysisCurrency,
-  chartAnalysisRange, setChartAnalysisRange, history,
+  activeTab, view, setView, chartAnalysisCurrency, setChartAnalysisCurrency,
+  chartAnalysisRange, setChartAnalysisRange, history, rates, isOffline,
 }) => {
   const reducedMotion = useReducedMotion();
-  useEffect(() => { document.getElementById('charts-section')?.scrollIntoView({ block: 'start' }); }, []);
+  useEffect(() => {
+    document.getElementById('charts-section')?.scrollIntoView({ block: 'start' });
+    document.getElementById(`analysis-tab-${view}`)?.focus({ preventScroll: true });
+  }, [view]);
   const currency = currencies.find(item => item.id === chartAnalysisCurrency) || currencies[0];
   const data = useMemo(() => {
     const days = ranges.find(item => item.id === chartAnalysisRange)?.days ?? Infinity;
@@ -75,6 +83,22 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
         <span><ChartNoAxesCombined size={22} aria-hidden="true" /></span>
         <div><h2>التحليل المتقدم</h2><p>حركة الأسعار في السوق الموازي</p></div>
       </div>
+
+      <div className="analysis-views" role="tablist" aria-label="أقسام التحليل" onKeyDown={event => {
+        const tabs = event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+        const index = view === 'prices' ? 0 : 1;
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : ['ArrowLeft', 'ArrowRight'].includes(event.key) ? 1 - index : -1;
+        if (next < 0) return;
+        event.preventDefault(); setView(next === 0 ? 'prices' : 'spread'); tabs[next].focus();
+      }}>
+        {[{ id: 'prices', label: 'حركة الأسعار', Icon: ChartNoAxesCombined }, { id: 'spread', label: 'الكاش والصكوك', Icon: Scale }].map(item => <button key={item.id}
+          id={`analysis-tab-${item.id}`} role="tab" aria-selected={view === item.id} aria-controls={`analysis-panel-${item.id}`}
+          tabIndex={view === item.id ? 0 : -1} onClick={() => setView(item.id as 'prices' | 'spread')}>
+          <item.Icon size={17} aria-hidden="true" />{item.label}
+        </button>)}
+      </div>
+
+      <div id="analysis-panel-prices" role="tabpanel" aria-labelledby="analysis-tab-prices" hidden={view !== 'prices'}>
 
       <div className="analysis-toolbar">
         <div className="analysis-currencies" role="group" aria-label="عملة التحليل">
@@ -175,6 +199,10 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
           </table>
         </details>
       )}
+      </div>
+      <div id="analysis-panel-spread" role="tabpanel" aria-labelledby="analysis-tab-spread" hidden={view !== 'spread'}>
+        {view === 'spread' && <CashChecksSpreadSection history={history} rates={rates} isOffline={isOffline} />}
+      </div>
     </section>
   );
 };

@@ -24,11 +24,14 @@ import { FlagIcon } from "../FlagIcon";
 import { RateCell } from "../RateCell";
 import { formatLibyaDate } from '../../utils/rateHistory';
 import { RateSkeleton } from "../ui/RateSkeleton";
+import { CashChecksSpreadSummary } from './CashChecksSpreadSummary';
 
 interface MainRatesGridProps {
   activeTab: string;
   rates: Rates | null;
   history: HistoryPoint[];
+  isOffline: boolean;
+  onOpenSpread: () => void;
   configTerms: any[];
   dynamicCurrencies: CurrencyItem[];
   staleCurrencies: Set<string>;
@@ -61,6 +64,8 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   activeTab,
   rates,
   history,
+  isOffline,
+  onOpenSpread,
   configTerms,
   dynamicCurrencies,
   staleCurrencies,
@@ -427,6 +432,8 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
           );
         })()}
       </div>
+
+      <CashChecksSpreadSummary history={history} rates={rates} isOffline={isOffline} onOpenDetails={onOpenSpread} />
 
       {/* Unified Movement & Analytics Card */}
       <div className="usd-chart bg-[#0c1322] border border-slate-800/80 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-sm">

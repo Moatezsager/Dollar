@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { assertSmoothCurve } = require('./chart-presentation.cjs');
 const sampleLogs = [
   { id: 'one', ip: '2001:db8:1234:5678:1234:5678:1234:5678', visits: 2, browser: 'Edge', os: 'Windows 10 / 11', deviceType: 'Desktop', deviceName: 'كمبيوتر', location: 'Libya، Tripoli', locationStatus: 'approximate', isOnline: true, timestamp: 'invalid' },
   { id: 'two', ip: '8.8.8.8', visits: 3, browser: 'Chrome 130', os: 'Android (الإصدار غير متاح)', deviceType: 'Mobile', deviceName: 'SM-S918B', deviceModel: 'SM-S918B', modelSource: 'browser', location: 'غير متاح', locationStatus: 'unavailable', isOnline: false, timestamp: '2026-10-16T09:00:00Z' },
@@ -94,6 +95,7 @@ async function main() {
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Analytics fits viewport');
         assert(await page.locator('.recharts-surface').count() > 0);
+        for (const path of await page.locator('.analytics-chart .recharts-area-curve').evaluateAll(paths => paths.map(path => path.getAttribute('d')))) assert.equal(assertSmoothCurve(path), 30);
         await page.screenshot({ path: path.join(output, theme + '-' + width + '.png'), fullPage: true });
         await page.locator('.visitor-connections').screenshot({ path: path.join(output, 'visitors-' + theme + '-' + width + '.png') });
         await page.getByRole('button', { name: 'عرض تفاصيل الاتصال one', exact: true }).click();
@@ -101,6 +103,10 @@ async function main() {
         await page.locator('.visitor-connections').screenshot({ path: path.join(output, 'visitor-details-' + theme + '-' + width + '.png') });
         await page.getByRole('button', { name: 'إخفاء تفاصيل الاتصال one', exact: true }).click();
       }
+      await page.getByLabel('الفترة', { exact: true }).selectOption('1');
+      await page.waitForFunction(() => document.querySelectorAll('.analytics-chart .recharts-area-dot').length === 2);
+      assert.equal(await page.locator('.analytics-chart .recharts-area-dot').count(), 2, 'A one-day report renders both real observations instead of a blank chart');
+      await page.locator('.analytics-chart').screenshot({ path: path.join(output, 'single-day-' + width + '.png') });
       await page.getByLabel('بحث في الاتصالات').fill('unknown');
       await page.getByText('لا توجد اتصالات مطابقة.').waitFor();
       partial = true;

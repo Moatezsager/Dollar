@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
 import {
   Clock,
   ArrowUpRight,
@@ -16,8 +16,9 @@ import {
   XAxis,
   ResponsiveContainer,
   Tooltip,
+  CartesianGrid,
 } from "recharts";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import { Rates, CurrencyItem, HistoryPoint, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
@@ -25,6 +26,9 @@ import { RateCell } from "../RateCell";
 import { formatLibyaDate } from '../../utils/rateHistory';
 import { RateSkeleton } from "../ui/RateSkeleton";
 import { CashChecksSpreadSummary } from './CashChecksSpreadSummary';
+import { PriceChartTooltip } from '../charts/PriceChartTooltip';
+
+const chartClock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 interface MainRatesGridProps {
   activeTab: string;
@@ -89,6 +93,8 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
   setSelectedRate,
 }) => {
   const [chartTimeframe, setChartTimeframe] = useState<'today' | 'week' | 'month'>('today');
+  const fillId = useId();
+  const chartColor = usdRate < prevUsdRate ? 'var(--negative)' : 'var(--positive)';
 
   const cleanArabicDistance = (rawStr: string) => {
     if (!rawStr) return 'منذ قليل';
@@ -453,19 +459,20 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
         </div>
 
         {/* Interactive Chart */}
-        <div className="h-48 sm:h-52 w-full my-1" role="group" aria-label="حركة سعر الدولار مقابل الدينار الليبي">
+        <div className="market-chart h-48 sm:h-52 w-full my-1" role="group" aria-label="حركة سعر الدولار مقابل الدينار الليبي">
           {filteredChartData.length < 2 ? (
             <div role="status" className="h-full flex items-center justify-center text-sm text-slate-300">لا توجد بيانات تاريخية كافية لهذه الفترة</div>
           ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={filteredChartData} margin={{ top: 8, right: 4, left: 4, bottom: 4 }}>
+            <AreaChart data={filteredChartData} accessibilityLayer margin={{ top: 16, right: 8, left: 8, bottom: 8 }}>
               <defs>
-                <linearGradient id="figmaSparkline" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} stopOpacity={0.01}/>
+                <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={chartColor} stopOpacity={0.2}/>
+                  <stop offset="100%" stopColor={chartColor} stopOpacity={0.01}/>
                 </linearGradient>
               </defs>
-              <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} orientation="right" width={42} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => value.toFixed(2)} />
+              <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="2 6" />
+              <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} orientation="right" width={58} tickCount={4} tickMargin={8} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-ink)', fontSize: 12 }} tickFormatter={(value) => value.toFixed(2)} />
               <XAxis
                 dataKey={point => Date.parse(point.time)}
                 type="number"
@@ -473,52 +480,19 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                 domain={['dataMin', 'dataMax']}
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: "#94a3b8", fontSize: 12 }}
-                tickFormatter={(timeStr) => {
-                  try {
-                    const d = new Date(timeStr);
-                    if (isNaN(d.getTime())) return '';
-                    if (chartTimeframe === 'today') {
-                      return format(d, 'HH:mm', { locale: ar });
-                    } else if (chartTimeframe === 'week') {
-                      return format(d, 'EEE', { locale: ar });
-                    } else {
-                      return format(d, 'dd MMM', { locale: ar });
-                    }
-                  } catch {
-                    return '';
-                  }
-                }}
-                minTickGap={30}
+                tick={{ fill: 'var(--muted-ink)', fontSize: 12 }}
+                tickFormatter={time => chartTimeframe === 'today' ? chartClock.format(time) : formatLibyaDate(time).slice(0, 5)}
+                minTickGap={36} tickMargin={10} padding={{ left: 10, right: 10 }}
               />
-              <Tooltip
-                contentStyle={{ 
-                  backgroundColor: "#070c18", 
-                  border: "1px solid rgba(255,255,255,0.12)", 
-                  borderRadius: "12px", 
-                  color: "#fff", 
-                  padding: "8px 12px",
-                  boxShadow: "0 10px 25px rgba(0,0,0,0.5)" 
-                }}
-                itemStyle={{ color: usdRate < prevUsdRate ? "#f43f5e" : "#10b981", fontFamily: "monospace", fontSize: "14px", fontWeight: "bold" }}
-                labelStyle={{ color: "#94a3b8", fontSize: "11px", marginBottom: "2px" }}
-                labelFormatter={(label) => {
-                  try {
-                    return format(new Date(label as any), "dd MMM - HH:mm", { locale: ar });
-                  } catch (e) {
-                    return String(label);
-                  }
-                }}
-                formatter={(val: number) => [`${val.toFixed(2)} د.ل`, 'سعر الدولار']}
-              />
+              <Tooltip content={({ active, payload }) => <PriceChartTooltip active={active} payload={payload} caption="دولار كاش" unit="د.ل لكل دولار" color={chartColor} />} />
               <Area 
-                type="linear"
+                type="monotoneX"
                 dataKey="value" 
-                stroke={usdRate < prevUsdRate ? "#f43f5e" : "#10b981"} 
-                strokeWidth={2.5} 
-                fill="url(#figmaSparkline)" 
+                stroke={chartColor}
+                strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" connectNulls={false}
+                fill={`url(#${fillId})`}
                 isAnimationActive={false}
-                activeDot={{ r: 4, fill: "#070c18", stroke: usdRate < prevUsdRate ? "#f43f5e" : "#10b981", strokeWidth: 2 }}
+                activeDot={{ r: 5, fill: chartColor, stroke: 'var(--surface)', strokeWidth: 3 }}
               />
             </AreaChart>
           </ResponsiveContainer>

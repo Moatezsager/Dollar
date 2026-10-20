@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 const { Server } = require('socket.io');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { assertSmoothCurve } = require('./chart-presentation.cjs');
 
 async function listen(server) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -150,27 +151,43 @@ async function main() {
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('lyd_history')).length), 3, 'Delayed HTTP must still supply older chart history after a socket update');
     assert.equal(rateRequests, initialRequestCount, 'Socket event must not trigger a price query');
 
-    const checkChart = async locator => {
+    const checkChart = async (locator, officialDaily = false) => {
       await locator.locator('.recharts-area-curve').waitFor({ state: 'attached' });
       assert(await locator.isVisible(), 'Chart container is visible');
       assert(await locator.locator('.recharts-area-curve').evaluate(path => path.getTotalLength() > 0), 'Horizontal and varying price lines both render');
       assert(!/NaN|Infinity/.test(await locator.locator('.recharts-area-curve').getAttribute('d')));
+      const path = await locator.locator('.recharts-area-curve').getAttribute('d');
+      if (officialDaily) assert(!path.includes('C'), 'Official daily quotes use a stepped line, not invented intraday interpolation');
+      else assertSmoothCurve(path);
+      assert.equal(await locator.locator('.recharts-area-curve').getAttribute('stroke-linejoin'), 'round');
     };
     const saveChart = async (locator, name) => {
       if (!process.env.UI_ARTIFACT_DIR) return;
       await page.waitForTimeout(500);
       fs.mkdirSync(process.env.UI_ARTIFACT_DIR, { recursive: true });
-      await locator.screenshot({ path: path.join(process.env.UI_ARTIFACT_DIR, name + '.png') });
+      const theme = await page.evaluate(() => document.documentElement.dataset.theme);
+      for (const next of ['light', 'dark']) {
+        await page.evaluate(next => document.documentElement.dataset.theme = next, next);
+        await locator.screenshot({ path: path.join(process.env.UI_ARTIFACT_DIR, name + '-' + next + '.png') });
+      }
+      await page.evaluate(theme => { if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme; }, theme);
     };
     await checkChart(page.locator('.usd-chart'));
+    await page.locator('.usd-chart svg.recharts-surface').focus();
+    await page.keyboard.press('ArrowRight');
+    const mainTooltip = page.locator('.usd-chart .price-chart-tooltip');
+    await mainTooltip.waitFor();
+    const tooltipTime = await mainTooltip.locator('time').getAttribute('datetime');
+    assert((await mainTooltip.locator('time').innerText()).includes(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(tooltipTime))));
     await saveChart(page.locator('.usd-chart'), 'chart-desktop');
     await page.getByRole('navigation', { name: 'أقسام لوحة الأسعار' }).getByRole('link', { name: 'التحليل', exact: true }).click();
     await checkChart(page.locator('.analysis-chart'));
     const checkOfficialDetail = async name => {
       await official.click();
       const dialog = page.getByRole('dialog');
-      await checkChart(page.locator('.currency-detail-chart'));
-      const yTicks = await dialog.locator('.recharts-yAxis .recharts-cartesian-axis-tick-value').allTextContents();
+      await checkChart(page.locator('.currency-detail-chart'), true);
+      const yTicks = await dialog.locator('.recharts-yAxis-tick-labels text').allTextContents();
+      assert(yTicks.length > 0 && yTicks.every(tick => /\.\d{4}$/.test(tick)), 'Real rendered official ticks preserve all four decimals');
       assert.equal(new Set(yTicks).size, yTicks.length, 'Four-decimal official axis must not repeat rounded labels');
       assert(await dialog.locator('.currency-detail-price').getByText('6.4004', { exact: true }).isVisible());
       assert(await dialog.locator('.currency-detail-trend').getByText('+0.0001 د.ل', { exact: true }).isVisible());
@@ -188,8 +205,8 @@ async function main() {
       assert.equal(await priceTime.innerText(), formatLibya(snapshot.lastChanged.official.USD));
       assert.equal(await dialog.getByRole('button', { name: '24 ساعة', exact: true }).count(), 0, 'Official views offer days, not intraday ranges');
       assert(await dialog.getByText('التغير بين الأيام المعروضة', { exact: true }).isVisible());
-      const xTicks = await dialog.locator('.recharts-xAxis .recharts-cartesian-axis-tick-value').allTextContents();
-      assert(xTicks.every(tick => !tick.includes(':')), 'Official axis labels show dates only');
+      const xTicks = await dialog.locator('.recharts-xAxis-tick-labels text').allTextContents();
+      assert(xTicks.length > 0 && xTicks.every(tick => !tick.includes(':')), 'Official axis labels show dates only');
       await dialog.getByText('القراءات التاريخية', { exact: true }).click();
       const rows = dialog.locator('.currency-detail-records tbody tr');
       await rows.first().waitFor();
@@ -334,7 +351,7 @@ async function main() {
     assert.equal(await analysis.locator('.analysis-statistics > div').filter({ hasText: 'أعلى سعر' }).locator('strong').innerText(), '12.00', 'Monthly high survives daily chart grouping');
     await page.waitForTimeout(500);
     const desktopMonthlyCurve = await analysis.locator('.recharts-area-curve').getAttribute('d');
-    assert.equal((desktopMonthlyCurve.match(/L/g) || []).length, 29, 'Ten readings per day become 30 plotted averages, not 300 markers');
+    assert.equal(assertSmoothCurve(desktopMonthlyCurve), 30, 'Ten readings per day still become exactly 30 daily means after visual smoothing');
     await checkChart(page.locator('.analysis-chart'));
     await saveChart(analysis, 'monthly-analysis-desktop');
     await page.setViewportSize({ width: 390, height: 844 });

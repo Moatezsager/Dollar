@@ -97,11 +97,11 @@ export function AdminTracking({ token, liveLogs = null }: { token: string; liveL
       </div>
       <section><h3>الحركة اليومية</h3><div className="analytics-legend"><span>المشاهدات</span><span>المتصفحات الفريدة</span></div>
         {report.summary.totalPageviews === 0 ? <p className="analytics-empty">لا توجد مشاهدات مسجلة لهذه الفترة. لن تُستنتج زيارات من تغيّر الأسعار أو اتصالات السيرفر.</p> :
-        <div className="analytics-chart" dir="ltr"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.trend} margin={{ top: 15, right: 12, left: 0, bottom: 5 }}>
-          <CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="date" tickFormatter={value => value.slice(5)} minTickGap={25} stroke="var(--muted-ink)" /><YAxis allowDecimals={false} width={40} stroke="var(--muted-ink)" />
+        <div className="analytics-chart market-chart" dir="ltr"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.trend} accessibilityLayer margin={{ top: 16, right: 12, left: 4, bottom: 8 }}>
+          <CartesianGrid stroke="var(--line)" strokeDasharray="2 6" vertical={false} /><XAxis dataKey="date" tickFormatter={value => value.slice(5)} minTickGap={36} tickMargin={10} padding={{ left: 10, right: 10 }} axisLine={false} tickLine={false} stroke="var(--muted-ink)" /><YAxis allowDecimals={false} tickCount={4} tickMargin={8} axisLine={false} tickLine={false} width={48} stroke="var(--muted-ink)" />
           <Tooltip contentStyle={{ background: 'var(--surface)', borderColor: 'var(--line)', color: 'var(--ink)', direction: 'rtl' }} />
-          <Area dataKey="pageviews" name="المشاهدات" stroke="var(--official)" fill="var(--official)" fillOpacity={0.12} isAnimationActive={false} />
-          <Area dataKey="visitors" name="المتصفحات الفريدة" stroke="#c58025" fill="transparent" strokeDasharray="5 3" isAnimationActive={false} />
+          <Area type="monotoneX" dataKey="pageviews" name="المشاهدات" stroke="var(--official)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" connectNulls={false} dot={report.trend.length < 3} fill="var(--official)" fillOpacity={0.1} isAnimationActive={false} />
+          <Area type="monotoneX" dataKey="visitors" name="المتصفحات الفريدة" stroke="var(--gold)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" connectNulls={false} dot={report.trend.length < 3} fill="transparent" strokeDasharray="6 4" isAnimationActive={false} />
         </AreaChart></ResponsiveContainer></div>}
         <details><summary>عرض الأرقام اليومية</summary><div className="analytics-table"><table><thead><tr><th>التاريخ</th><th>المشاهدات</th><th>متصفحات فريدة</th></tr></thead><tbody>{report.trend.map(day => <tr key={day.date}><td>{day.date}</td><td>{number(day.pageviews)}</td><td>{number(day.visitors)}</td></tr>)}</tbody></table></div></details>
       </section>

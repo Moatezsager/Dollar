@@ -1,0 +1,30 @@
+@media screen {
+  .market-chart { min-width: 0; direction: ltr; }
+  .market-chart .recharts-cartesian-grid-horizontal line { stroke-opacity: 0.55; }
+  .market-chart .recharts-cartesian-axis-tick-value { font-variant-numeric: tabular-nums; font-size: 12px; }
+  .market-chart .recharts-surface { touch-action: pan-y; }
+  .market-chart .recharts-surface:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px; }
+  .market-chart .recharts-tooltip-cursor { stroke: var(--muted-ink); stroke-width: 1; stroke-opacity: 0.6; stroke-dasharray: 4 4; }
+  .market-chart .recharts-tooltip-wrapper { max-width: calc(100% - 12px); outline: 0; }
+  .price-chart-tooltip { width: 212px; max-width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: var(--panel-shadow); }
+  .price-chart-tooltip time { display: block; color: var(--muted-ink); font-size: 12px; font-variant-numeric: tabular-nums; text-align: end; }
+  .price-chart-tooltip > span { display: flex; align-items: center; gap: 7px; font-size: 12px; margin-top: 8px; }
+  .price-chart-tooltip i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .price-chart-tooltip > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 3px; }
+  .price-chart-tooltip strong { font-size: 20px; font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .price-chart-tooltip > div > span { color: var(--muted-ink); font-size: 12px; }
+  .app-shell .usd-chart > .market-chart { height: 250px; }
+  .analysis-chart.market-chart { height: 340px; padding-top: 6px; }
+  .currency-detail-chart.market-chart { height: 260px; }
+  .spread-chart.market-chart { height: 340px; }
+  .analytics-chart.market-chart { height: 290px; }
+  @media (min-width: 768px) {
+    .analysis-chart.market-chart { height: 400px; }
+    .spread-chart.market-chart { height: 380px; }
+  }
+  @media (max-width: 480px) {
+    .currency-detail-chart.market-chart { height: 220px; }
+    .spread-chart.market-chart, .analysis-chart.market-chart { height: 300px; }
+    .analytics-chart.market-chart { height: 250px; }
+  }
+}

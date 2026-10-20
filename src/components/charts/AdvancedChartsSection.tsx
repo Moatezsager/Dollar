@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useId, useMemo, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
 import { ChartNoAxesCombined, TrendingUp, TrendingDown, Minus, List, ChevronDown, Scale } from "lucide-react";
 import { useReducedMotion } from "motion/react";
@@ -6,6 +6,7 @@ import { HistoryPoint, Rates } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { formatLibyaDate, getDailyRateAverages, libyaDayKey } from '../../utils/rateHistory';
 import { CashChecksSpreadSection } from './CashChecksSpreadSection';
+import { PriceChartTooltip } from './PriceChartTooltip';
 
 interface AdvancedChartsSectionProps {
   activeTab: string;
@@ -41,6 +42,7 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
   chartAnalysisRange, setChartAnalysisRange, history, rates, isOffline,
 }) => {
   const reducedMotion = useReducedMotion();
+  const fillId = useId();
   useEffect(() => {
     document.getElementById('charts-section')?.scrollIntoView({ block: 'start' });
     document.getElementById(`analysis-tab-${view}`)?.focus({ preventScroll: true });
@@ -137,24 +139,20 @@ export const AdvancedChartsSection: React.FC<AdvancedChartsSectionProps> = ({
         </div>
       </div>
 
-      <div className="analysis-chart" role="group" aria-label={`الرسم البياني لحركة ${currency.label}`}>
+      <div className="analysis-chart market-chart" role="group" aria-label={`الرسم البياني لحركة ${currency.label}`}>
         {chartData.length >= 2 ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} accessibilityLayer margin={{ top: 20, right: 8, left: 8, bottom: 8 }}>
+              <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={trendColor} stopOpacity={0.2} /><stop offset="100%" stopColor={trendColor} stopOpacity={0.01} /></linearGradient></defs>
               <XAxis dataKey="time" type="number" domain={['dataMin', 'dataMax']} scale="time"
                 tick={{ fill: 'var(--muted-ink)', fontSize: 12 }} tickFormatter={time => !daily && intraday ? tripoliClock.format(new Date(time)) : formatLibyaDate(time).slice(0, 5)}
-                minTickGap={32} axisLine={false} tickLine={false} />
-              <YAxis domain={['auto', 'auto']} orientation="right" tick={{ fill: 'var(--muted-ink)', fontSize: 12 }}
+                minTickGap={36} tickMargin={10} padding={{ left: 10, right: 10 }} axisLine={false} tickLine={false} />
+              <YAxis domain={['auto', 'auto']} orientation="right" tickCount={4} tickMargin={8} tick={{ fill: 'var(--muted-ink)', fontSize: 12 }}
                 tickFormatter={value => Number(value).toFixed(2)} axisLine={false} tickLine={false} width={64} />
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
-              <Tooltip
-                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--ink)' }}
-                itemStyle={{ color: trendColor, fontSize: 14, fontWeight: 700 }}
-                labelStyle={{ color: 'var(--muted-ink)', fontSize: 12 }}
-                labelFormatter={time => daily ? formatLibyaDate(Number(time)) : observationDate(Number(time))}
-                formatter={(value: number) => [`${Number(value).toFixed(2)} ${unit}`, daily ? 'متوسط اليوم' : currency.label]} />
-              <Area type="linear" dataKey="value" stroke={trendColor} strokeWidth={2.5}
-                fill={trendColor} fillOpacity={0.08} isAnimationActive={!reducedMotion} animationDuration={350} />
+              <CartesianGrid strokeDasharray="2 6" stroke="var(--line)" vertical={false} />
+              <Tooltip content={({ active, payload }) => <PriceChartTooltip active={active} payload={payload} caption={daily ? 'متوسط اليوم' : currency.label} unit={unit} color={trendColor} daily={daily} />} />
+              <Area type="monotoneX" dataKey="value" stroke={trendColor} strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" connectNulls={false}
+                fill={`url(#${fillId})`} activeDot={{ r: 5, stroke: 'var(--surface)', strokeWidth: 3 }} isAnimationActive={!reducedMotion} animationDuration={350} />
             </AreaChart>
           </ResponsiveContainer>
         ) : (

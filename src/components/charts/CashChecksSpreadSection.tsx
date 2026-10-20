@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ArrowDownRight, ArrowUpRight, Banknote, Calculator, ChartNoAxesCombined, ChevronDown, Clock3, DollarSign, Landmark, List, Minus, Scale, WifiOff } from 'lucide-react';
 import { HistoryPoint, Rates } from '../../types/rates';
@@ -30,6 +30,7 @@ export function CashChecksSpreadSection({ history, rates, isOffline = false }: P
   const [range, setRange] = useState<SpreadRange>(30);
   const [metric, setMetric] = useState<SpreadMetric>('prices');
   const [amount, setAmount] = useState('1000');
+  const fillId = useId();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const updateClock = () => { if (document.visibilityState !== 'hidden') setNow(Date.now()); };
@@ -44,6 +45,8 @@ export function CashChecksSpreadSection({ history, rates, isOffline = false }: P
   const amountError = amount !== '' && latest !== null && comparison === null;
   const amountDirection = !comparison ? '' : Math.abs(comparison.gap) < 0.00000001 ? 'نفس المقابل بالطريقتين' : comparison.gap > 0 ? 'المقابل بالصكوك أعلى' : 'المقابل بالصكوك أقل';
   const validBins = model.bins.filter(bin => bin.count);
+  const observationDots = validBins.length < 3 || model.bins.some(bin => !bin.count)
+    ? { r: 3, fill: 'var(--surface)', strokeWidth: 2 } : false;
   const chartValues = validBins.flatMap(bin => metric === 'prices' ? [bin.cash!, bin.checks!] : [bin[metric]!]);
   const axisSpan = chartValues.length ? metric === 'prices' ? Math.max(...chartValues) - Math.min(...chartValues) : Math.max(...chartValues.map(Math.abs)) : 1;
   const axisDigits = Math.max(2, Math.min(6, Math.ceil(-Math.log10(axisSpan || 1)) + 1));
@@ -82,7 +85,7 @@ export function CashChecksSpreadSection({ history, rates, isOffline = false }: P
           <h4>{reading.headline}</h4></div>
       </div>
       <section className="spread-amount-tool" aria-labelledby="spread-amount-heading">
-        <h4 id="spread-amount-heading"><Calculator size={19} aria-hidden="true" />شن يعني الفرق على مبلغك؟</h4>
+        <h4 id="spread-amount-heading"><Calculator size={19} aria-hidden="true" />احسب الفرق الآن</h4>
         <div className="spread-amount-body">
           <div className="spread-amount-field">
             <label htmlFor="spread-amount">المبلغ بالدولار</label>
@@ -120,23 +123,24 @@ export function CashChecksSpreadSection({ history, rates, isOffline = false }: P
       </div>
     </div>
 
-    <div className="spread-chart" role="group" aria-label={chartLabel}>
+    <div className="spread-chart market-chart" role="group" aria-label={chartLabel}>
       {validBins.length ? <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={model.bins} accessibilityLayer margin={{ top: 22, right: 8, bottom: 8, left: 8 }}>
-          <CartesianGrid stroke="var(--line)" strokeDasharray="3 4" vertical={false} />
+          <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--positive)" stopOpacity={0.18} /><stop offset="100%" stopColor="var(--positive)" stopOpacity={0.01} /></linearGradient></defs>
+          <CartesianGrid stroke="var(--line)" strokeDasharray="2 6" vertical={false} />
           <XAxis dataKey="time" type="number" scale="time" domain={['dataMin', 'dataMax']} axisLine={false} tickLine={false}
-            minTickGap={28} tick={{ fill: 'var(--muted-ink)', fontSize: 11 }} tickFormatter={time => range === 1 ? clock.format(time) : formatLibyaDate(time).slice(0, 5)} />
-          <YAxis orientation="right" width={axisDigits > 3 ? 88 : metric === 'premium' ? 76 : 66} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-ink)', fontSize: 11 }}
+            minTickGap={36} tickMargin={10} padding={{ left: 10, right: 10 }} tick={{ fill: 'var(--muted-ink)', fontSize: 12 }} tickFormatter={time => range === 1 ? clock.format(time) : formatLibyaDate(time).slice(0, 5)} />
+          <YAxis orientation="right" width={axisDigits > 3 ? 88 : metric === 'premium' ? 76 : 66} tickCount={4} tickMargin={8} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-ink)', fontSize: 12 }}
             domain={metric === 'prices' ? ['auto', 'auto'] : [(min: number) => Math.min(0, min), 'auto']}
             tickFormatter={value => `${Number(value).toFixed(axisDigits)}${metric === 'premium' ? '%' : ''}`} />
           {metric !== 'prices' && <ReferenceLine y={0} stroke="var(--muted-ink)" strokeOpacity={0.5} />}
           {metric !== 'prices' && reference && <ReferenceLine y={reference[metric]} stroke="var(--gold)" strokeDasharray="4 4" ifOverflow="extendDomain" />}
           <Tooltip content={({ active, payload }) => active && payload?.[0]?.payload ? <BinTooltip bin={payload[0].payload as SpreadBin} range={range} /> : null} />
           {metric === 'prices' ? <>
-            <Line dataKey="cash" name="كاش" stroke="var(--positive)" strokeWidth={2.5} type="linear" connectNulls={false} dot={validBins.length < 3} isAnimationActive={false} />
-            <Line dataKey="checks" name="صكوك" stroke="var(--official)" strokeWidth={2.5} strokeDasharray="6 3" type="linear" connectNulls={false} dot={validBins.length < 3} isAnimationActive={false} />
-          </> : <Area dataKey={metric} name={metric === 'gap' ? 'الفرق' : 'النسبة'} stroke="var(--positive)" fill="var(--positive)" fillOpacity={0.09}
-            strokeWidth={2.5} type="linear" connectNulls={false} dot={validBins.length < 3} activeDot={{ r: 4 }} isAnimationActive={false} />}
+            <Line dataKey="cash" name="كاش" stroke="var(--positive)" strokeWidth={2.8} type="monotoneX" strokeLinecap="round" strokeLinejoin="round" connectNulls={false} dot={observationDots} activeDot={{ r: 5, stroke: 'var(--surface)', strokeWidth: 3 }} isAnimationActive={false} />
+            <Line dataKey="checks" name="صكوك" stroke="var(--official)" strokeWidth={2.8} strokeDasharray="6 4" type="monotoneX" strokeLinecap="round" strokeLinejoin="round" connectNulls={false} dot={observationDots} activeDot={{ r: 5, stroke: 'var(--surface)', strokeWidth: 3 }} isAnimationActive={false} />
+          </> : <Area dataKey={metric} name={metric === 'gap' ? 'الفرق' : 'النسبة'} stroke="var(--positive)" fill={`url(#${fillId})`}
+            strokeWidth={2.8} type="monotoneX" strokeLinecap="round" strokeLinejoin="round" connectNulls={false} dot={observationDots} activeDot={{ r: 5, stroke: 'var(--surface)', strokeWidth: 3 }} isAnimationActive={false} />}
         </ComposedChart>
       </ResponsiveContainer> : <div className="spread-empty"><ChartNoAxesCombined size={28} aria-hidden="true" /><h4>لا توجد لقطات مشتركة في هذه الفترة</h4><p>الأيام الناقصة لا تُملأ بأرقام تقديرية، ولا يُعرض سعر غير موثّق كبديل.</p></div>}
     </div>

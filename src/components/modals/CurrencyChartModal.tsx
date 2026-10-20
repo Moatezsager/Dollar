@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
 import { ArrowUpRight, ArrowDownRight, Minus, X, Calculator, CheckCircle2, Copy, Share2, ChartNoAxesCombined } from "lucide-react";
@@ -6,6 +6,7 @@ import { Rates, CURRENCIES, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
 import { formatLibyaDate } from '../../utils/rateHistory';
+import { PriceChartTooltip } from '../charts/PriceChartTooltip';
 
 const libyaDateTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Tripoli', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
@@ -35,6 +36,7 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const [showHistoryTable, setShowHistoryTable] = useState(false);
+  const fillId = useId();
   const dialogRef = useDialogAccessibility(!!selectedRate, () => setSelectedRate(null));
   useEffect(() => {
     setCopied(false); setCopyError(false); setShowHistoryTable(false); setAmount('100');
@@ -115,22 +117,22 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                       </div>
                     </div>
                     {selectedRate.market === 'official' && <p className="currency-detail-daily-note">آخر سعر رسمي متاح لكل يوم · {chartData.length} يوم</p>}
-                    <div className="currency-detail-chart" role="group" aria-label="الرسم البياني للسعر">
+                    <div className="currency-detail-chart market-chart" role="group" aria-label="الرسم البياني للسعر">
                       {chartData.length >= 2 ? (
                         <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={chartData} accessibilityLayer margin={{ top: 12, right: 4, left: 4, bottom: 4 }}>
-                            <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
+                          <AreaChart data={chartData} accessibilityLayer margin={{ top: 16, right: 8, left: 8, bottom: 8 }}>
+                            <defs><linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity={0.18} /><stop offset="100%" stopColor={color} stopOpacity={0.01} /></linearGradient></defs>
+                            <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="2 6" />
                             <XAxis dataKey={point => Date.parse(point.time)} type="number" scale="time" domain={['dataMin', 'dataMax']} tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
                               ticks={selectedRate.market === 'official' ? chartData.map(point => Date.parse(point.time)) : undefined}
                               tickFormatter={time => selectedRate.market === 'official' ? libyaDate.format(new Date(time)) : (chartRange === '24h' || intraday ? libyaTime : libyaDate).format(new Date(time))}
-                              minTickGap={32} axisLine={false} tickLine={false} />
+                              minTickGap={36} tickMargin={10} padding={{ left: 10, right: 10 }} axisLine={false} tickLine={false} />
                             <YAxis domain={['auto', 'auto']} orientation="right" tickCount={selectedRate.market === 'official' ? 2 : 5} tick={{ fontSize: 12, fill: 'var(--muted-ink)' }}
-                              axisLine={false} tickLine={false} tickFormatter={value => Number(value).toFixed(decimals)} width={68} />
-                            <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, color: 'var(--ink)' }}
-                              itemStyle={{ color, fontSize: 14, fontWeight: 700 }} labelStyle={{ color: 'var(--muted-ink)', fontSize: 12 }}
-                              labelFormatter={time => selectedRate.market === 'official' ? formatLibyaDate(Number(time)) : libyaDateTime.format(Number(time))}
-                              formatter={(value: number) => [`${Number(value).toFixed(decimals)} د.ل`, 'السعر']} />
-                            <Area type="linear" dataKey="value" stroke={color} strokeWidth={2.5} fill={color} fillOpacity={0.08} isAnimationActive={false} />
+                              tickMargin={8} axisLine={false} tickLine={false} tickFormatter={value => Number(value).toFixed(decimals)} width={72} />
+                            <Tooltip content={({ active, payload }) => <PriceChartTooltip active={active} payload={payload} caption={selectedRate.market === 'official' ? 'السعر الرسمي لليوم' : selectedRate.name} unit={isMetal ? 'د.ل / غرام' : 'د.ل'} color={color} decimals={decimals} daily={selectedRate.market === 'official'} />} />
+                            <Area type={selectedRate.market === 'official' ? 'stepAfter' : 'monotoneX'} dataKey="value" stroke={color} strokeWidth={2.8}
+                              strokeLinecap="round" strokeLinejoin="round" connectNulls={false} fill={`url(#${fillId})`}
+                              activeDot={{ r: 5, stroke: 'var(--surface)', strokeWidth: 3 }} isAnimationActive={false} />
                           </AreaChart>
                         </ResponsiveContainer>
                       ) : <div className="currency-detail-empty" role="status"><ChartNoAxesCombined size={28} aria-hidden="true" /><p>لا توجد بيانات تاريخية كافية لهذه الفترة</p></div>}

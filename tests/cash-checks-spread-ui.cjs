@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { assertSmoothCurve } = require('./chart-presentation.cjs');
 
 async function main() {
   const { createServer } = await import('vite');
@@ -17,10 +18,14 @@ async function main() {
       import {createRoot} from 'react-dom/client';
       import {AdvancedChartsSection} from '/src/components/charts/AdvancedChartsSection.tsx';
       import {MainRatesGrid} from '/src/components/rates/MainRatesGrid.tsx';
+      import {libyaDayKey} from '/src/utils/rateHistory.ts';
       import '/src/index.css';
       const now=Date.now()-60000, DAY=86400000;
       const point=(time,cash,checks)=>({time:new Date(time).toISOString(),usdParallel:cash,usdOfficial:6.4,ratesParallel:{USD:cash,USD_CHECKS:checks},ratesOfficial:{USD:6.4},observed:{parallel:['USD','USD_CHECKS'],official:[]}});
-      const baseline=Array.from({length:30},(_,i)=>point(now-(29-i)*DAY,10.1+i*.005,i===29?10.745:10.3+i*.005+(i%4)*.015));
+      const daily=Array.from({length:30},(_,i)=>point(now-(29-i)*DAY,10.1+i*.005,i===29?10.745:10.3+i*.005+(i%4)*.015));
+      const windowMs=Math.min(4*3600000,now-Date.parse(libyaDayKey(now)+'T00:00:00+02:00'));
+      const intraday=[10.16,10.19,10.17,10.21,10.23,10.20,10.22,10.24].map((cash,i)=>point(now-(8-i)/9*windowMs,cash,10.55+(cash-10.16)*1.2+(i%3)*.01));
+      const baseline=[...daily.slice(0,-1),...intraday,daily.at(-1)];
       const initial={history:baseline,rates:{parallel:{USD:10.245,USD_CHECKS:10.745,EUR:11.12},official:{USD:6.4},lastUpdated:new Date(now).toISOString()},isOffline:false};
       function Fixture(){
         const [state,setState]=React.useState(initial),[currency,setCurrency]=React.useState('USD_CASH'),[range,setRange]=React.useState('1m');
@@ -55,7 +60,7 @@ async function main() {
   try {
     browser = await chromium.launch({ headless: true, channel: process.env.UI_BROWSER_CHANNEL || 'msedge' });
     for (const width of [320, 390, 768, 1440]) {
-      const context = await browser.newContext({ viewport: { width, height: 1000 }, serviceWorkers: 'block', timezoneId: 'America/Los_Angeles' });
+      const context = await browser.newContext({ viewport: { width, height: 1000 }, hasTouch: width < 768, serviceWorkers: 'block', timezoneId: 'America/Los_Angeles' });
       const page = await context.newPage(), errors = [], apiRequests = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.route('https://fonts.googleapis.com/**', route => route.abort());
@@ -113,7 +118,8 @@ async function main() {
       assert.equal(await section.locator('.spread-status.is-caution').count(), 0);
       await section.locator('.recharts-line-curve').first().waitFor();
       assert.equal(await section.locator('.recharts-line-curve').count(), 2, 'Default chart directly compares the two prices');
-      const calculator = section.getByRole('region', { name: 'شن يعني الفرق على مبلغك؟', exact: true });
+      for (const path of await section.locator('.recharts-line-curve').evaluateAll(paths => paths.map(path => path.getAttribute('d')))) assert.equal(assertSmoothCurve(path), 30);
+      const calculator = section.getByRole('region', { name: 'احسب الفرق الآن', exact: true });
       const amountInput = calculator.getByLabel('المبلغ بالدولار', { exact: true });
       const amountResults = calculator.locator('.spread-amount-results');
       assert.deepEqual(await amountResults.locator('dd strong').allTextContents(), ['10,245.00','10,745.00','+500.00']);
@@ -132,7 +138,7 @@ async function main() {
       await section.locator('.recharts-area-curve').waitFor();
       const curve = section.locator('.recharts-area-curve');
       assert((await curve.getAttribute('d')).length > 40); assert(!/NaN|Infinity/.test(await curve.getAttribute('d')));
-      assert.equal((await curve.getAttribute('d')).match(/L/g).length, 29);
+      assert.equal(assertSmoothCurve(await curve.getAttribute('d')), 30, 'Smoothing keeps every shared daily observation');
       await amountInput.fill('2500');
       assert.deepEqual(await amountResults.locator('dd strong').allTextContents(), ['25,612.50','26,862.50','+1,250.00']);
       await amountInput.fill('1.25');
@@ -164,6 +170,10 @@ async function main() {
       await graph.hover({ position: { x: 80, y: 80 } });
       await section.locator('.spread-tooltip').waitFor();
       assert.match(await section.locator('.spread-tooltip').innerText(), /نسبة الفجوة/);
+      if (width < 768) {
+        await graph.tap({ position: { x: 90, y: 100 } });
+        await section.locator('.spread-tooltip').waitFor();
+      }
       await page.mouse.move(0, 0);
       await section.getByText('سجل المقارنة', { exact: true }).click();
       assert.equal(await section.locator('tbody tr').count(), 30);
@@ -180,11 +190,22 @@ async function main() {
       await insights.locator('summary').click();
       assert.match(await section.locator('.spread-reference').innerText(), /7 أيام رصد سابقة/);
       await insights.locator('summary').click();
-      assert.equal(await section.locator('.spread-chart-caption > span').innerText(), '7 يوم رصد من 7 · 7 لقطة مشتركة');
+      assert.match(await section.locator('.spread-chart-caption > span').innerText(), /^7 يوم رصد من 7 · \d+ لقطة مشتركة$/);
       await periods.getByRole('button', { name: 'اليوم', exact: true }).click();
       assert.match(await section.locator('.spread-chart-toolbar').innerText(), /متوسطات ساعية/);
+      await page.evaluate(() => {const f=window.spreadFixture;f.update({history:[f.initial.history.at(-1)]});});
+      await section.getByText('نحتاج رصدين داخل الفترة لنعرف كيف تغيّرت الفجوة.', {exact:false}).waitFor();
       assert.match(await section.locator('.spread-reading').innerText(), /نحتاج رصدين داخل الفترة/);
+      await page.evaluate(() => window.spreadFixture.update({history:window.spreadFixture.initial.history}));
       await periods.getByRole('button', { name: '30 يومًا', exact: true }).click();
+      await page.evaluate(() => { const f=window.spreadFixture; f.update({history:f.initial.history.filter((_,i)=>i!==15)}); });
+      await page.waitForFunction(() => document.querySelector('.spread-chart-caption > span')?.textContent.includes('29 يوم رصد'));
+      const gappedPath = await curve.getAttribute('d');
+      assert.equal(assertSmoothCurve(gappedPath), 29);
+      assert.equal((gappedPath.match(/M/g)||[]).length, 2, 'Smoothing does not connect a missing day');
+      await page.evaluate(() => {const f=window.spreadFixture;f.update({history:[f.initial.history[0],f.initial.history[5],f.initial.history[10]]});});
+      await page.waitForFunction(() => document.querySelectorAll('.spread-chart .recharts-area-dot').length===3);
+      assert.equal(await section.locator('.recharts-area-dot').count(), 3, 'Isolated observations remain visible even without connected segments');
       await page.evaluate(() => {
         const f = window.spreadFixture, latest = f.point(Date.now() - 500, 10.245, 10.845);
         f.update({ history: [...f.initial.history, latest], rates: { ...f.initial.rates, parallel: { USD: 10.245, USD_CHECKS: 10.845 }, lastUpdated: latest.time } });

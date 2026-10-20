@@ -42,7 +42,7 @@ async function main() {
             staleCurrencies:new Set(),trends24h:{},usdRate:state.rates?.parallel.USD||0,prevUsdRate:10.24,usdFlash:null,
             usdChecksRate:state.rates?.parallel.USD_CHECKS||0,prevUsdChecksRate:10.7,usdChecksFlash:null,officialUsdRate:6.4,prevOfficialUsdRate:6.4,officialUsdFlash:null,
             usd24hStats:{high:10.245,low:10.2,avg:10.23,changePercent:0.04},usdSparklineData:[],expandedSections:expanded,
-            toggleSection:key=>setExpanded(previous=>({...previous,[key]:!previous[key]})),setSelectedRate:()=>{}}),
+            toggleSection:key=>setExpanded(previous=>({...previous,[key]:!previous[key]})),setSelectedRate:rate=>{window.selectedTestRate=rate;}}),
           home&&activeTab==='charts'&&React.createElement('button',{onClick:()=>setActiveTab('main')},'العودة للأسعار'),
           activeTab==='charts'&&React.createElement(AdvancedChartsSection,{activeTab,view,setView,history:state.history,rates:state.rates,isOffline:state.isOffline,
             chartAnalysisCurrency:currency,setChartAnalysisCurrency:setCurrency,chartAnalysisRange:range,setChartAnalysisRange:setRange})));
@@ -71,6 +71,34 @@ async function main() {
       assert.equal(await teaser.locator('dd strong').innerText(), '+0.50');
       assert.equal(await teaser.locator('dd b').innerText(), '+4.8804%');
       assert.equal(await page.locator('.cash-spread').count(), 0, 'Detailed chart stays lazy on the home screen');
+      const mainChart = page.locator('.usd-chart');
+      const mainRanges = mainChart.getByRole('group', { name: 'فترة حركة الدولار', exact: true });
+      await mainChart.locator('.usd-chart-price-marker text').waitFor();
+      for (const [label, days] of [['24 ساعة', 1], ['7 أيام', 7], ['30 يومًا', 30]]) {
+        await mainRanges.getByRole('button', { name: label, exact: true }).focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await mainRanges.locator('[aria-pressed="true"]').innerText(), label);
+        const expected = await page.evaluate(days => window.spreadFixture.initial.history.filter(point => Date.parse(point.time) >= Date.now() - days * 86400000).map(point => point.usdParallel), days);
+        await page.waitForFunction(count => {
+          const path = document.querySelector('.usd-chart .recharts-area-curve')?.getAttribute('d');
+          return path && (path.match(/[MLC]/g) || []).length === count;
+        }, expected.length);
+        assert.equal(assertSmoothCurve(await mainChart.locator('.recharts-area-curve').getAttribute('d')), expected.length, 'Home chart preserves every real observation');
+        assert.equal(await mainChart.locator('.usd-chart-quote strong').innerText(), expected.at(-1).toFixed(2));
+        assert.equal(await mainChart.locator('.usd-chart-price-marker text').textContent(), expected.at(-1).toFixed(2));
+        assert.deepEqual(await mainChart.locator('.usd-chart-stats dd').allTextContents(), [Math.max(...expected).toFixed(2), Math.min(...expected).toFixed(2), (expected.reduce((a,b)=>a+b,0)/expected.length).toFixed(2)]);
+        assert.equal(await mainChart.locator('.usd-chart-change b').innerText(), '+' + ((expected.at(-1)-expected[0])/expected[0]*100).toFixed(2) + '%');
+      }
+      await mainChart.locator('svg.recharts-surface').focus();
+      await page.keyboard.press('ArrowRight');
+      await mainChart.locator('.price-chart-tooltip').waitFor();
+      if (width < 768) {
+        await mainChart.locator('svg.recharts-surface').tap({ position: { x: 70, y: 70 } });
+        await mainChart.locator('.price-chart-tooltip').waitFor();
+      }
+      await page.mouse.move(0, 0);
+      await mainChart.getByRole('button', { name: 'عرض تفاصيل حركة الدولار', exact: true }).click();
+      assert.deepEqual(await page.evaluate(() => window.selectedTestRate), { code: 'USD', name: 'دولار أمريكي (كاش موازي)', market: 'parallel' });
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
         const boxes = await page.evaluate(() => ['.primary-rates','.spread-teaser','.usd-chart'].map(selector => {
@@ -80,12 +108,26 @@ async function main() {
         assert(width < 1024 ? boxes[2].top >= boxes[1].bottom : boxes[1].top >= boxes[2].bottom, 'Summary respects mobile/desktop grid placement');
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Home screen has no horizontal overflow');
         await teaser.screenshot({ path: path.join(output, 'spread-summary-' + theme + '-' + width + '.png') });
+        assert(await mainChart.locator('.usd-chart-price-marker').evaluate(marker => {
+          const box = marker.getBoundingClientRect(), svg = marker.closest('svg').getBoundingClientRect();
+          return box.left >= svg.left && box.right <= svg.right && box.top >= svg.top && box.bottom <= svg.bottom;
+        }), 'Latest-price label stays inside the chart');
+        await mainChart.screenshot({ path: path.join(output, 'home-dollar-chart-' + theme + '-' + width + '.png') });
         if (width === 390 || width === 1440) { await page.evaluate(() => scrollTo(0,0)); await page.screenshot({ path: path.join(output, 'spread-home-' + theme + '-' + width + '.png') }); }
       }
       await page.evaluate(() => document.documentElement.dataset.fontSize = 'large');
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Large summary text fits');
+      assert(await mainRanges.getByRole('button').evaluateAll(buttons => buttons.every(button => button.getBoundingClientRect().height >= 44)), 'Chart periods remain touch-sized with large text');
+      assert(await mainChart.locator('.usd-chart-stats > div').evaluateAll(cells => cells.every(cell => cell.scrollWidth <= cell.clientWidth + 1)), 'Large chart statistics do not collide');
       assert(await teaser.getByRole('button').evaluate(el => el.getBoundingClientRect().height >= 44));
       await page.evaluate(() => delete document.documentElement.dataset.fontSize);
+      await page.evaluate(() => { const f=window.spreadFixture; f.update({history:[...f.initial.history,f.point(Date.now()-500,10.05,10.7)],isOffline:true}); });
+      await mainChart.locator('.usd-chart-quote').getByText('10.05', { exact:true }).waitFor();
+      assert.match(await mainChart.locator('.usd-chart-change b').innerText(), /^-/);
+      assert.equal(await mainChart.locator('.usd-chart-price-marker text').textContent(), '10.05', 'Live observations update both the headline and endpoint');
+      await mainChart.getByText('بيانات محفوظة', { exact:true }).waitFor();
+      await page.evaluate(() => window.spreadFixture.update({history:window.spreadFixture.initial.history,isOffline:false}));
+      await mainChart.locator('.usd-chart-quote').getByText('10.24', { exact:true }).waitFor();
       await teaser.getByRole('button', { name: 'عرض المزيد عن فجوة الكاش والصكوك', exact: true }).focus();
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.activeElement?.id === 'analysis-tab-spread');

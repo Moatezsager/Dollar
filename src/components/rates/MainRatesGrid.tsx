@@ -8,6 +8,9 @@ import {
   FileText,
   ArrowLeftRight,
   Building2,
+  Maximize2,
+  ChartNoAxesCombined,
+  WifiOff,
 } from "lucide-react";
 import {
   AreaChart,
@@ -17,6 +20,8 @@ import {
   ResponsiveContainer,
   Tooltip,
   CartesianGrid,
+  ReferenceLine,
+  ReferenceDot,
 } from "recharts";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
@@ -94,7 +99,6 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 }) => {
   const [chartTimeframe, setChartTimeframe] = useState<'today' | 'week' | 'month'>('today');
   const fillId = useId();
-  const chartColor = usdRate < prevUsdRate ? 'var(--negative)' : 'var(--positive)';
 
   const cleanArabicDistance = (rawStr: string) => {
     if (!rawStr) return 'منذ قليل';
@@ -172,6 +176,11 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
       filteredChartStats: { high, low, avg, changeVal, changePercent, prevVal: firstVal }
     };
   }, [history, chartTimeframe, usdRate, prevUsdRate]);
+  const chartLast = filteredChartData[filteredChartData.length - 1];
+  const chartColor = filteredChartStats.changeVal > 0 ? 'var(--positive)' : filteredChartStats.changeVal < 0 ? 'var(--negative)' : 'var(--official)';
+  const ChartTrendIcon = filteredChartStats.changeVal > 0 ? ArrowUpRight : filteredChartStats.changeVal < 0 ? ArrowDownRight : Minus;
+  const chartPeriod = chartTimeframe === 'today' ? 'آخر 24 ساعة' : chartTimeframe === 'week' ? 'آخر 7 أيام' : 'آخر 30 يومًا';
+  const chartSpan = Math.max(filteredChartStats.high - filteredChartStats.low, 0.04);
   return (
     <div id="rates-section" className={`rates-dashboard ${activeTab === 'main' ? 'space-y-4 sm:space-y-5' : 'hidden md:block md:space-y-8'}`}>
       {/* Sub-Header: Minimalist Modern Financial Bar */}
@@ -441,38 +450,43 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
 
       <CashChecksSpreadSummary history={history} rates={rates} isOffline={isOffline} onOpenDetails={onOpenSpread} />
 
-      {/* Unified Movement & Analytics Card */}
-      <div className="usd-chart bg-[#0c1322] border border-slate-800/80 rounded-2xl p-4 sm:p-5 relative overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/[0.06]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 shrink-0 flex items-center justify-center">
-              <FlagIcon flagCode="us" name="US" className="w-full h-full" />
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="text-sm sm:text-base font-bold text-white tracking-wide">حركة الدولار ({chartTimeframe === 'today' ? 'اليوم' : chartTimeframe === 'week' ? 'أسبوع' : 'شهر'})</span>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-white/5">USD/LYD</span>
-              </div>
-              <span className="text-xs text-slate-400 font-medium">السوق الموازي · دينار ليبي لكل دولار</span>
-            </div>
+      <section className="usd-chart" aria-labelledby={`${fillId}-title`} style={{ '--chart-color': chartColor } as React.CSSProperties}>
+        <header className="usd-chart-header">
+          <div className="usd-chart-title"><FlagIcon flagCode="us" name="الدولار الأمريكي" className="usd-chart-flag" />
+            <div><h3 id={`${fillId}-title`}>حركة الدولار</h3><p>كاش · السوق الموازي <span dir="ltr">USD / LYD</span></p></div>
+          </div>
+          <button type="button" className="usd-chart-expand" aria-label="عرض تفاصيل حركة الدولار" title="عرض تفاصيل حركة الدولار"
+            onClick={() => setSelectedRate({ code: 'USD', name: 'دولار أمريكي (كاش موازي)', market: 'parallel' })}><Maximize2 size={18} aria-hidden="true" /></button>
+        </header>
+        <div className="usd-chart-overview">
+          <div className="usd-chart-quote"><span>آخر رصد في الفترة</span><div><strong dir="ltr">{chartLast ? chartLast.value.toFixed(2) : '—'}</strong><span>د.ل</span></div></div>
+          <div className="usd-chart-performance">
+            <span className="usd-chart-change"><ChartTrendIcon size={17} aria-hidden="true" /><b dir="ltr">{chartLast ? `${filteredChartStats.changePercent > 0 ? '+' : ''}${filteredChartStats.changePercent.toFixed(2)}%` : '—'}</b></span>
+            <span>{chartPeriod}</span>
           </div>
         </div>
-
-        {/* Interactive Chart */}
-        <div className="market-chart h-48 sm:h-52 w-full my-1" role="group" aria-label="حركة سعر الدولار مقابل الدينار الليبي">
+        <div className="usd-chart-toolbar">
+          <div className="usd-chart-ranges" role="group" aria-label="فترة حركة الدولار">
+            {([{ value: 'today', label: '24 ساعة' }, { value: 'week', label: '7 أيام' }, { value: 'month', label: '30 يومًا' }] as const).map(item =>
+              <button type="button" key={item.value} aria-pressed={chartTimeframe === item.value} onClick={() => setChartTimeframe(item.value)}>{item.label}</button>)}
+          </div>
+          <span className="usd-chart-unit">دينار لكل دولار</span>
+        </div>
+        <div className="market-chart usd-chart-plot" role="group" aria-label="حركة سعر الدولار مقابل الدينار الليبي" aria-describedby={chartLast ? `${fillId}-summary` : undefined}>
           {filteredChartData.length < 2 ? (
-            <div role="status" className="h-full flex items-center justify-center text-sm text-slate-300">لا توجد بيانات تاريخية كافية لهذه الفترة</div>
+            <div role="status" className="usd-chart-empty"><ChartNoAxesCombined size={28} aria-hidden="true" /><p>لا توجد بيانات تاريخية كافية لهذه الفترة</p></div>
           ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={filteredChartData} accessibilityLayer margin={{ top: 16, right: 8, left: 8, bottom: 8 }}>
+            <AreaChart data={filteredChartData} accessibilityLayer margin={{ top: 18, right: 4, left: 2, bottom: 2 }}>
               <defs>
                 <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={chartColor} stopOpacity={0.2}/>
-                  <stop offset="100%" stopColor={chartColor} stopOpacity={0.01}/>
+                  <stop offset="0%" stopColor={chartColor} stopOpacity={0.18}/>
+                  <stop offset="95%" stopColor={chartColor} stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="2 6" />
-              <YAxis domain={['dataMin - 0.02', 'dataMax + 0.02']} orientation="right" width={58} tickCount={4} tickMargin={8} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted-ink)', fontSize: 12 }} tickFormatter={(value) => value.toFixed(2)} />
+              <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="2 7" />
+              <YAxis domain={[Math.max(0, filteredChartStats.low - chartSpan * 0.18), filteredChartStats.high + chartSpan * 0.18]} orientation="right" width={64} tickCount={4} tickMargin={10} axisLine={false} tickLine={false}
+                tick={{ fill: 'var(--muted-ink)', fontSize: 12 }} tickFormatter={value => Math.abs(value - chartLast!.value) < chartSpan * 0.12 ? '' : value.toFixed(2)} />
               <XAxis
                 dataKey={point => Date.parse(point.time)}
                 type="number"
@@ -482,14 +496,19 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
                 tickLine={false}
                 tick={{ fill: 'var(--muted-ink)', fontSize: 12 }}
                 tickFormatter={time => chartTimeframe === 'today' ? chartClock.format(time) : formatLibyaDate(time).slice(0, 5)}
-                minTickGap={36} tickMargin={10} padding={{ left: 10, right: 10 }}
+                minTickGap={36} tickMargin={12} padding={{ left: 8, right: 12 }}
               />
+              <ReferenceLine y={chartLast!.value} stroke={chartColor} strokeOpacity={0.45} strokeDasharray="3 5" label={({ viewBox }) =>
+                <g className="usd-chart-price-marker" transform={`translate(${viewBox.x + viewBox.width + 6}, ${viewBox.y})`} aria-hidden="true">
+                  <rect x="0" y="-12" width="54" height="24" rx="4" fill={chartColor} /><text x="27" y="1" textAnchor="middle" dominantBaseline="middle" fill="var(--page)">{chartLast!.value.toFixed(2)}</text>
+                </g>} />
+              <ReferenceDot x={Date.parse(chartLast!.time)} y={chartLast!.value} r={4} fill={chartColor} stroke="var(--surface)" strokeWidth={2} />
               <Tooltip content={({ active, payload }) => <PriceChartTooltip active={active} payload={payload} caption="دولار كاش" unit="د.ل لكل دولار" color={chartColor} />} />
               <Area 
                 type="monotoneX"
                 dataKey="value" 
                 stroke={chartColor}
-                strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" connectNulls={false}
+                strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" connectNulls={false}
                 fill={`url(#${fillId})`}
                 isAnimationActive={false}
                 activeDot={{ r: 5, fill: chartColor, stroke: 'var(--surface)', strokeWidth: 3 }}
@@ -499,76 +518,16 @@ export const MainRatesGrid: React.FC<MainRatesGridProps> = ({
           )}
         </div>
 
-        {/* 3 Timeframe Filter Buttons Underneath the Chart (اليوم، أسبوع، شهر) */}
-        <div className="flex items-center justify-center my-3">
-          <div className="inline-flex p-1 bg-slate-900/90 rounded-xl border border-white/[0.08] shadow-inner gap-1">
-            <button
-              type="button"
-              onClick={() => setChartTimeframe('today')}
-              aria-pressed={chartTimeframe === 'today'}
-              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
-                chartTimeframe === 'today'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              }`}
-            >
-              اليوم
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartTimeframe('week')}
-              aria-pressed={chartTimeframe === 'week'}
-              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
-                chartTimeframe === 'week'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              }`}
-            >
-              أسبوع
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartTimeframe('month')}
-              aria-pressed={chartTimeframe === 'month'}
-              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 select-none ${
-                chartTimeframe === 'month'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-              }`}
-            >
-              شهر
-            </button>
-          </div>
-        </div>
-
-        {/* Bottom 4 Key Stats Row Dynamically Linked to Selected Timeframe */}
-        <div className={filteredChartData.length >= 2 ? 'grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 mt-1 border-t border-white/[0.06] text-center' : 'hidden'}>
-          <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أعلى سعر الفترة</span>
-            <span className="text-base sm:text-lg font-black font-mono text-emerald-400 tabular-nums">
-              {filteredChartStats.high.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
-            </span>
-          </div>
-          <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">أدنى سعر الفترة</span>
-            <span className="text-base sm:text-lg font-black font-mono text-rose-400 tabular-nums">
-              {filteredChartStats.low.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
-            </span>
-          </div>
-          <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">متوسط التداول</span>
-            <span className="text-base sm:text-lg font-black font-mono text-slate-200 tabular-nums">
-              {filteredChartStats.avg.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
-            </span>
-          </div>
-          <div className="p-2 rounded-xl bg-slate-900/40 border border-white/[0.03]">
-            <span className="block text-[11px] text-slate-400 font-medium mb-0.5">التغير خلال الفترة</span>
-            <span className="text-base sm:text-lg font-black font-mono text-slate-400 tabular-nums">
-              {filteredChartStats.changePercent.toFixed(2)} <span className="text-[10px] text-slate-400 font-sans">%</span>
-            </span>
-          </div>
-        </div>
-      </div>
+        {chartLast && <>
+          <dl className="usd-chart-stats">
+            <div><dt>أعلى سعر</dt><dd dir="ltr">{filteredChartStats.high.toFixed(2)}</dd></div>
+            <div><dt>أدنى سعر</dt><dd dir="ltr">{filteredChartStats.low.toFixed(2)}</dd></div>
+            <div><dt>متوسط القراءات</dt><dd dir="ltr">{filteredChartStats.avg.toFixed(2)}</dd></div>
+          </dl>
+          <p id={`${fillId}-summary`} className="sr-only">{chartPeriod}: من {filteredChartStats.prevVal.toFixed(2)} إلى {chartLast.value.toFixed(2)} دينار للدولار. التغير {filteredChartStats.changePercent.toFixed(2)}%.</p>
+          <div className="usd-chart-observation"><span>{isOffline ? <><WifiOff size={13} aria-hidden="true" />بيانات محفوظة</> : 'آخر رصد'}</span><time dateTime={chartLast.time} dir="ltr">{formatLibyaDate(chartLast.time)} · {chartClock.format(Date.parse(chartLast.time))}</time></div>
+        </>}
+      </section>
 
       {/* Section: أسعار السوق الموازي */}
       <div className="parallel-rates">

@@ -13,7 +13,46 @@
   .price-chart-tooltip > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 3px; }
   .price-chart-tooltip strong { font-size: 20px; font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .price-chart-tooltip > div > span { color: var(--muted-ink); font-size: 12px; }
-  .app-shell .usd-chart > .market-chart { height: 250px; }
+  .app-shell .usd-chart { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+  .usd-chart-header, .usd-chart-title, .usd-chart-toolbar, .usd-chart-overview { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .usd-chart-title { justify-content: flex-start; gap: 10px; min-width: 0; }
+  .usd-chart-title > div { min-width: 0; }
+  .usd-chart-title .usd-chart-flag { width: 34px; height: 28px; flex-shrink: 0; }
+  .usd-chart-title h3 { font-size: 15px; font-weight: 700; line-height: 1.5; }
+  .usd-chart-title p { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted-ink); }
+  .usd-chart-title p > span { font-family: var(--font-mono); font-size: 11px; opacity: 0.85; }
+  .usd-chart-expand { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; color: var(--muted-ink); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  .usd-chart-expand:hover { background: var(--surface-raised); color: var(--ink); }
+  .usd-chart-overview { align-items: flex-end; margin: 18px 0; }
+  .usd-chart-quote > span, .usd-chart-performance > span:last-child { color: var(--muted-ink); font-size: 12px; }
+  .usd-chart-quote > div { display: flex; align-items: baseline; gap: 8px; }
+  .usd-chart-quote strong { font-size: 34px; font-family: var(--font-mono); font-weight: 700; line-height: 1.4; font-variant-numeric: tabular-nums; }
+  .usd-chart-quote > div > span { color: var(--muted-ink); font-size: 13px; }
+  .usd-chart-performance { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-bottom: 4px; }
+  .usd-chart-change { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; color: var(--chart-color); background: color-mix(in srgb, var(--chart-color) 10%, transparent); }
+  .usd-chart-change b { font-family: var(--font-mono); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .usd-chart-toolbar { gap: 12px; margin-bottom: 8px; }
+  .usd-chart-ranges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 3px; border-radius: 6px; background: var(--page); border: 1px solid var(--line); min-width: 0; }
+  .usd-chart-ranges button { min-height: 44px; min-width: 64px; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; color: var(--muted-ink); cursor: pointer; transition: background 150ms, color 150ms; }
+  .usd-chart-ranges button:hover { color: var(--ink); }
+  .usd-chart-ranges button[aria-pressed="true"] { background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+  .usd-chart :is(.usd-chart-expand, .usd-chart-ranges button):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .usd-chart-unit { color: var(--muted-ink); font-size: 12px; }
+  .app-shell .usd-chart > .market-chart { height: 220px; min-height: 220px; margin-inline: -6px; width: calc(100% + 12px); }
+  .usd-chart-plot .recharts-cartesian-grid-horizontal line { stroke-opacity: 0.35; }
+  .usd-chart-price-marker text { font-size: 12px; font-family: var(--font-mono); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .usd-chart-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; margin-top: 8px; }
+  .usd-chart-stats > div { min-width: 0; }
+  .usd-chart-stats > div + div { border-inline-start: 1px solid var(--line); padding-inline-start: 12px; }
+  .usd-chart-stats dt { color: var(--muted-ink); font-size: 12px; line-height: 1.5; min-height: 18px; }
+  .usd-chart-stats dd { text-align: right; font-family: var(--font-mono); font-size: 18px; line-height: 1.7; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .usd-chart-stats > div:first-child dd { color: var(--positive); }
+  .usd-chart-stats > div:nth-child(2) dd { color: var(--negative); }
+  .usd-chart-observation { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; column-gap: 12px; row-gap: 4px; margin-top: 12px; color: var(--muted-ink); font-size: 12px; }
+  .usd-chart-observation > span { display: inline-flex; align-items: center; gap: 5px; }
+  .usd-chart-observation time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .usd-chart-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted-ink); font-size: 13px; text-align: center; }
+  [data-font-size="large"] .usd-chart :is(p, dt, button, .usd-chart-unit, .usd-chart-quote > span, .usd-chart-performance > span:last-child) { font-size: 16px; }
   .analysis-chart.market-chart { height: 340px; padding-top: 6px; }
   .currency-detail-chart.market-chart { height: 260px; }
   .spread-chart.market-chart { height: 340px; }
@@ -23,8 +62,16 @@
     .spread-chart.market-chart { height: 380px; }
   }
   @media (max-width: 480px) {
+    .app-shell .usd-chart { padding: 14px; }
+    .usd-chart-title p > span, .usd-chart-unit { display: none; }
+    .usd-chart-ranges { width: 100%; }
+    .usd-chart-ranges button { min-width: 0; }
+    .usd-chart-stats { gap: 8px; }
+    .usd-chart-stats > div + div { padding-inline-start: 8px; }
+    .usd-chart-stats dd { font-size: 16px; }
     .currency-detail-chart.market-chart { height: 220px; }
     .spread-chart.market-chart, .analysis-chart.market-chart { height: 300px; }
     .analytics-chart.market-chart { height: 250px; }
   }
+  @media (prefers-reduced-motion: reduce) { .usd-chart-ranges button { transition: none; } }
 }

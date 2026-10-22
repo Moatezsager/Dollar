@@ -46,7 +46,7 @@ if (process.env.NODE_ENV === "production") {
 // ─── Global Error Handlers ───
 process.on("unhandledRejection", async (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  await logErrorArabic(`خطأ غير معالج في السيرفر: ${reason}`, "unhandledRejection", String(reason));
+  await logErrorArabic(`خطأ غير معالج في السيرفر: ${reason}`, "unhandledRejection", reason instanceof Error ? reason.stack || String(reason) : String(reason));
 });
 
 process.on("uncaughtException", async (error) => {

@@ -36,24 +36,28 @@ async function callWorkerWhatsApp(
 // الحالة — يجلب من Worker
 router.get('/whatsapp/status', async (req: express.Request, res: express.Response) => {
   const result = await callWorkerWhatsApp('status', 'GET');
+  if (res.headersSent || res.destroyed) return;
   res.status(result.status).json(result.data);
 });
 
 // تهيئة — يُرسِل لـ Worker
 router.post('/whatsapp/init', async (req: express.Request, res: express.Response) => {
   const result = await callWorkerWhatsApp('init');
+  if (res.headersSent || res.destroyed) return;
   res.status(result.status).json(result.data);
 });
 
 // قطع الاتصال — يُرسِل لـ Worker
 router.post('/whatsapp/disconnect', async (req: express.Request, res: express.Response) => {
   const result = await callWorkerWhatsApp('disconnect');
+  if (res.headersSent || res.destroyed) return;
   res.status(result.status).json(result.data);
 });
 
 // QR code — يجلب من Worker
 router.get('/whatsapp/qr', async (req: express.Request, res: express.Response) => {
   const result = await callWorkerWhatsApp('qr', 'GET');
+  if (res.headersSent || res.destroyed) return;
   res.status(result.status).json(result.data);
 });
 
@@ -63,6 +67,7 @@ router.post('/whatsapp/toggle-auto', async (req, res) => {
     return;
   }
   const result = await callWorkerWhatsApp('toggle-auto', 'POST', { enabled: req.body.enabled });
+  if (res.headersSent || res.destroyed) return;
   res.status(result.status).json(result.data);
 });
 

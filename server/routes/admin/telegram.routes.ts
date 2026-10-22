@@ -39,8 +39,10 @@ router.post('/telegram/official-broadcast', async (req: express.Request, res: ex
       appConfig.telegramPostChannel = originalChannel;
     }
     
+    if (res.headersSent || res.destroyed) return;
     res.json({ success: true, message: "تم إرسال أسعار المصرف المركزي بنجاح" });
   } catch (err: any) {
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ success: false, error: err.message || "Failed to broadcast official rates" });
   }
 });
@@ -88,8 +90,10 @@ router.post('/telegram/test-broadcast', async (req: express.Request, res: expres
       appConfig.telegramPostChannel = originalChannel;
     }
     
+    if (res.headersSent || res.destroyed) return;
     res.json({ success: true, message: "تم إرسال رسالة تجريبية" });
   } catch (err: any) {
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ success: false, error: err.message || "Failed to broadcast" });
   }
 });
@@ -121,9 +125,11 @@ router.post('/facebook/test-broadcast', async (req: express.Request, res: expres
     }
     
     await broadcastRateChanges(sampleUpdates, true, 'facebook');
+    if (res.headersSent || res.destroyed) return;
     
     res.json({ success: true, message: "تم إرسال رسالة تجريبية إلى فيسبوك بنجاح" });
   } catch (err: any) {
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ success: false, error: err.message || "Failed to broadcast to Facebook" });
   }
 });
@@ -158,6 +164,7 @@ router.post('/weekly-harvest/send-telegram', async (req: express.Request, res: e
       filename: `weekly-harvest-${Date.now()}.png`,
     });
 
+    if (res.headersSent || res.destroyed) return;
     if (sent) {
       res.json({
         success: true,
@@ -173,6 +180,7 @@ router.post('/weekly-harvest/send-telegram', async (req: express.Request, res: e
     }
   } catch (err: any) {
     console.error("[WeeklyHarvest] Send Telegram exception:", err);
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ success: false, error: err.message || "حدث خطأ أثناء إرسال الصورة" });
   }
 });
@@ -190,6 +198,7 @@ router.post('/telegram/test-contact', async (req: express.Request, res: express.
       userAgent: (req.headers['user-agent'] as string) || 'Admin Console',
     });
 
+    if (res.headersSent || res.destroyed) return;
     if (success) {
       res.json({ success: true, message: "تم إرسال رسالة اختبار عبر مسار اتصل بنا الحالي إلى محادثة الإدارة." });
     } else {
@@ -198,6 +207,7 @@ router.post('/telegram/test-contact', async (req: express.Request, res: express.
     }
   } catch (err: any) {
     console.error("Telegram test contact error:", err);
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ success: false, error: err.message || "فشل إرسال رسالة الاختبار" });
   }
 });
@@ -212,6 +222,7 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
 
     const meRes = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(10000) });
     const meData: any = await meRes.json();
+    if (res.headersSent || res.destroyed) return;
     if (!meData.ok) {
       return res.json({ connected: false, error: meData.description || "توكن البوت غير صالح" });
     }
@@ -233,6 +244,7 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
       }
     } catch (e) {}
 
+    if (res.headersSent || res.destroyed) return;
     res.json({
       connected: true,
       bot: meData.result,
@@ -241,6 +253,7 @@ router.get('/telegram/bot-status', async (req: express.Request, res: express.Res
       detectedChatUser
     });
   } catch (err: any) {
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ connected: false, error: "فشل الاتصال بخوادم تيليجرام. أعد المحاولة لاحقاً." });
   }
 });
@@ -257,12 +270,14 @@ router.post('/telegram/test-error-alert', async (req: express.Request, res: expr
       actionHint: "لا يلزم أي إجراء، السيرفر يعمل بكفاءة تامة وهذا مجرد فحص للتنسيق الذكي."
     });
 
+    if (res.headersSent || res.destroyed) return;
     if (success) {
       res.json({ success: true, message: "تم إرسال تنبيه تجريبي للأخطاء الحرجة إلى حسابك في تيليجرام بنجاح 🚨" });
     } else {
       res.status(500).json({ success: false, error: "تعذر إرسال التنبيه، تأكد من توكن البوت وحسابك" });
     }
   } catch (err: any) {
+    if (res.headersSent || res.destroyed) return;
     res.status(500).json({ success: false, error: err.message || "فشل إرسال التنبيه" });
   }
 });

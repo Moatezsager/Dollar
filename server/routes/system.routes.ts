@@ -92,7 +92,7 @@ router.post("/logs/error", async (req: express.Request, res: express.Response) =
   console.error("-------------------\n");
 
   await logErrorArabic(arabicMessage || message, context || "تطبيق العميل", stack, url, 'client');
-
+  if (res.headersSent || res.destroyed) return;
   res.status(200).json({ success: true });
 });
 
@@ -116,6 +116,7 @@ router.post("/telegram/send-message", requireAdmin, async (req: express.Request,
     finalMsg = finalMsg.replace(/https:\/\/dollar-price-qp14\.onrender\.com(?:\/[^\s]*)?/g, dynamicTgUrl);
 
     const success = await tgMgr.sendMessage(channel, finalMsg, { linkPreview: true });
+    if (res.headersSent || res.destroyed) return;
     if (success) {
       res.json({ success: true, message: "تم النشر بنجاح" });
     } else {
@@ -123,7 +124,7 @@ router.post("/telegram/send-message", requireAdmin, async (req: express.Request,
     }
   } catch (error: any) {
     console.error(`[API] Error sending message to ${channel}:`, error);
-    if (!res.headersSent) {
+    if (!res.headersSent && !res.destroyed) {
       res.status(500).json({ success: false, error: error.message || "Failed to send message" });
     }
   }
@@ -184,6 +185,7 @@ router.post("/telegram/update", requireAdmin, async (req: express.Request, res: 
       broadcastRatesUpdate(rates);
     }
     
+    if (res.headersSent || res.destroyed) return;
     res.json({ 
       success: true, 
       message: anyUpdated ? "Rates updated successfully" : "No new rates found",
@@ -192,7 +194,7 @@ router.post("/telegram/update", requireAdmin, async (req: express.Request, res: 
     });
   } catch (error: any) {
     console.error(`[API] Error updating from ${channel}:`, error);
-    if (!res.headersSent) {
+    if (!res.headersSent && !res.destroyed) {
       res.status(500).json({ success: false, error: error.message || "Failed to update from channel" });
     }
   }

@@ -20,11 +20,12 @@ router.get("/rates", async (req: express.Request, res: express.Response) => {
     res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=30');
     const force = req.query.refresh === 'true';
     await initializeRatesFromDB(force);
+    if (res.headersSent || res.destroyed) return;
     res.json(obfuscateData(rates));
   } catch (err) {
     console.error("Error in /api/rates:", err);
-    if (!res.headersSent) {
-      res.status(503).json({
+    if (!res.headersSent && !res.destroyed) {
+      res.set('Cache-Control', 'no-store').status(503).json({
         success: false,
         stale: true,
         error: 'RATES_UNAVAILABLE',
@@ -175,6 +176,7 @@ router.all("/premium/rates", premiumApiLimiter, async (req: express.Request, res
 
   try {
     await initializeRatesFromDB(false);
+    if (res.headersSent || res.destroyed) return;
     res.setHeader('Cache-Control', 'private, no-store');
     logRequest(200);
     res.json({
@@ -184,7 +186,7 @@ router.all("/premium/rates", premiumApiLimiter, async (req: express.Request, res
     });
   } catch (err) {
     console.error("Error in /api/premium/rates:", err);
-    if (!res.headersSent) {
+    if (!res.headersSent && !res.destroyed) {
       logRequest(500);
       res.status(500).json({ success: false, error: "Internal Server Error" });
     }
@@ -199,6 +201,7 @@ router.get("/recent-changes", async (req: express.Request, res: express.Response
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
+      if (res.headersSent || res.destroyed) return;
         
       if (!error && data) {
         return res.json(data.map(d => ({
@@ -215,6 +218,7 @@ router.get("/recent-changes", async (req: express.Request, res: express.Response
       console.error("Failed to fetch price changes from Supabase", e);
     }
   }
+  if (res.headersSent || res.destroyed) return;
   res.json(recentChangesLog);
 });
 
@@ -222,9 +226,10 @@ router.get("/history", async (req: express.Request, res: express.Response) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
     const dbHistory = await fetchHistoryFromSupabase(true);
+    if (res.headersSent || res.destroyed) return;
     res.json(obfuscateData(dbHistory));
   } catch (err) {
-    if (!res.headersSent) {
+    if (!res.headersSent && !res.destroyed) {
       res.status(503).json({ error: 'History temporarily unavailable' });
     }
   }

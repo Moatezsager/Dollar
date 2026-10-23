@@ -292,6 +292,14 @@
   .currency-detail-footer { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); flex-shrink: 0; }
   .currency-detail-footer button { min-height: 44px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 600; }
   .currency-detail-footer .currency-detail-close { margin-inline-start: auto; background: var(--positive); color: var(--page); border-color: transparent; }
+  .currency-report-panel { flex-shrink: 0; padding: 10px 20px; border-top: 1px solid var(--line); background: var(--surface-raised); font-size: 12px; max-height: 32vh; overflow-y: auto; }
+  .currency-report-panel :is(p, .currency-report-ready > span) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .currency-report-ready { display: flex; justify-content: space-between; align-items: center; color: var(--positive); font-weight: 700; }
+  .currency-report-ready > a { min-width: 44px; min-height: 44px; display: grid; place-items: center; color: var(--ink); }
+  .currency-report-panel .currency-report-stamp { color: var(--muted-ink); font-size: 11px; margin-block: 2px 6px; }
+  .currency-report-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-block: 6px; }
+  .currency-report-buttons > :is(a, button) { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 44px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 13px; font-weight: 600; }
+  .currency-report-panel [role="alert"] { color: var(--negative); }
   .currency-detail-dialog button:disabled { opacity: .5; cursor: not-allowed; }
   .currency-detail-dialog button:not(:disabled):hover { background: var(--surface-raised); color: var(--ink); }
   .currency-detail-dialog :is(button, input, summary, [tabindex]):focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -325,6 +333,7 @@
   .information-page button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   @media (min-width: 768px) { .information-page { padding-block: 40px 80px; } }
   @media (max-width: 359px) {
+      .currency-detail-footer button:first-child span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .currency-detail-header, .currency-detail-content, .currency-detail-footer { padding-inline: 14px; }
     .currency-detail-header { gap: 8px; }
     .currency-detail-header h2 { font-size: 15px; }

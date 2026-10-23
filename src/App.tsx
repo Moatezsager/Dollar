@@ -603,7 +603,6 @@ export default function App() {
             chartRange={chartRange}
             setChartRange={setChartRange}
             triggerHaptic={triggerHaptic}
-            handleShareCardImage={handleShareCardImage}
           />}
 
           {/* Settings Modal */}

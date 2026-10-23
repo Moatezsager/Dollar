@@ -1,7 +1,7 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
-import { ArrowUpRight, ArrowDownRight, Minus, X, Calculator, CheckCircle2, Copy, Share2, ChartNoAxesCombined } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Minus, X, Calculator, CheckCircle2, Copy, Share2, ChartNoAxesCombined, FileDown, Download, LoaderCircle, ExternalLink } from "lucide-react";
 import { Rates, CURRENCIES, METAL_IDS } from "../../types/rates";
 import { FlagIcon } from "../FlagIcon";
 import { useDialogAccessibility } from "../../hooks/useDialogAccessibility";
@@ -25,22 +25,69 @@ interface CurrencyChartModalProps {
   chartRange: '24h' | '7d' | 'all';
   setChartRange: (range: '24h' | '7d' | 'all') => void;
   triggerHaptic: (pattern?: number | number[]) => void;
-  handleShareCardImage: (code: string, name: string, price: number, isGold?: boolean) => void;
 }
 
 export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
   selectedRate, setSelectedRate, rates, configTerms, chartData, chartStats,
-  advancedStats, chartRange, setChartRange, triggerHaptic, handleShareCardImage,
+  advancedStats, chartRange, setChartRange, triggerHaptic,
 }) => {
   const [amount, setAmount] = useState('100');
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const [showHistoryTable, setShowHistoryTable] = useState(false);
+  const [pdf, setPdf] = useState<{ file: File; url: string; generatedAt: string } | null>(null);
+  const [pdfProgress, setPdfProgress] = useState('');
+  const [pdfError, setPdfError] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const exportRequest = useRef<AbortController | null>(null);
+  const sharePending = useRef(false);
   const fillId = useId();
   const dialogRef = useDialogAccessibility(!!selectedRate, () => setSelectedRate(null));
   useEffect(() => {
     setCopied(false); setCopyError(false); setShowHistoryTable(false); setAmount('100');
   }, [selectedRate?.code, selectedRate?.market]);
+  useEffect(() => {
+    setPdf(null); setPdfError(''); setShareMessage(''); setPdfProgress('');
+    return () => { exportRequest.current?.abort(); exportRequest.current = null; };
+  }, [selectedRate?.code, selectedRate?.market, chartRange]);
+  useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf.url); }, [pdf]);
+  let canSharePdf = false;
+  try { canSharePdf = !!pdf && !!navigator.share && !!navigator.canShare?.({ files: [pdf.file] }); } catch { /* Download remains available. */ }
+
+  const preparePdf = async () => {
+    if (!selectedRate || !rates || exportRequest.current || sharePending.current) return;
+    const input = {
+      ...selectedRate, price: rates[selectedRate.market][selectedRate.code],
+      lastUpdated: rates.lastUpdated, lastChanged: rates.lastChanged?.[selectedRate.market]?.[selectedRate.code],
+      range: chartRange, points: chartData.map(point => ({ ...point })),
+      amount: amount.trim() ? Number(amount) : null, advanced: { ...advancedStats },
+    };
+    const controller = new AbortController(); exportRequest.current = controller;
+    triggerHaptic(8); setPdfProgress('جارٍ تجهيز التقرير'); setPdfError(''); setShareMessage('');
+    try {
+      // Freeze the selected price and history before loading the export-only code.
+      const { createCurrencyPdf } = await import('../CurrencyPdfReport');
+      const result = await createCurrencyPdf(input, controller.signal, label => { if (!controller.signal.aborted) setPdfProgress(label); });
+      if (!controller.signal.aborted) setPdf({ ...result, url: URL.createObjectURL(result.file) });
+    } catch (error) {
+      if (!controller.signal.aborted) setPdfError(error instanceof Error ? error.message : 'تعذر إنشاء التقرير. أعد المحاولة.');
+    } finally {
+      if (exportRequest.current === controller) { exportRequest.current = null; setPdfProgress(''); }
+    }
+  };
+  const sharePdf = async () => {
+    if (!pdf || !canSharePdf || sharePending.current || exportRequest.current) return;
+    sharePending.current = true; setSharing(true); setPdfError(''); setShareMessage('');
+    try {
+      // Sharing on this fresh tap preserves the phone's native user activation.
+      await navigator.share({ files: [pdf.file], title: `مؤشر الدينار · ${selectedRate?.name}` });
+      setShareMessage('تمت مشاركة التقرير.');
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') setShareMessage('أُلغيت المشاركة؛ التقرير ما زال جاهزًا.');
+      else setPdfError('تعذرت المشاركة من المتصفح. يمكنك تحميل ملف PDF ومشاركته مباشرة.');
+    } finally { sharePending.current = false; setSharing(false); }
+  };
 
   return (
     <AnimatePresence>
@@ -192,14 +239,25 @@ export const CurrencyChartModal: React.FC<CurrencyChartModalProps> = ({
                 </div>
               </div>
 
+              {(pdfProgress || pdf || pdfError) && <div className="currency-report-panel" aria-busy={!!pdfProgress || sharing}>
+                {pdfProgress && <p role="status"><LoaderCircle size={16} className="animate-spin" aria-hidden="true" />{pdfProgress}</p>}
+                {pdf && !pdfProgress && <><div className="currency-report-ready"><span role="status"><CheckCircle2 size={16} aria-hidden="true" />التقرير جاهز</span><a href={pdf.url} target="_blank" rel="noopener noreferrer" aria-label="فتح تقرير PDF" title="فتح تقرير PDF"><ExternalLink size={17} aria-hidden="true" /></a></div>
+                  <p className="currency-report-stamp">لقطة محفوظة في <bdi>{libyaDateTime.format(new Date(pdf.generatedAt))}</bdi> · توقيت طرابلس</p>
+                  <div className="currency-report-buttons"><a href={pdf.url} download={pdf.file.name}><Download size={17} aria-hidden="true" />تحميل PDF</a>
+                    {canSharePdf && <button onClick={sharePdf} disabled={sharing || !!pdfProgress}><Share2 size={17} aria-hidden="true" />{sharing ? 'جارٍ المشاركة' : 'مشاركة PDF'}</button>}</div>
+                  {!canSharePdf && <p className="currency-report-stamp">يمكنك مشاركة الملف بعد تحميله على جهازك.</p>}
+                </>}
+                {shareMessage && <p role="status">{shareMessage}</p>}
+                {pdfError && <p role="alert">{pdfError}</p>}
+              </div>}
               <div className="currency-detail-footer">
-                <button onClick={handleCopyRate} disabled={currentRate <= 0} aria-label="نسخ السعر" title="نسخ السعر">
-                  {copied ? <CheckCircle2 size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+                <button onClick={handleCopyRate} disabled={currentRate <= 0} aria-label="نسخ السعر" title={copyError ? 'تعذر النسخ؛ أعد المحاولة' : copied ? 'تم النسخ' : 'نسخ السعر'}>
+                  {copyError ? <X size={18} aria-hidden="true" /> : copied ? <CheckCircle2 size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                   <span role="status">{copyError ? 'تعذر النسخ' : copied ? 'تم النسخ!' : 'نسخ'}</span>
                 </button>
-                <button disabled={currentRate <= 0} aria-label="مشاركة بطاقة السعر" title="مشاركة بطاقة السعر"
-                  onClick={() => { triggerHaptic(8); handleShareCardImage(selectedRate.code, selectedRate.name, currentRate, selectedRate.market === 'official'); }}>
-                  <Share2 size={18} aria-hidden="true" /><span>مشاركة</span>
+                <button disabled={!Number.isFinite(currentRate) || currentRate <= 0 || !!pdfProgress || sharing} aria-label="إعداد تقرير العملة PDF" title="إعداد تقرير العملة PDF"
+                  onClick={preparePdf}>
+                  {pdfProgress ? <LoaderCircle size={18} className="animate-spin" aria-hidden="true" /> : <FileDown size={18} aria-hidden="true" />}<span>{pdfProgress ? 'جارٍ الإعداد' : pdf ? 'تحديث التقرير' : 'تقرير PDF'}</span>
                 </button>
                 <button className="currency-detail-close" onClick={() => { triggerHaptic(6); setSelectedRate(null); }}>إغلاق</button>
               </div>

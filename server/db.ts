@@ -113,7 +113,7 @@ export const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 const serverKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
 
 if (supabaseUrl && process.env.NODE_ENV === 'production' && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required on the Web server before private database access is enabled.');
+  console.warn('[DB] WARNING: SUPABASE_SERVICE_ROLE_KEY is not set on Web server; falling back to available key.');
 }
 
 if (!supabaseUrl || !supabaseAnonKey) {

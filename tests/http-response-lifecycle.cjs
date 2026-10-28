@@ -20,8 +20,8 @@ async function main() {
   };
   const mocks = {
     config: 'export const appConfig = globalThis.__httpLifecycle.config;',
-    state: 'export const rates = globalThis.__httpLifecycle.rates; export const history = [];',
-    db: `export const supabaseAnonKey = 'fixture'; export const supabase = {from: () => {
+    state: 'export const rates = globalThis.__httpLifecycle.rates; export const history = []; export const serverStartTime = new Date();',
+    db: `export const db = {}; export const supabaseAnonKey = 'fixture'; export const supabase = {from: () => {
       const q = {select:()=>q,order:()=>q,limit:()=>q,then:(resolve,reject)=>globalThis.__httpLifecycle.work('recent').then(()=>({data:[],error:null})).then(resolve,reject)}; return q;
     }};`,
     'db.service': `export const initializeRatesFromDB = async force => { globalThis.__httpLifecycle.force = force; await globalThis.__httpLifecycle.work('rates'); };
@@ -33,7 +33,10 @@ async function main() {
       export const broadcastOfficialRates = work; export const broadcastRateChanges = work; export const forwardVisitorMessageToTelegram = work;
       export const getOrInitTelegramManager = () => ({ sendFile:work,sendMessage:work,isConnected:()=>true,fetchMessages:async()=>[] });`,
     'alert.service': 'export const sendCriticalErrorAlert = async () => { await globalThis.__httpLifecycle.work("alert"); return true; };',
-    'socket.service': 'export const broadcastRatesUpdate = () => {};',
+    'socket.service': 'export const broadcastRatesUpdate = () => {}; export const getIO = () => null;',
+    'weekly-harvest.service': 'export const readWeeklyHarvest = async () => { await globalThis.__httpLifecycle.work("harvest"); return {items:[]}; };',
+    'analytics.service': 'export const readAnalytics = async () => ({});',
+    'analytics-tracking': 'export const analyticsWriteHealth = {};',
     'scraper.service': 'export const extractRatesFromText = () => [];',
     version: "export const serverStartTime = new Date(); export const getAppBuildSignature = () => 'fixture';",
     helpers: 'export const obfuscateData = value => value; export const isSignificantChange = () => false;',
@@ -44,6 +47,7 @@ async function main() {
     export {default as telegramRouter} from './server/routes/admin/telegram.routes';
     export {default as whatsappRouter} from './server/routes/admin/whatsapp.routes';
     export {default as systemRouter} from './server/routes/system.routes';
+    export {createAdminSystemRouter} from './server/routes/admin/system.routes';
   `, resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false,
     plugins: [{ name: 'no-production-http-fixture', setup(plugin) {
       plugin.onResolve({ filter: /^\./ }, args => mocks[path.basename(args.path)] ? { path: path.basename(args.path), namespace: 'fixture' } : undefined);
@@ -52,6 +56,7 @@ async function main() {
   const mod = new Module(path.join(process.cwd(), 'tests/http-isolated.cjs'), module);
   mod.filename = mod.id; mod.paths = module.paths; mod._compile(result.outputFiles[0].text, mod.filename);
   const web = mod.exports;
+  const adminSystemRouter = web.createAdminSystemRouter({ getOnlineUsers: () => 0, apiStats: {}, getUserLogs: () => [] });
   const app = express(); app.use(express.json());
   app.use((_req, res, next) => {
     const requestRun = run;
@@ -63,7 +68,7 @@ async function main() {
     next();
   });
   // Observe the real handlers' rejected promises instead of allowing an unhandled process error in the fixture.
-  for (const router of [web.ratesRouter, web.telegramRouter, web.whatsappRouter, web.systemRouter]) {
+  for (const router of [web.ratesRouter, web.telegramRouter, web.whatsappRouter, web.systemRouter, adminSystemRouter]) {
     for (const layer of router.stack) for (const route of layer.route?.stack || []) {
       const handle = route.handle;
       route.handle = (req, res, next) => {
@@ -76,7 +81,7 @@ async function main() {
     }
   }
   app.use(web.timeoutMiddleware);
-  app.use('/api/admin', web.requireAdmin, web.telegramRouter, web.whatsappRouter);
+  app.use('/api/admin', web.requireAdmin, web.telegramRouter, web.whatsappRouter, adminSystemRouter);
   app.use('/api', web.ratesRouter, web.systemRouter);
   const server = http.createServer(app);
   const realFetch = global.fetch, realWarn = console.warn, realError = console.error;
@@ -92,6 +97,7 @@ async function main() {
   };
   const png = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), Buffer.alloc(16)]).toString('base64');
   const endpoints = [
+    ['GET', '/api/admin/weekly-harvest/data'],
     ['GET', '/api/rates?refresh=true'], ['GET', '/api/history'], ['GET', '/api/recent-changes'],
     ['GET', '/api/premium/rates'], ['POST', '/api/logs/error', { message: 'isolated fixture' }],
     ['GET', '/api/admin/telegram/bot-status?detectChatId=true'],
@@ -160,7 +166,7 @@ async function main() {
     try { assert.equal(logs[0][2], error.stack); assert.equal(logs[1][2], 'non-error rejection'); }
     catch (error) { failures.push('Global rejection diagnostics: ' + error.message); }
     if (failures.length) throw Error(failures.join('\n'));
-    realWarn('PASS: 18 real HTTP routes; success/failure, timeout, late failure and disconnected clients; unchanged deadlines, no duplicate responses, no-store timeout diagnostics and complete rejection stacks. No production calls.');
+    realWarn(`PASS: ${endpoints.length} real HTTP routes; success/failure, timeout, late failure and disconnected clients; unchanged deadlines, no duplicate responses, no-store timeout diagnostics and complete rejection stacks. No production calls.`);
   } finally {
     global.fetch = realFetch; console.warn = realWarn; console.error = realError;
     for (const [key, value] of Object.entries(oldEnv)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

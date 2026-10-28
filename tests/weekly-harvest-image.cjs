@@ -15,6 +15,7 @@ async function main() {
     rates: { USD: 10.24 - i * .02, USD_CHECKS: 10.54 - i * .05, EUR: 11.20 - i * .01, GBP: 12.6, TND: 3.3 + i * .002, EGP: .2045,
       USD_TR: 10.1, USD_AE: 10.2, USD_CN: 10.3, GOLD_SCRAP_18: 810 + i, GOLD_SCRAP_21: 910 + i, GOLD_CAST_24: 1010 + i, GOLD_LIRA_8G: 7010 + i, SILVER_CAST_1000: 12.5 } }));
   const data = mod.exports.buildWeeklyHarvest(rows, [], [], new Date('2026-10-17T12:00:00Z'));
+  assert.equal(data.items.length, 14, 'The exported report includes authoritative metals from the full price snapshots');
   const image = await mod.exports.renderWeeklyHarvestImage(data);
   const metadata = await sharp(image).metadata();
   assert.equal(metadata.format, 'png'); assert.equal(metadata.width, 1800);
@@ -31,6 +32,8 @@ async function main() {
   await fs.writeFile(path.join(out, 'server-report-og.png'), preview);
   const sparse = mod.exports.buildWeeklyHarvest([rows[0]], [], [], new Date('2026-10-17T12:00:00Z'));
   assert((await mod.exports.renderWeeklyHarvestImage(sparse)).length > 10000);
+  const current = mod.exports.buildWeeklyHarvest(rows, [], [], new Date('2026-10-16T12:00:00Z'), [], [], 'current');
+  await fs.writeFile(path.join(out, 'current-week-report.png'), await mod.exports.renderWeeklyHarvestImage(current));
   console.log(`PASS: full Arabic report PNG ${metadata.width}x${metadata.height} (${image.length} bytes), table pixels and sparse data. Preview: ${out}`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

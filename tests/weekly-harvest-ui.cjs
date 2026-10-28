@@ -13,9 +13,9 @@ async function main() {
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {AdminWeeklyHarvest} from '/src/components/AdminWeeklyHarvest.tsx'; import {buildWeeklyHarvest} from '/shared/weeklyHarvest.ts'; import '/src/index.css';
       const parallel=[],official=[],metals=[];
       for(let d=10;d<=16;d++) { const recorded_at='2026-10-'+String(d).padStart(2,'0')+'T10:00:00Z'; parallel.push({recorded_at,rates:{USD:10+(d-10)*.02,USD_CHECKS:10.3-(d-10)*.01,EUR:11.2-(d-10)*.01,GBP:12.6,TND:3.3,EGP:.2045,USD_TR:10.1,USD_AE:10.2,USD_CN:10.3}}); official.push({recorded_at,rates:{USD:6.4404+(d-10)*.0001,EUR:7.1}}); metals.push({recorded_at,rates:{GOLD_SCRAP_18:800+d,GOLD_SCRAP_21:900+d,GOLD_CAST_24:1000+d,GOLD_LIRA_8G:7000+d,SILVER_CAST_1000:12.5}}); }
-      window.fixtureData=buildWeeklyHarvest(parallel,official,metals,new Date('2026-10-17T12:00:00Z'));
+      window.fixtureData=buildWeeklyHarvest(parallel,official,metals,new Date('2026-10-16T12:00:00Z'),[],[],'current');
       const fetchOriginal=window.fetch; window.fetch=(url,opts)=>{
-        if(String(url).includes('/weekly-harvest/data'))return Promise.resolve(new Response(JSON.stringify({success:true,...window.fixtureData})));
+        if(String(url).includes('/weekly-harvest/data'))return Promise.resolve(window.harvestReadFailure?new Response(JSON.stringify({error:'تعذر قراءة أحدث الأسعار'}),{status:503}):new Response(JSON.stringify({success:true,...window.fixtureData})));
         if(String(url).includes('/weekly-harvest/send-telegram')){window.sentHarvest=JSON.parse(opts.body);return Promise.resolve(new Response(JSON.stringify({success:true})));}
         return fetchOriginal(url,opts);
       };
@@ -64,7 +64,7 @@ async function main() {
         return window.fixtureData.items.every(item=>{
           const cells=document.querySelector('.harvest-table tr[data-currency="'+item.id+'"]').cells;
           return cells.length===5&&cells[0].textContent.includes(item.name)&&cells[0].textContent.includes(item.unit)&&
-            cells[1].textContent===harvestNumber(item.open,item.id)&&cells[2].textContent===harvestNumber(item.close,item.id)&&
+            cells[1].querySelector('span').textContent===harvestNumber(item.open,item.id)&&cells[2].querySelector('b').textContent===harvestNumber(item.close,item.id)&&
             cells[3].textContent===harvestNumber(item.low,item.id)+' / '+harvestNumber(item.high,item.id)&&
             (item.change===null?cells[4].textContent==='غير كافٍ':cells[4].textContent.includes((item.change>0?'+':'')+harvestNumber(item.change,item.id))&&cells[4].textContent.includes(Math.abs(item.changePct).toFixed(2)+'%'));
         });
@@ -74,7 +74,7 @@ async function main() {
         return parseFloat(getComputedStyle(cash).borderTopWidth)===2&&parseFloat(getComputedStyle(cash.querySelector('strong')).fontSize)>parseFloat(getComputedStyle(euro.querySelector('strong')).fontSize);
       }),'Cash USD has a green frame and a larger headline price');
       assert.equal(await page.locator('.harvest-summary-note').count(),await page.evaluate(()=>window.fixtureData.notes.length));
-      assert(await page.locator('.harvest-summary-note').filter({hasText:'نطاق الرصد'}).evaluate(node=>node.classList.contains('harvest-note-up')));
+      assert(await page.locator('.harvest-summary-note').filter({hasText:'نطاق الفترة'}).evaluate(node=>node.classList.contains('harvest-note-up')));
       assert.equal(await page.locator('.harvest-summary-note').count(),3,'Keep the generated analysis concise');
       assert.equal(await page.locator('.harvest-week-movement').count(),1);
       assert(await page.locator('.harvest-coverage').getByText('7 من 7').count()>0,'Full coverage is stated only when all seven days have observations');
@@ -120,6 +120,26 @@ async function main() {
       await imagePage.waitForLoadState('load');assert.equal(imagePage.url(),savedUrl);assert(await imagePage.locator('img').evaluate(image=>image.complete&&image.naturalWidth===1800));await imagePage.close();
       await page.getByRole('button',{name:'إرسال للإدارة',exact:true}).click();await page.getByText('أُرسلت المعاينة إلى محادثة الإدارة.',{exact:true}).waitFor();
       const payload=await page.evaluate(()=>window.sentHarvest);assert(payload.imageBase64.startsWith('data:image/png;base64,iVBOR'));assert(payload.caption.length<=1024);
+      assert(!payload.caption.includes('/weekly-report/'),'An ongoing report must not link to a different completed week');
+      await page.evaluate(()=>{
+        window.sentHarvest=null;
+        const item=window.fixtureData.items.find(item=>item.id==='USD');item.close=10.11;item.change=item.close-item.open;item.changePct=item.change/item.open*100;
+      });
+      await page.getByRole('button',{name:'إرسال للإدارة',exact:true}).click();
+      await page.getByRole('status').filter({hasText:'تم تحديث المعاينة بأحدث الأسعار'}).waitFor();
+      assert.equal(await page.evaluate(()=>window.sentHarvest),null,'Never publish the stale preview after prices change');
+      assert.equal(await page.locator('.harvest-table tr[data-currency=USD] td b').textContent(),'10.11');
+      assert.equal(await page.getByRole('region',{name:'خيارات حفظ الصورة'}).count(),0,'Invalidate any previously prepared PNG');
+      await page.getByRole('button',{name:'إرسال للإدارة',exact:true}).click();
+      await page.getByText('أُرسلت المعاينة إلى محادثة الإدارة.',{exact:true}).waitFor();
+      const refreshed=await page.evaluate(()=>window.sentHarvest);
+      assert(refreshed.caption.includes('10.11'));
+      assert.notEqual(refreshed.imageBase64,payload.imageBase64,'Regenerate the image, not just the caption');
+      await page.evaluate(()=>window.harvestReadFailure=true);
+      await page.getByRole('button',{name:'تحميل الصورة',exact:true}).click();
+      await page.getByRole('alert').filter({hasText:'تعذر قراءة أحدث الأسعار'}).waitFor();
+      assert.equal(await page.getByRole('region',{name:'خيارات حفظ الصورة'}).count(),0,'Do not fall back to a stale image after a read failure');
+      await page.evaluate(()=>window.harvestReadFailure=false);
       assert.deepEqual(await page.evaluate(()=>window.policyViolations),[],'The export must respect production CSP without fetching data URLs');
       await page.screenshot({path:path.join(out,`save-${width}.png`),fullPage:true});
       await page.getByRole('button',{name:'تحرير النشرة',exact:true}).click();
@@ -140,6 +160,10 @@ async function main() {
       await page.screenshot({path:path.join(out,`editor-${width}.png`),fullPage:true});
       for(const name of ['دولار كاش','دولار صكوك','يورو'])await page.getByRole('checkbox',{name,exact:true}).uncheck();
       assert.equal(await page.locator('.harvest-highlights').count(),0,'Do not leave an empty quote band when key currencies are hidden');
+      await page.evaluate(()=>window.fixtureData.items.find(item=>item.id==='USD').close=10.13);
+      await page.getByRole('button',{name:'تحميل الصورة',exact:true}).click();
+      await page.getByRole('alert').filter({hasText:'تغيرت الأسعار المحفوظة بعد تحرير المسودة'}).waitFor();
+      assert.equal(Number(await page.getByLabel('آخر رصد دولار كاش',{exact:true}).inputValue()),10.1,'Do not silently discard an edited draft');
       assert.deepEqual(errors,[]); await context.close();
     }
     console.log('PASS: responsive preview, CSP-safe 1800px PNG with Android touch, Blob download/open, native share/cancel/denial, upload encoding and stale-file cleanup. Screenshots: '+out);

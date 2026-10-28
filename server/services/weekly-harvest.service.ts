@@ -1,9 +1,9 @@
 import { supabase } from '../db';
 import { buildWeeklyHarvest, harvestWindow } from '../../shared/weeklyHarvest';
 
-export async function readWeeklyHarvest(now = new Date()) {
+export async function readWeeklyHarvest(now = new Date(), mode: 'current' | 'completed' = 'current') {
   if (!supabase) throw new Error('قاعدة البيانات غير متاحة لإعداد الحصاد.');
-  const { start, end } = harvestWindow(now);
+  const { start, end } = harvestWindow(now, mode);
   const readStart = new Date(Date.parse(start) - 7 * 86400000).toISOString();
   const signal = AbortSignal.timeout(10000);
   const read = async (table: string) => {
@@ -21,5 +21,5 @@ export async function readWeeklyHarvest(now = new Date()) {
   const [parallelRows, metalRows] = await Promise.all(['parallel_rates', 'metal_rates'].map(read));
   const split = (rows: any[]) => ({ current: rows.filter(row => Date.parse(row.recorded_at) >= Date.parse(start)), previous: rows.filter(row => Date.parse(row.recorded_at) < Date.parse(start)) });
   const parallel = split(parallelRows), metals = split(metalRows);
-  return { ...buildWeeklyHarvest(parallel.current, [], metals.current, now, parallel.previous, metals.previous), generatedAt: new Date().toISOString() };
+  return buildWeeklyHarvest(parallel.current, [], metals.current, now, parallel.previous, metals.previous, mode);
 }

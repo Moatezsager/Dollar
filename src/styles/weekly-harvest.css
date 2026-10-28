@@ -45,7 +45,7 @@
 .harvest-sheet-title h1 { flex:1; min-width:0; font-size:32px; line-height:1.5; margin:0; font-weight:800; overflow-wrap:anywhere; }
 .harvest-period { max-width:350px; text-align:left; flex:none; }
 .harvest-period p { margin:0; font-size:14px; font-weight:650; }
-.harvest-period>span { font-size:11px; color:#66716b; }
+.harvest-period>span { display:block; font-size:11px; color:#66716b; }
 .harvest-quote-caption { margin:0; padding-top:10px; border-top:1px solid #d4dcd6; color:#66716b; font-size:11.5px; }
 .harvest-highlights { display:flex; gap:12px; padding:10px 0 12px; margin-bottom:14px; border-bottom:1px solid #d4dcd6; }
 .harvest-highlights>div { flex:1; min-width:0; padding:8px 16px; border-inline-start:1px solid #d4dcd6; }
@@ -82,6 +82,7 @@
 .harvest-table td:nth-child(3) { font-weight:800; font-size:14px; color:#202924; }
 .harvest-table tbody th b { display:block; font-weight:650; font-size:13.5px; }
 .harvest-table tbody th small { display:block; color:#66716b; font-size:10.5px; font-weight:400; line-height:1.4; }
+.harvest-table td small { display:block; margin-top:4px; line-height:1.4; font-weight:400; }
 .harvest-delta { display:inline-flex; flex-direction:column; align-items:center; font-size:12px; }
 .harvest-delta>span { display:flex; align-items:center; gap:3px; }
 .harvest-delta small { font-size:10.5px; line-height:1.4; }

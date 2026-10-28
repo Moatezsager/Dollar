@@ -161,13 +161,12 @@ export async function createApp(io: SocketIOServer) {
   const weeklyCards = new Map<string, { expiresAt: number; data: Awaited<ReturnType<typeof readWeeklyHarvest>>; image: Buffer; preview: Buffer; caption: string }>();
   const weeklyCardReads = new Map<string, Promise<{ expiresAt: number; data: Awaited<ReturnType<typeof readWeeklyHarvest>>; image: Buffer; preview: Buffer; caption: string }>>();
   const getWeeklyCard = async (week: string) => {
-    week = getLibyaDateString(new Date(Date.parse(harvestWindow(new Date(`${week}T12:00:00+02:00`)).end) - 86400000));
     const cached = weeklyCards.get(week);
     if (cached && cached.expiresAt > Date.now() && (Date.parse(cached.data.end) > Date.now() || Date.parse(cached.data.generatedAt) >= Date.parse(cached.data.end))) return cached;
     let pending = weeklyCardReads.get(week);
     if (!pending) {
       pending = (async () => {
-        const data = await readWeeklyHarvest(new Date(`${week}T12:00:00+02:00`));
+        const data = await readWeeklyHarvest(new Date(Date.parse(`${week}T00:00:00+02:00`) + 86400000), 'completed');
         if (!data.items.length) throw new Error('لا توجد قراءات كافية لإعداد الحصاد.');
         const image = await renderWeeklyHarvestImage(data);
         const card = { expiresAt: Date.now() + 10 * 60 * 1000, data, image, preview: await renderWeeklyHarvestPreview(image), caption: harvestSocialCaption(data) };
@@ -183,7 +182,7 @@ export async function createApp(io: SocketIOServer) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const time = Date.parse(`${value}T12:00:00+02:00`);
     return Number.isFinite(time) && getLibyaDateString(new Date(time)) === value && new Date(time).getUTCDay() === 5 &&
-      time >= Date.now() - 28 * 86400000 && value <= getLibyaDateString(new Date());
+      time >= Date.now() - 28 * 86400000 && Date.parse(`${value}T00:00:00+02:00`) + 86400000 <= Date.now();
   };
   const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 
@@ -194,7 +193,7 @@ export async function createApp(io: SocketIOServer) {
     const a = crypto.createHash('sha256').update(expected).digest(), b = crypto.createHash('sha256').update(given).digest();
     if (!crypto.timingSafeEqual(a, b)) return res.status(403).json({ success: false });
     try {
-      const week = getLibyaDateString(new Date());
+      const week = getLibyaDateString(new Date(Date.parse(harvestWindow().end) - 1));
       const card = await getWeeklyCard(week);
       if (!card.data.items.length) return res.status(503).json({ success: false, error: 'لا توجد قراءات كافية لإعداد الحصاد.' });
       if (res.headersSent || res.destroyed) return;

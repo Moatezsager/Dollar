@@ -6,7 +6,7 @@ export interface WeeklyItem {
 }
 export interface WeeklyHarvestData {
   title: string; dateRange: string; start: string; end: string;
-  generatedAt: string; notes: string[]; items: WeeklyItem[];
+  generatedAt: string; inProgress: boolean; notes: string[]; items: WeeklyItem[];
   observationCount: number; daysObserved: number; overallDirection: 'up' | 'down' | 'stable'; biggestMover: WeeklyItem | null;
 }
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Tripoli', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -47,16 +47,24 @@ export function harvestSocialCaption(data: WeeklyHarvestData): string {
   const main = data.items.filter(item => ['USD', 'USD_CHECKS', 'EUR'].includes(item.id));
   const prices = main.map(item => `${item.name}: ${harvestNumber(item.close, item.id)} د.ل${item.changePct === null ? '' : ` (${item.changePct > 0 ? '+' : ''}${item.changePct.toFixed(2)}%)`}`);
   const mover = data.biggestMover;
-  const week = dayFormat.format(new Date(Date.parse(data.end) - 86400000));
-  return [`📊 مؤشر الدينار | حصاد الأسبوع`, `🗓 ${data.dateRange} · طرابلس`, ...prices,
+  return [`📊 مؤشر الدينار | ${data.title}`, `🗓 ${data.dateRange} · طرابلس`, ...prices,
     `أكبر متحرك: ${mover ? `${mover.name} ${mover.changePct! > 0 ? '+' : ''}${mover.changePct!.toFixed(2)}%` : 'لا تتوفر مقارنة كافية'}`,
-    '', `تيليجرام: https://t.me/libya_index_dollar`, `فيسبوك: https://www.facebook.com/profile.php?id=61593953519936`, `https://dollar-price-qp14.onrender.com/weekly-report/${week}`].join('\n');
+    '', `تيليجرام: https://t.me/libya_index_dollar`, `فيسبوك: https://www.facebook.com/profile.php?id=61593953519936`, harvestReportUrl(data)].join('\n');
 }
-export function harvestWindow(now = new Date()) {
+export function harvestReportUrl(data: WeeklyHarvestData): string {
+  const base = 'https://dollar-price-qp14.onrender.com/';
+  return data.inProgress ? base : `${base}weekly-report/${dayFormat.format(new Date(Date.parse(data.end) - 1))}`;
+}
+export function harvestTimestamp(value: string): string {
+  return new Date(value).toLocaleString('ar-LY', { timeZone: 'Africa/Tripoli', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+export function harvestWindow(now = new Date(), mode: 'current' | 'completed' = 'completed') {
   const day = dayFormat.format(now);
-  const friday = new Date(`${day}T12:00:00+02:00`).getUTCDay();
-  const end = new Date(Date.parse(`${day}T00:00:00+02:00`) - ((friday - 5 + 7) % 7) * 86400000 + 86400000);
-  return { start: new Date(end.getTime() - 7 * 86400000).toISOString(), end: end.toISOString() };
+  const weekday = new Date(`${day}T12:00:00+02:00`).getUTCDay();
+  const saturday = Date.parse(`${day}T00:00:00+02:00`) - ((weekday + 1) % 7) * 86400000;
+  return mode === 'current'
+    ? { start: new Date(saturday).toISOString(), end: new Date(now.getTime() + 1).toISOString() }
+    : { start: new Date(saturday - 7 * 86400000).toISOString(), end: new Date(saturday).toISOString() };
 }
 const definitions = [
   ['USD', 'دولار كاش', 'USD', 'السوق الموازي', 'لكل دولار'],
@@ -75,41 +83,39 @@ const definitions = [
   ['SILVER_CAST_1000', 'مسبوك فضة', '1000', 'المعادن', 'للجرام'],
 ];
 type Observation = { recorded_at: string; rates: Record<string, number>; usd?: number };
-export function buildWeeklyHarvest(parallel: Observation[], _official: Observation[], metals: Observation[], now = new Date(), previous: Observation[] = [], previousMetals: Observation[] = []): WeeklyHarvestData {
-  const { start, end } = harvestWindow(now);
-  const inWindow = (rows: Observation[]) => rows.filter(row => row.recorded_at && Date.parse(row.recorded_at) >= Date.parse(start) && Date.parse(row.recorded_at) < Date.parse(end) &&
-    definitions.some(([id]) => { const value = row.rates?.[id] ?? (id === 'USD' ? row.usd : undefined); return typeof value === 'number' && Number.isFinite(value) && value > 0; }))
-    .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at));
-  const p = inWindow(parallel), m = inWindow(metals);
+export function buildWeeklyHarvest(parallel: Observation[], _official: Observation[], metals: Observation[], now = new Date(), previous: Observation[] = [], previousMetals: Observation[] = [], mode: 'current' | 'completed' = 'completed'): WeeklyHarvestData {
+  const { start, end } = harvestWindow(now, mode);
+  const startTime = Date.parse(start), endTime = Date.parse(end);
   const items: WeeklyItem[] = [];
+  const observedTimes = new Set<number>();
   for (const [id, name, code, category, unit] of definitions) {
-    const key = id;
-    // Each category has one authoritative source table. Never substitute a legacy value from another market.
-    const rows = category === 'المعادن' ? m : p;
-    const readings = rows.map(row => ({ time: row.recorded_at, value: row.rates?.[key] ?? (key === 'USD' ? row.usd : undefined) }))
-      .filter((entry): entry is { time: string; value: number } => typeof entry.value === 'number' && Number.isFinite(entry.value) && entry.value > 0);
-    // A corrected row can share the same observation time. The later database row is authoritative.
-    const values = [...new Map(readings.map(entry => [entry.time, entry])).values()];
-    if (!values.length) continue;
-    const priorRows = [...(category === 'المعادن' ? previousMetals : previous)]
-      .filter(row => Date.parse(row.recorded_at) < Date.parse(start) && Date.parse(row.recorded_at) >= Date.parse(start) - 7 * 86400000)
-      .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at))
-      .map(row => ({ row, value: row.rates?.[key] ?? (key === 'USD' ? row.usd : undefined) }))
-      .filter((entry): entry is { row: Observation; value: number } => typeof entry.value === 'number' && Number.isFinite(entry.value) && entry.value > 0);
-    const previousValues = priorRows.map(entry => entry.value), priorRow = priorRows.at(-1)?.row;
+    const readings = (rows: Observation[]) => rows.map(row => ({ time: Date.parse(row.recorded_at), value: id === 'USD' ? row.usd ?? row.rates?.USD : row.rates?.[id] }))
+      .filter((entry): entry is { time: number; value: number } => Number.isFinite(entry.time) && entry.time >= startTime - 7 * 86400000 && entry.time < endTime &&
+        typeof entry.value === 'number' && Number.isFinite(entry.value) && entry.value > 0);
+    const primary = readings([...previous.filter(row => Date.parse(row.recorded_at) < startTime), ...parallel.filter(row => Date.parse(row.recorded_at) >= startTime)]);
+    // Writers persist metals in parallel_rates first; metal_rates is only a best-effort legacy copy.
+    const firstPrimary = Math.min(...primary.map(entry => entry.time));
+    const legacy = category === 'المعادن' ? readings([...previousMetals.filter(row => Date.parse(row.recorded_at) < startTime), ...metals.filter(row => Date.parse(row.recorded_at) >= startTime)]).filter(entry => entry.time < firstPrimary) : [];
+    const all = [...new Map([...legacy, ...primary].map(entry => [entry.time, entry])).values()].sort((a, b) => a.time - b.time);
+    const values = all.filter(entry => entry.time >= startTime);
+    const prior = all.filter(entry => entry.time < startTime).at(-1);
+    const latest = values.at(-1) ?? prior;
+    if (!latest) continue;
+    values.forEach(entry => observedTimes.add(entry.time));
     const days = new Set(values.map(entry => dayFormat.format(new Date(entry.time)))).size;
-    const open = previousValues.at(-1) ?? values[0].value, close = values[values.length - 1].value;
-    const change = values.length > 1 || previousValues.length > 0 ? close - open : null;
+    const first = prior ?? values[0];
+    const open = first.value, close = latest.value;
+    const change = values.length > 0 && (values.length > 1 || prior) ? close - open : null;
     items.push({ id, name, code, category, unit, open, close, high: Math.max(open, ...values.map(v => v.value)), low: Math.min(open, ...values.map(v => v.value)),
       change, changePct: change === null ? null : change / open * 100, days, observations: values.length,
-      ...(previousValues.length ? { previousClose: previousValues[previousValues.length - 1] } : {}),
-      firstAt: priorRow?.recorded_at || values[0].time, lastAt: values[values.length - 1].time });
+      ...(prior ? { previousClose: prior.value } : {}),
+      firstAt: new Date(first.time).toISOString(), lastAt: new Date(latest.time).toISOString() });
   }
   const movers = items.filter(item => item.changePct !== null);
   const biggestMover = movers.reduce<WeeklyItem | null>((best, item) => !best || Math.abs(item.changePct!) > Math.abs(best.changePct!) ? item : best, null);
   const date = (value: string | number) => new Date(value).toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli', day: 'numeric', month: 'long', year: 'numeric' });
-  return { title: 'حصاد الأسبوع', dateRange: `${date(start)} إلى ${date(Date.parse(end) - 1)}`, start, end,
-    generatedAt: now.toISOString(), items, notes: harvestNotes(items), observationCount: p.length + m.length,
-    daysObserved: new Set([...p, ...m].map(row => dayFormat.format(new Date(row.recorded_at))).filter(Boolean)).size,
+  return { title: mode === 'current' ? 'حصاد الأسبوع حتى الآن' : 'حصاد الأسبوع', dateRange: `${date(start)} إلى ${date(endTime - 1)}`, start, end,
+    generatedAt: now.toISOString(), inProgress: mode === 'current', items, notes: harvestNotes(items), observationCount: observedTimes.size,
+    daysObserved: new Set([...observedTimes].map(time => dayFormat.format(new Date(time)))).size,
     overallDirection: harvestDirection(items), biggestMover };
 }

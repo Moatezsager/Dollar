@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Facebook, Send } from 'lucide-react';
-import { WeeklyHarvestData, harvestDirection, harvestNotes, harvestNumber } from '../../shared/weeklyHarvest';
+import { WeeklyHarvestData, harvestDirection, harvestNotes, harvestNumber, harvestTimestamp } from '../../shared/weeklyHarvest';
 
 const xml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]!));
 const WIDTH = 1800;
@@ -39,10 +39,10 @@ export async function renderWeeklyHarvestImage(data: WeeklyHarvestData): Promise
   await text('عملات · حوالات · معادن', 32, 65, 220, 12, '#4a5f50', false, 'left');
   const logo = await readFile(resolve(process.env.NODE_ENV === 'production' ? 'dist/logo.png' : 'public/logo.png'));
   overlays.push({ input: await sharp(logo).resize(108, 108).png().toBuffer(), left: 1628, top: 54 });
-  await text('حصاد الأسبوع', 475, 114, 393, 33, '#153b29', true);
+  await text(data.title, 475, 114, 393, data.inProgress ? 25 : 33, '#153b29', true);
   await text(data.dateRange, 32, 121, 410, 14, '#253e30', true, 'left');
   await text(`الرصد في ${data.daysObserved} من 7 أيام · توقيت طرابلس`, 32, 152, 410, 12, '#4a5f50', false, 'left');
-  await text('آخر الأسعار المسجلة · دينار ليبي', 32, 185, 836, 12, '#4a5f50');
+  await text(`${data.inProgress ? 'الأسبوع جارٍ · البيانات حتى' : 'أسبوع مكتمل · نهاية الفترة'} ${harvestTimestamp(data.inProgress ? data.generatedAt : new Date(Date.parse(data.end) - 1).toISOString())} · طرابلس · دينار ليبي`, 32, 185, 836, 12, '#4a5f50');
 
   const highlight = ['USD', 'USD_CHECKS', 'EUR'].flatMap(id => items.filter(item => item.id === id));
   for (let index = 0; index < highlight.length; index++) {
@@ -60,7 +60,7 @@ export async function renderWeeklyHarvestImage(data: WeeklyHarvestData): Promise
   await text(`أكبر متحرك: ${mover ? `${mover.name} ${changeText(mover.changePct)}` : 'لا تتوفر مقارنة كافية'}`, 345, 365, 508, 14, '#214a32', true);
   await text(direction === 'up' ? '↑ الاتجاه العام يميل للارتفاع' : direction === 'down' ? '↓ الاتجاه العام يميل للتراجع' : '↔ الحركة متوازنة أو مستقرة', 47, 372, 285, 12, '#415b49', false, 'left');
 
-  const headers = ['الصنف / الوحدة', 'مرجع البداية', 'آخر رصد', 'الأدنى / الأعلى', 'التغير · د.ل / %'];
+  const headers = ['الصنف / الوحدة', 'مرجع البداية', 'آخر رصد', 'نطاق الفترة', 'التغير · د.ل / %'];
   for (let i = 0; i < headers.length; i++) await text(headers[i], 32 + (4 - i) * 167.2, 423, 167.2, 12, '#415b49', true, i === 0 ? 'right' : 'centre');
   let y = 454;
   for (const category of groups) {
@@ -71,8 +71,10 @@ export async function renderWeeklyHarvestImage(data: WeeklyHarvestData): Promise
       line(y + 45);
       await text(item.name, 708, y + 2, 152, 14, '#253e30', true);
       await text(item.unit, 708, y + 25, 152, 12, '#4a5f50');
-      await text(harvestNumber(item.open, item.id), 533.6, y + 13, 167.2, 14, '#415b49', false, 'centre');
-      await text(harvestNumber(item.close, item.id), 366.4, y + 12, 167.2, 15, '#1e3328', true, 'centre');
+      await text(harvestNumber(item.open, item.id), 533.6, y + 2, 167.2, 14, '#415b49', false, 'centre');
+      await text(item.previousClose === undefined ? 'أول رصد متاح' : harvestTimestamp(item.firstAt), 533.6, y + 25, 167.2, 12, '#4a5f50', false, 'centre');
+      await text(harvestNumber(item.close, item.id), 366.4, y + 2, 167.2, 15, '#1e3328', true, 'centre');
+      await text(harvestTimestamp(item.lastAt), 366.4, y + 25, 167.2, 12, '#4a5f50', false, 'centre');
       await text(`${harvestNumber(item.low, item.id)} / ${harvestNumber(item.high, item.id)}`, 199.2, y + 14, 167.2, 12, '#415b49', false, 'centre');
       const delta = item.change === null ? 'رصد محدود' : `${item.change > 0 ? '↑ +' : item.change < 0 ? '↓ −' : '— '}${harvestNumber(Math.abs(item.change), item.id)}`;
       await text(delta, 32, y + 2, 167.2, 13, changeColor(item.changePct), true, 'centre');
@@ -89,8 +91,8 @@ export async function renderWeeklyHarvestImage(data: WeeklyHarvestData): Promise
     await text(note, 46, y + 6, 807, 13, '#253e30', false, 'right', 48);
     y += 58;
   }
-  await text(`${data.observationCount} عملية رصد · ${data.daysObserved} من 7 أيام مرصودة`, 32, y + 8, 836, 12, '#415b49');
-  await text('مرجع البداية: آخر رصد من الأسبوع السابق عند توفره، وإلا أول رصد داخل الفترة.', 32, y + 34, 836, 12, '#415b49');
+  await text(`${data.observationCount} لقطة أسعار محفوظة · ${data.daysObserved} من 7 أيام مرصودة`, 32, y + 8, 836, 12, '#415b49');
+  await text('البداية: آخر رصد من الأسبوع السابق، وإلا أول رصد متاح. نطاق الفترة يشمل مرجع البداية.', 32, y + 34, 836, 12, '#415b49');
   await text('الأرقام للاسترشاد ولا تمثل عروض تنفيذ ملزمة.', 32, y + 61, 836, 12, '#415b49');
   y += 99;
   line(y);

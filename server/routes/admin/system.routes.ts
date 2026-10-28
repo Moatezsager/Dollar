@@ -444,8 +444,11 @@ export function createAdminSystemRouter(deps: AdminSystemDeps): express.Router {
   router.get('/weekly-harvest/data', async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      res.json({ success: true, ...await readWeeklyHarvest() });
+      const report = await readWeeklyHarvest();
+      if (res.headersSent || res.destroyed) return;
+      res.json({ success: true, ...report });
     } catch (error: any) {
+      if (res.headersSent || res.destroyed) return;
       res.status(503).json({ success: false, error: error.message || 'تعذر إعداد الحصاد الأسبوعي.' });
     }
   });

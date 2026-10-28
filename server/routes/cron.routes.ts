@@ -1,5 +1,5 @@
 import express from "express";
-import { cleanupOldData } from "../services/db.service";
+import { requestWorkerMaintenance } from "../services/worker-maintenance.service";
 import { 
   extractProvidedCronKey, 
   isValidCronSecret, 
@@ -45,15 +45,15 @@ router.get("/cleanup-db", cronCleanupLimiter, async (req: express.Request, res: 
   }
 
   try {
-    const details = await cleanupOldData();
-    res.json({
+    await requestWorkerMaintenance();
+    if (res.headersSent || res.destroyed) return;
+    res.status(202).json({
       success: true,
-      message: "تم تنظيف البيانات الأقدم مع الحفاظ على قراءات 30 يومًا كاملة واليوم الحالي وآخر سعر سابق",
-      details
+      message: "أُرسلت مهمة تنظيف وأرشفة سجل الأسعار إلى Worker."
     });
   } catch (err) {
     console.error("[Maintenance] Cleanup failed:", err);
-    if (!res.headersSent) {
+    if (!res.headersSent && !res.destroyed) {
       res.status(500).json({ success: false, error: "Internal server error during cleanup" });
     }
   }

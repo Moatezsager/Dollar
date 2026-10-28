@@ -12,8 +12,8 @@ async function main() {
     const html = await vite.transformIndexHtml('/__harvest', `<!doctype html><html dir="rtl" data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:16px">${process.argv.includes('--preview') ? '<aside style="padding:12px;text-align:center;background:#e6f2ed;color:#17452f">معاينة التصميم ببيانات اختبارية</aside>' : ''}<div id="root" class="app-shell"></div><script type="module">
       import React from 'react'; import {createRoot} from 'react-dom/client'; import {AdminWeeklyHarvest} from '/src/components/AdminWeeklyHarvest.tsx'; import {buildWeeklyHarvest} from '/shared/weeklyHarvest.ts'; import '/src/index.css';
       const parallel=[],official=[],metals=[];
-      for(let d=8;d<=14;d++) { const recorded_at='2026-10-'+String(d).padStart(2,'0')+'T10:00:00Z'; parallel.push({recorded_at,rates:{USD:10+(d-8)*.02,USD_CHECKS:12+(d-8)*.02,EUR:11.2-(d-8)*.01,GBP:12.6,TND:3.3,EGP:.2045,USD_TR:10.1,USD_AE:10.2,USD_CN:10.3}}); official.push({recorded_at,rates:{USD:6.4404+(d-8)*.0001,EUR:7.1}}); metals.push({recorded_at,rates:{GOLD_SCRAP_18:800+d,GOLD_SCRAP_21:900+d,GOLD_CAST_24:1000+d,GOLD_LIRA_8G:7000+d,SILVER_CAST_1000:12.5}}); }
-      window.fixtureData=buildWeeklyHarvest(parallel,official,metals,new Date('2026-10-15T12:00:00Z'));
+      for(let d=10;d<=16;d++) { const recorded_at='2026-10-'+String(d).padStart(2,'0')+'T10:00:00Z'; parallel.push({recorded_at,rates:{USD:10+(d-10)*.02,USD_CHECKS:10.3-(d-10)*.01,EUR:11.2-(d-10)*.01,GBP:12.6,TND:3.3,EGP:.2045,USD_TR:10.1,USD_AE:10.2,USD_CN:10.3}}); official.push({recorded_at,rates:{USD:6.4404+(d-10)*.0001,EUR:7.1}}); metals.push({recorded_at,rates:{GOLD_SCRAP_18:800+d,GOLD_SCRAP_21:900+d,GOLD_CAST_24:1000+d,GOLD_LIRA_8G:7000+d,SILVER_CAST_1000:12.5}}); }
+      window.fixtureData=buildWeeklyHarvest(parallel,official,metals,new Date('2026-10-17T12:00:00Z'));
       const fetchOriginal=window.fetch; window.fetch=(url,opts)=>{
         if(String(url).includes('/weekly-harvest/data'))return Promise.resolve(new Response(JSON.stringify({success:true,...window.fixtureData})));
         if(String(url).includes('/weekly-harvest/send-telegram')){window.sentHarvest=JSON.parse(opts.body);return Promise.resolve(new Response(JSON.stringify({success:true})));}
@@ -48,6 +48,7 @@ async function main() {
       await page.goto(base+'/__harvest', { waitUntil: 'domcontentloaded', timeout: 90000 }); await page.locator('#weekly-harvest-card tbody tr').first().waitFor({ timeout: 90000 });
       await page.waitForFunction(()=>document.querySelector('.harvest-preview').getBoundingClientRect().height>200);
       assert.equal(await page.locator('#weekly-harvest-card').getByText('الدولار الرسمي',{exact:true}).count(),0);
+      assert.equal(await page.locator('#weekly-harvest-card').getByText('اليورو الرسمي',{exact:true}).count(),0);
       assert.equal(await page.locator('.harvest-highlights [data-currency=USD_CHECKS]').count(),1);
       assert.equal(await page.locator('.harvest-highlights>div').count(),3);
       assert.equal(await page.locator('.harvest-table thead').count(),1);
@@ -73,8 +74,10 @@ async function main() {
         return parseFloat(getComputedStyle(cash).borderTopWidth)===2&&parseFloat(getComputedStyle(cash.querySelector('strong')).fontSize)>parseFloat(getComputedStyle(euro.querySelector('strong')).fontSize);
       }),'Cash USD has a green frame and a larger headline price');
       assert.equal(await page.locator('.harvest-summary-note').count(),await page.evaluate(()=>window.fixtureData.notes.length));
-      assert(await page.locator('.harvest-summary-note').filter({hasText:'دولار كاش'}).evaluate(node=>node.classList.contains('harvest-note-up')));
-      assert(await page.locator('.harvest-summary-note').filter({hasText:'يورو'}).evaluate(node=>node.classList.contains('harvest-note-neutral')),'Mixed rise/fall commentary stays neutral');
+      assert(await page.locator('.harvest-summary-note').filter({hasText:'نطاق الرصد'}).evaluate(node=>node.classList.contains('harvest-note-up')));
+      assert.equal(await page.locator('.harvest-summary-note').count(),3,'Keep the generated analysis concise');
+      assert.equal(await page.locator('.harvest-week-movement').count(),1);
+      assert(await page.locator('.harvest-coverage').getByText('7 من 7').count()>0,'Full coverage is stated only when all seven days have observations');
       assert(await page.evaluate(()=>[...document.querySelectorAll('.harvest-table tbody')].every(body=>[...body.lastElementChild.cells].every(cell=>getComputedStyle(cell).borderBottomWidth==='0px'))),'No redundant line after the last row of each group');
       assert.equal(await page.locator('.harvest-socials a').first().getAttribute('href'),'https://t.me/libya_index_dollar');
       assert.equal(await page.locator('.harvest-socials a').last().getAttribute('href'),'https://www.facebook.com/profile.php?id=61593953519936');
@@ -86,8 +89,8 @@ async function main() {
         await page.screenshot({path:path.join(out,`preview-${width}-${theme}.png`),fullPage:true});
       }
       const downloadPromise=page.waitForEvent('download',{timeout:10000}); await page.getByRole('button',{name:'تحميل الصورة',exact:true}).click(); const download=await downloadPromise;
-      const file=path.join(out,`bulletin-${width}.png`); await download.saveAs(file); const png=await fs.readFile(file); assert.equal(png.readUInt32BE(16),1080); assert(png.length>30000);
-      assert.equal(download.suggestedFilename(),'weekly-harvest-2026-10-08.png');
+      const file=path.join(out,`bulletin-${width}.png`); await download.saveAs(file); const png=await fs.readFile(file); assert.equal(png.readUInt32BE(16),1800); assert(png.length>30000); assert(png.length<5*1024*1024);
+      assert.equal(download.suggestedFilename(),'weekly-harvest-2026-10-10.png');
       const save=page.getByRole('link',{name:'حفظ ملف الصورة',exact:true}), savedUrl=await save.getAttribute('href');
       assert(savedUrl.startsWith('blob:'));
       assert(await page.evaluate(async url=>{
@@ -114,7 +117,7 @@ async function main() {
         assert(await save.isVisible(),'Keep the file available when sharing is denied');
       }else assert.equal(await page.getByRole('button',{name:'مشاركة الصورة',exact:true}).count(),0);
       const openImage=page.waitForEvent('popup');await page.getByRole('link',{name:'فتح الصورة',exact:true}).click();const imagePage=await openImage;
-      await imagePage.waitForLoadState('load');assert.equal(imagePage.url(),savedUrl);assert(await imagePage.locator('img').evaluate(image=>image.complete&&image.naturalWidth===1080));await imagePage.close();
+      await imagePage.waitForLoadState('load');assert.equal(imagePage.url(),savedUrl);assert(await imagePage.locator('img').evaluate(image=>image.complete&&image.naturalWidth===1800));await imagePage.close();
       await page.getByRole('button',{name:'إرسال للإدارة',exact:true}).click();await page.getByText('أُرسلت المعاينة إلى محادثة الإدارة.',{exact:true}).waitFor();
       const payload=await page.evaluate(()=>window.sentHarvest);assert(payload.imageBase64.startsWith('data:image/png;base64,iVBOR'));assert(payload.caption.length<=1024);
       assert.deepEqual(await page.evaluate(()=>window.policyViolations),[],'The export must respect production CSP without fetching data URLs');
@@ -139,7 +142,7 @@ async function main() {
       assert.equal(await page.locator('.harvest-highlights').count(),0,'Do not leave an empty quote band when key currencies are hidden');
       assert.deepEqual(errors,[]); await context.close();
     }
-    console.log('PASS: responsive preview, CSP-safe 1080px PNG with Android touch, Blob download/open, native share/cancel/denial, upload encoding and stale-file cleanup. Screenshots: '+out);
+    console.log('PASS: responsive preview, CSP-safe 1800px PNG with Android touch, Blob download/open, native share/cancel/denial, upload encoding and stale-file cleanup. Screenshots: '+out);
   } finally {await browser?.close(); await vite.close();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

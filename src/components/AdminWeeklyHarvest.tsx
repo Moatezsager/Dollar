@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Download, Send, Facebook, RefreshCw, Copy, Check, Eye, SlidersHorizontal, RotateCcw, ArrowUpRight, ArrowDownRight, Minus, FileText, Share2, ExternalLink } from 'lucide-react';
 import { toBlob } from 'html-to-image';
-import { harvestNotes, harvestNumber, WeeklyHarvestData, WeeklyItem } from '../../shared/weeklyHarvest';
+import { harvestDirection, harvestNotes, harvestNumber, WeeklyHarvestData, WeeklyItem } from '../../shared/weeklyHarvest';
 import { libyaDayKey } from '../utils/rateHistory';
 import '../styles/weekly-harvest.css';
 
@@ -34,8 +34,11 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
   const operation = useRef(false);
   const visible = items.filter(item => !hidden.includes(item.id));
   const notes = noteDraft === null ? harvestNotes(visible) : noteDraft.split('\n').map(line => line.trim()).filter(Boolean);
+  const visibleMovers = visible.filter(item => item.changePct !== null);
+  const biggestVisibleMover = visibleMovers.reduce<WeeklyItem | null>((best, item) => !best || Math.abs(item.changePct!) > Math.abs(best.changePct!) ? item : best, null);
+  const visibleDirection = harvestDirection(visible);
   const invalid = visible.some(item => fields.some(([key]) => !Number.isFinite(item[key]) || item[key] <= 0) ||
-    item.high < Math.max(item.open, item.close, item.low) || item.low > Math.min(item.open, item.close, item.high));
+    item.high < Math.max(item.previousClose === undefined ? item.open : item.close, item.close, item.low) || item.low > Math.min(item.previousClose === undefined ? item.open : item.close, item.close, item.high));
   const canExport = !!data && visible.length > 0 && !invalid && !!title.trim() && !loading && !busy;
   useEffect(() => { setDownload(null); setFeedback(''); }, [items, title, noteDraft, hidden, data]);
   useEffect(() => () => { if (download) URL.revokeObjectURL(download.url); }, [download]);
@@ -69,7 +72,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
     setItems(old => old.map((item, i) => {
       if (i !== index) return item;
       const next = { ...item, [field]: value };
-      next.change = next.days > 1 && Number.isFinite(next.open + next.close) ? Number((next.close - next.open).toFixed(6)) : null;
+      next.change = (next.observations > 1 || next.previousClose !== undefined) && Number.isFinite(next.open + next.close) ? next.close - next.open : null;
       next.changePct = next.change === null || next.open <= 0 ? null : next.change / next.open * 100;
       return next;
     })); setDirty(true);
@@ -85,7 +88,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
       else {
         await document.fonts.ready;
         await Promise.all([...card.current!.querySelectorAll('img')].map(image => image.decode()));
-        const blob = download?.file || await toBlob(card.current!, { pixelRatio: 1.2, backgroundColor: '#ffffff', style: { transform: 'none', position: 'static' } });
+        const blob = download?.file || await toBlob(card.current!, { pixelRatio: 2, backgroundColor: '#ffffff', style: { transform: 'none', position: 'static' } });
         if (!blob || !blob.size) throw new Error('تعذر تجهيز الصورة. أعد المحاولة.');
         if (blob.size > 5 * 1024 * 1024) throw new Error('الصورة أكبر من 5 ميجابايت. قلل الأصناف أو طول النص.');
         if (action === 'download') {
@@ -98,7 +101,10 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
           if (!window.ClipboardItem) throw new Error('نسخ الصور غير مدعوم في هذا المتصفح. استخدم تحميل الصورة.');
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
         } else {
-          const caption = [title, data!.dateRange, '', ...notes, '', `تابعنا على تيليجرام: ${telegramUrl}`, `فيسبوك: ${facebookUrl}`, 'https://dollar-price-qp14.onrender.com/'].join('\n');
+          const socialPrices = visible.filter(item => ['USD', 'USD_CHECKS', 'EUR'].includes(item.id)).map(item =>
+            `${item.name}: ${harvestNumber(item.close, item.id)} د.ل${item.changePct === null ? '' : ` (${signed(item.changePct, item.id)}%)`}`);
+          const caption = [title, data!.dateRange, '', ...socialPrices, `أكبر متحرك: ${biggestVisibleMover ? `${biggestVisibleMover.name} ${signed(biggestVisibleMover.changePct!, biggestVisibleMover.id)}%` : 'لا تتوفر مقارنة كافية'}`,
+            '', `تابعنا على تيليجرام: ${telegramUrl}`, `فيسبوك: ${facebookUrl}`, `https://dollar-price-qp14.onrender.com/weekly-report/${libyaDayKey(Date.parse(data!.end) - 86400000)}`].join('\n');
           if (caption.length > 1024) throw new Error('نص النشرة أطول من حد الإرسال. اختصر الملاحظات إلى 1024 حرفًا مع العنوان والتاريخ.');
           const imageBase64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader(); reader.onload = () => resolve(reader.result as string);
@@ -129,7 +135,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
     } finally { operation.current = false; setBusy(''); }
   };
   return <div className="weekly-harvest" dir="rtl">
-    <header className="harvest-heading"><div><span className="harvest-eyebrow">غرفة النشر</span><h2>الحصاد الأسبوعي</h2><p>{data?.dateRange || 'آخر سبعة أيام مكتملة'} <span>· بتوقيت طرابلس</span></p></div>
+    <header className="harvest-heading"><div><span className="harvest-eyebrow">غرفة النشر</span><h2>الحصاد الأسبوعي</h2><p>{data?.dateRange || 'جارٍ تحديد فترة التقرير'} <span>· بتوقيت طرابلس</span></p></div>
       <button onClick={load} disabled={loading || !!busy}><RefreshCw size={17} className={loading ? 'animate-spin' : ''} />{loading ? 'جارٍ الاحتساب' : 'تحديث البيانات'}</button></header>
     <div className="harvest-toolbar"><div role="group" aria-label="عرض النشرة"><button aria-pressed={!editing} onClick={() => setEditing(false)}><Eye size={17} />المعاينة</button>
       <button aria-pressed={editing} onClick={() => setEditing(true)}><SlidersHorizontal size={17} />تحرير النشرة</button></div><span>{visible.length} صنف{dirty ? ' · مسودة معدّلة' : ' · من السجل المحفوظ'}</span></div>
@@ -145,16 +151,25 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
         <div className="harvest-edit-items">{items.map((item, index) => <fieldset disabled={!!busy || loading} key={item.id}><legend><label><input disabled={!!busy || loading} type="checkbox" checked={!hidden.includes(item.id)} onChange={e => { setHidden(old => e.target.checked ? old.filter(id => id !== item.id) : [...old, item.id]); setDirty(true); }} />{item.name}</label><span>{item.category}</span></legend>
           <div>{fields.map(([key, name]) => <label key={key}>{name}<input aria-label={`${name} ${item.name}`} type="number" inputMode="decimal" min="0.0001" step="0.0001" dir="ltr" value={Number.isFinite(item[key]) ? Number(item[key].toFixed(6)) : ''} onChange={e => editPrice(index, key, e.target.valueAsNumber)} /></label>)}</div></fieldset>)}</div>
       </section>}
-      <div className="harvest-preview-heading"><h3>نشرة الأسعار</h3><span>1080 px · PNG</span></div>
+      <div className="harvest-preview-heading"><h3>نشرة الأسعار</h3><span>1800 px · PNG</span></div>
       <div ref={wrapper} className="harvest-preview"><div style={{ height: height * scale, position: 'relative' }}>
         <article ref={card} id="weekly-harvest-card" className="harvest-sheet" style={{ transform: `scale(${scale})`, transformOrigin: 'top right' }}>
           <header className="harvest-sheet-head"><div className="harvest-brand"><img src="/logo.png" alt="مؤشر الدينار" width={54} height={54} /><div><strong>مؤشر الدينار</strong><span>أسعار العملات في ليبيا</span></div></div><span className="harvest-edition">تقرير الأسواق<span>عملات · حوالات · معادن</span></span></header>
-          <div className="harvest-sheet-title"><h1>{title}</h1><div className="harvest-period"><p>{data.dateRange}</p><span>سبعة أيام مكتملة · توقيت طرابلس</span></div></div>
+          <div className="harvest-sheet-title"><h1>{title}</h1><div className="harvest-period"><p>{data.dateRange}</p><span>{data.daysObserved === 7 ? 'سبعة أيام مرصودة' : `الرصد متوفر في ${data.daysObserved} أيام من 7`} · توقيت طرابلس</span></div></div>
           {visible.some(item => highlightIds.includes(item.id)) && <><p className="harvest-quote-caption">آخر الأسعار المسجلة خلال الفترة · دينار ليبي</p><div className="harvest-highlights">{visible.filter(item => highlightIds.includes(item.id)).map(item =>
-            <div key={item.id} data-currency={item.id}><div className="harvest-highlight-label"><span>{item.name}</span><small>{item.code}</small></div><strong dir="ltr">{harvestNumber(item.close, item.id)} <small>د.ل</small></strong></div>
+            <div key={item.id} data-currency={item.id}><div className="harvest-highlight-label"><span>{item.name}</span><small>{item.code}</small></div><strong dir="ltr">{harvestNumber(item.close, item.id)} <small>د.ل</small></strong>
+              {item.changePct !== null && <small className={`harvest-highlight-change ${item.changePct > 0 ? 'harvest-up' : item.changePct < 0 ? 'harvest-down' : ''}`} dir="ltr">{item.changePct > 0 ? '↑ +' : item.changePct < 0 ? '↓ −' : '— '}{Math.abs(item.changePct).toFixed(2)}%</small>}
+              {item.previousClose !== undefined && <small className="harvest-previous-week">الأسبوع الماضي: {harvestNumber(item.previousClose, item.id)} د.ل</small>}
+            </div>
           )}</div></>}
+          <div className={`harvest-week-movement harvest-week-${visibleDirection}`}>
+            <span>{visibleDirection === 'up' ? '↑' : visibleDirection === 'down' ? '↓' : '↔'}</span>
+            <strong>أكبر متحرك هذا الأسبوع</strong>
+            <span>{biggestVisibleMover ? `${biggestVisibleMover.name} ${signed(biggestVisibleMover.changePct!, biggestVisibleMover.id)}%` : 'لا تتوفر مقارنة كافية'}</span>
+            <small>{visibleDirection === 'up' ? 'الاتجاه العام يميل للارتفاع' : visibleDirection === 'down' ? 'الاتجاه العام يميل للتراجع' : 'الحركة متوازنة أو مستقرة'}</small>
+          </div>
           <div className="harvest-sheet-body"><table className="harvest-table" aria-label="تفاصيل الحصاد الأسبوعي"><caption>تفاصيل الرصد <span>الأسعار بالدينار الليبي لكل وحدة موضحة</span></caption>
-            <thead><tr><th scope="col">الصنف / الوحدة</th><th scope="col">أول رصد</th><th scope="col">آخر رصد</th><th scope="col">الأدنى / الأعلى</th><th scope="col">التغير<small>د.ل / %</small></th></tr></thead>
+            <thead><tr><th scope="col">الصنف / الوحدة</th><th scope="col">مرجع البداية</th><th scope="col">آخر رصد</th><th scope="col">الأدنى / الأعلى</th><th scope="col">التغير<small>د.ل / %</small></th></tr></thead>
             {Array.from(new Set(visible.map(item => item.category))).map(category => <tbody key={category}><tr className="harvest-market"><th scope="rowgroup" colSpan={5}>{category}</th></tr>
               {visible.filter(item => item.category === category).map(item => <tr key={item.id} data-currency={item.id}><th scope="row"><b>{item.name}</b><small>{item.unit}</small></th><td dir="ltr">{harvestNumber(item.open, item.id)}</td><td dir="ltr"><b>{harvestNumber(item.close, item.id)}</b></td>
                 <td dir="ltr">{harvestNumber(item.low, item.id)} / {harvestNumber(item.high, item.id)}</td><td><span dir="ltr" className={`harvest-delta ${item.change && item.change > 0 ? 'harvest-up' : item.change && item.change < 0 ? 'harvest-down' : ''}`}>
@@ -165,7 +180,8 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
               const Icon = tone === 'up' ? ArrowUpRight : tone === 'down' ? ArrowDownRight : Minus;
               return <div key={i} className={`harvest-summary-note harvest-note-${tone}`}><Icon size={15} aria-hidden="true" /><span>{note}</span></div>;
             })}</div></section>}
-            <p className="harvest-method">أول وآخر رصد من السجلات المتاحة داخل الفترة. غياب الرصد في بعض الأيام لا يعني ثبات السعر. الأرقام للاسترشاد ولا تمثل عروض تنفيذ ملزمة.{dirty ? ' تتضمن النشرة تعديلات تحريرية.' : ''}</p>
+            <p className="harvest-coverage">الرصد متوفر في {data.daysObserved} من 7 أيام · {data.observationCount} عملية رصد ضمن سجلات الفترة.</p>
+            <p className="harvest-method">مرجع البداية هو آخر رصد من الأسبوع السابق عند توفره، وإلا أول رصد داخل الفترة. غياب الرصد لا يعني ثبات السعر. الأرقام للاسترشاد ولا تمثل عروض تنفيذ ملزمة.{dirty ? ' تتضمن النشرة تعديلات تحريرية.' : ''}</p>
           </div><footer className="harvest-sheet-footer"><div className="harvest-follow"><strong>تابع مؤشر الدينار</strong><div className="harvest-socials">
             <a href={telegramUrl} target="_blank" rel="noopener noreferrer"><Send size={21} className="harvest-telegram" aria-hidden="true" /><span><b>تيليجرام</b><small dir="ltr">@libya_index_dollar</small></span></a>
             <a href={facebookUrl} target="_blank" rel="noopener noreferrer"><Facebook size={21} className="harvest-facebook" aria-hidden="true" /><span><b>فيسبوك</b><small>مؤشر الدينار</small></span></a>

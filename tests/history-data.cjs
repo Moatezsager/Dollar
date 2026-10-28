@@ -25,11 +25,11 @@ async function main() {
   };
   const supabase = { from(table) {
     queries++;
-    let start = 0, end = Infinity;
-    const query = { select: () => query, order: () => query, limit: () => query,
-      gte: () => query, lte: () => query, abortSignal: () => query,
+    let start = 0, end = Infinity, equal;
+    const query = { select: () => query, order: () => query, limit: () => query, eq: (_column, value) => { equal = value; return query; },
+      gte: () => query, lte: () => query, lt: () => query, abortSignal: () => query,
       range(a, b) { start = a; end = b; return query; },
-      then: resolve => Promise.resolve({ data: rows[table].slice(start, end + 1), error: readFailure ? { message: 'Fixture page failed' } : null }).then(resolve) };
+      then: resolve => Promise.resolve({ data: (rows[table] || []).filter(row => !equal || row.source_table === equal).slice(start, end + 1), error: readFailure ? { message: 'Fixture page failed' } : null }).then(resolve) };
     return query;
   } };
   const helpers = { exports: {} };
@@ -42,6 +42,7 @@ async function main() {
     '../db': { db: {}, supabase, supabaseAnonKey: 'fixture-only' },
     '../state': state, '../config': { appConfig: {} },
     '../utils/helpers': helpers.exports,
+    './rate-history-archive.service': { archiveOldRateHistory: async () => ({ summarized_days: 0, removed: {} }) },
     './reporting.service': { updateStats() {} }, './alert.service': { checkAndAlertIfCritical: async () => {} },
   };
   const filename = path.join(process.cwd(), 'server/services/db.service.ts');
@@ -64,10 +65,10 @@ async function main() {
   assert.deepEqual([...history[0].observed.parallel], ['GOLD_SCRAP_18']);
   assert.deepEqual([...history[2].observed.parallel], [], 'Carried USD is not another USD observation');
   assert.equal(await mod.exports.fetchHistoryFromSupabase(), history);
-  assert.equal(queries, 3, 'Repeated history requests reuse the existing cache');
+  assert.equal(queries, 6, 'Raw and archive reads reuse the existing cache');
   mod.exports.clearDbCache();
   await mod.exports.fetchHistoryFromSupabase();
-  assert.equal(queries, 6);
+  assert.equal(queries, 12);
   rows.parallel_rates[2].usd = 99;
   mod.exports.clearDbCache();
   const corrected = await mod.exports.fetchHistoryFromSupabase(true);
@@ -162,11 +163,18 @@ async function main() {
     recorded_at: new Date(Date.parse('2026-10-01T00:00:00Z') + i * 300000).toISOString(),
     usd: i === 3 ? 12 : 10 + i / 100000, rates: { USD: i === 3 ? 12 : 10 + i / 100000, EUR: 11.1234 }
   }));
+  rows.rate_history_daily = [{ source_table: 'parallel_rates', local_date: '2026-05-01',
+    mean_rates: { USD: 8.8, EUR: 9.2 }, low_rates: { USD: 8.7 }, high_rates: { USD: 9 },
+    last_rates: { USD: 8.9 }, weekly_close_rates: null, observations: 3 }];
   rows.official_rates = []; rows.metal_rates = [];
   mod.exports.clearDbCache(); queries = 0;
   const [month, sameMonth] = await Promise.all([mod.exports.fetchHistoryFromSupabase(true), mod.exports.fetchHistoryFromSupabase(true)]);
-  assert.equal(month, sameMonth); assert.equal(queries, 8, 'Six 500-row parallel pages plus two empty market reads, shared by concurrent visitors');
-  assert.equal(month.length, 2501, 'A month is not silently capped at 120/1000/3000 latest points');
+  assert.equal(month, sameMonth); assert.equal(queries, 11, 'Raw history pages and three archive reads are shared by concurrent visitors');
+  assert.equal(month.length, 2502, 'Six-month daily aggregates are merged with the full raw month');
+  assert.equal(month[0].usdParallel, 8.8, 'Archived daily means are available to six-month charts');
+  assert.equal(month[0].aggregation, 'daily', 'Daily means must never masquerade as a shared raw cash/check quote');
+  assert.equal(daily.retainedHistoryDay(Date.parse('2026-10-28T12:00:00Z')), '2026-04-28');
+  assert.equal(daily.retainedHistoryDay(Date.parse('2026-08-31T12:00:00Z')), '2026-02-28', 'Six-calendar-month retention clamps short month ends');
   const values = daily.getRateHistory(month, { code: 'USD', market: 'parallel' });
   assert.equal(Math.max(...values.map(p => p.value)), 12, 'Daily display compression must not erase the actual monthly high');
   const dailyMonth = daily.getDailyRateAverages(values);
@@ -175,10 +183,11 @@ async function main() {
   rows.parallel_rates[3] = { ...rows.parallel_rates[3], usd: 10.0001, rates: { USD: 10.0001, EUR: 11.1234 } };
   mod.exports.clearDbCache();
   const revised = await mod.exports.fetchHistoryFromSupabase(true);
-  assert(daily.getDailyRateAverages(daily.getRateHistory(revised, { code: 'USD', market: 'parallel' }))[0].value < dailyMonth[0].value,
+  const revisedMeans = daily.getDailyRateAverages(daily.getRateHistory(revised, { code: 'USD', market: 'parallel' }));
+  assert(revisedMeans[1].value < dailyMonth[1].value,
     'Manual corrections rebuild the daily mean from the preserved observations');
   mod.exports.clearDbCache(); readFailure = true;
-  await assert.rejects(mod.exports.fetchHistoryFromSupabase(true), /Incomplete history read/);
+  await assert.rejects(mod.exports.fetchHistoryFromSupabase(true), /Incomplete history read|archive read failed/);
   assert.equal(mod.exports.cachedHistory, null, 'Failed pages must not become a partial successful month');
   readFailure = false; rows.parallel_rates = Array.from({ length: 10001 }, (_, i) => ({
     usd: 10, recorded_at: new Date(Date.parse('2026-10-01T00:00:00Z') + i * 60000).toISOString(), rates: { USD: 10 }

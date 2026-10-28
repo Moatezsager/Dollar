@@ -439,7 +439,7 @@ export default function Admin() {
     return () => clearInterval(interval);
   }, [stats?.serverStartTime]);
   const handleCleanup = async () => {
-    if (!window.confirm("سيُنفذ أمر تنظيف السجلات القديمة. هل تريد المتابعة؟")) return;
+    if (!window.confirm("سيُحتفظ بقراءات آخر 30 يومًا وملخصات يومية لما قبلها حتى ستة أشهر. هل تريد تشغيل التنظيف؟")) return;
     setLoading(true);
     try {
       const res = await fetch("/api/admin/cleanup", {
@@ -448,7 +448,7 @@ export default function Admin() {
       });
       const data = await res.json();
       if (data.success) {
-        setSuccess("تم تنظيف البيانات القديمة بنجاح!");
+        setSuccess(data.message || "أُرسلت مهمة تنظيف وأرشفة الأسعار. يمكنك متابعة نتيجتها في سجل Worker.");
         fetchStats().catch(() => {});
 
 

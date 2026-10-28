@@ -41,6 +41,7 @@ export function getSpreadHistory(history: HistoryPoint[], now = Date.now()): Spr
   }
   const points: SpreadPoint[] = [];
   for (const [time, point] of byTime) {
+    if (point.aggregation === 'daily') continue;
     const observed = point.observed?.parallel;
     // Carried values and bank-specific check aliases cannot establish a shared cash/check quote.
     if (!Array.isArray(observed) || !observed.includes('USD') || !observed.includes('USD_CHECKS')) continue;

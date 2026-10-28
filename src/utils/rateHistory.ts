@@ -14,6 +14,14 @@ export function libyaDayKey(value: string | number) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+export function retainedHistoryDay(now = Date.now()) {
+  const [year, month, day] = libyaDayKey(now).split('-').map(Number);
+  const start = new Date(Date.UTC(year, month - 7, 1));
+  const lastDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+  start.setUTCDate(Math.min(day, lastDay));
+  return libyaDayKey(start.getTime());
+}
+
 export function getRateHistory(history: HistoryPoint[], target: { code: string; market: 'official' | 'parallel' }) {
   const points = history.filter(point => !point.observed || point.observed[target.market]?.includes(target.code))
     .map(point => ({ time: point.time, value: Number(

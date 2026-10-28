@@ -4,7 +4,6 @@ import { appConfig } from '../../config';
 import { supabase, supabaseAnonKey } from '../../db';
 import { Rates } from '../../types';
 import { 
-  cleanupOldData, 
   clearDbCache, 
   recentChangesLog, 
   syncCheckRates 
@@ -13,6 +12,7 @@ import { broadcastRateChanges } from '../../services/social.service';
 import { fetchHistoryFromSupabase } from '../../services/db.service';
 import { getIO } from '../../socket/socket.service';
 import { obfuscateData } from '../../utils/helpers';
+import { requestWorkerMaintenance } from '../../services/worker-maintenance.service';
 
 export interface AdminDatabaseDeps {
   broadcastRatesUpdate: (rates: Rates) => void;
@@ -209,11 +209,12 @@ export function createAdminDatabaseRouter(deps: AdminDatabaseDeps): express.Rout
   router.post('/cleanup', async (req: express.Request, res: express.Response) => {
     try {
       console.log(`[Admin] Manual cleanup triggered by admin session`);
-      await cleanupOldData(deps.clearUserLogs);
-      res.json({ success: true, message: "تم تنظيف البيانات القديمة بنجاح" });
+      await requestWorkerMaintenance();
+      if (res.headersSent || res.destroyed) return;
+      res.status(202).json({ success: true, message: "أُرسلت مهمة تنظيف وأرشفة السجل إلى Worker." });
     } catch (err) {
       console.error("Manual cleanup failed:", err);
-      if (!res.headersSent) {
+      if (!res.headersSent && !res.destroyed) {
         res.status(500).json({ success: false, message: "فشل تنظيف البيانات" });
       }
     }

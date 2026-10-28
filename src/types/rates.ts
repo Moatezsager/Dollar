@@ -12,6 +12,7 @@ export interface Rates {
 
 export interface HistoryPoint {
   time: string;
+  aggregation?: 'daily';
   observed?: { parallel: string[]; official: string[] };
   usdParallel: number;
   usdOfficial: number;

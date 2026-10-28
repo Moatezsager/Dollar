@@ -7,7 +7,7 @@ import { processIncomingVersion } from "../utils/autoUpdater";
 import { logErrorToServer } from "../utils/logger";
 import { enablePush, disablePush, syncPushSubscription } from "../utils/pushNotifications";
 import { DEFAULT_PRICE_THRESHOLD, IN_APP_DIGEST_INTERVAL, priceChanges, priceDigest, isQuietTime } from "../../shared/notifications";
-import { libyaDayKey } from '../utils/rateHistory';
+import { libyaDayKey, retainedHistoryDay } from '../utils/rateHistory';
 
 interface UseRatesDataOptions {
   playNotificationSound?: (type: 'up' | 'down') => void;
@@ -68,7 +68,7 @@ export function useRatesData(options?: UseRatesDataOptions) {
 
   const applyHistory = (next: HistoryPoint[]) => {
     const byTime = new Map<number, HistoryPoint>();
-    const firstDay = libyaDayKey(Date.now() - 30 * 86400000);
+    const firstDay = retainedHistoryDay();
     for (const point of next) {
       const time = Date.parse(point?.time);
       if (Number.isFinite(time) && libyaDayKey(time) >= firstDay && time <= Date.now() + 60000) byTime.set(time, { ...point, time: new Date(time).toISOString() });

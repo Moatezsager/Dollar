@@ -145,9 +145,15 @@ export function getLibyaDateString(now: Date = new Date()): string {
   return getLibyaTimeInfo(now).dateStr;
 }
 
-export function getPriceHistoryCutoff(now: Date = new Date()): string {
-  // Keep 30 complete Tripoli days plus today, including the start of a rolling month.
-  return new Date(Date.parse(`${getLibyaDateString(now)}T00:00:00+02:00`) - 30 * 86400000).toISOString();
+export function getPriceHistoryCutoff(now: Date = new Date(), days: number | 'six-months' = 30): string {
+  const [year, month, day] = getLibyaDateString(now).split('-').map(Number);
+  if (days === 'six-months') {
+    const monthStart = new Date(Date.UTC(year, month - 7, 1));
+    const lastDay = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0)).getUTCDate();
+    monthStart.setUTCDate(Math.min(day, lastDay));
+    return new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), monthStart.getUTCDate(), -2)).toISOString();
+  }
+  return new Date(Date.parse(`${getLibyaDateString(now)}T00:00:00+02:00`) - days * 86400000).toISOString();
 }
 
 /**

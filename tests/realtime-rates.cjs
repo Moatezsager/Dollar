@@ -14,7 +14,7 @@ async function listen(server) {
 
 async function main() {
   // Keep the intraday samples on two Tripoli dates, even when this test runs near midnight.
-  const baseTime = new Date().setUTCHours(10, 0, 0, 0);
+  const baseTime = Math.min(new Date().setUTCHours(10, 0, 0, 0), Date.now() - 60000);
   const makeRates = (offset, usd, eur, official, checks) => ({
     parallel: { USD: usd, EUR: eur, USD_CHECKS: checks },
     official: { USD: official, EUR: 7.1 },

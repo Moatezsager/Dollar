@@ -29,10 +29,11 @@
 .harvest-edit-items legend>span { margin-inline-start:10px; color:var(--muted-ink,#abb9b4); }
 .harvest-edit-items input[type=checkbox] { width:18px; height:18px; accent-color:#00815d; }
 .harvest-edit-items fieldset>div { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+@font-face { font-family:CairoReport; src:url('/fonts/Cairo.ttf') format('truetype'); font-style:normal; font-weight:200 1000; font-display:swap; }
 .harvest-preview-heading { margin:22px 0 12px; }
 .harvest-preview-heading>span { font-size:12px; color:var(--muted-ink,#abb9b4); }
 .harvest-preview { max-width:900px; margin:auto; overflow:hidden; border:1px solid var(--line,#34413c); }
-.weekly-harvest .harvest-sheet { width:900px; background:#fff; color:#202924; position:absolute; right:0; top:0; line-height:1.65; font-family:Cairo,Tahoma,Arial,sans-serif; padding:26px 32px 20px; border-top:5px solid #124c38; }
+.weekly-harvest .harvest-sheet { width:900px; background:#fff; color:#202924; position:absolute; right:0; top:0; line-height:1.65; font-family:CairoReport,Cairo,Tahoma,Arial,sans-serif; padding:26px 32px 20px; border-top:5px solid #124c38; }
 .harvest-sheet-head { display:flex; align-items:center; justify-content:space-between; gap:24px; padding-bottom:16px; border-bottom:2px solid #263d31; }
 .harvest-brand { display:flex; align-items:center; gap:12px; }
 .harvest-brand img { object-fit:contain; background:#073e2e; }
@@ -57,6 +58,15 @@
 .harvest-highlights strong { display:block; text-align:right; font-size:40px; line-height:1.5; font-family:Inter,Cairo,Arial,sans-serif; font-variant-numeric:tabular-nums; font-weight:750; }
 .harvest-highlights [data-currency=USD] strong { font-size:44px; }
 .harvest-highlights strong small { font-size:12px; font-family:Cairo,Tahoma,sans-serif; font-weight:500; color:#66716b; }
+.harvest-highlight-change,.harvest-previous-week { display:block; margin-top:2px; text-align:right; color:#35483d; font-size:12px; font-weight:700; }
+.harvest-previous-week { color:#59665e; font-weight:500; }
+.harvest-week-movement { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:6px 12px; margin:0 0 14px; padding:9px 12px; border:1px solid #d4dcd6; border-radius:6px; background:#f5f8f6; color:#263d31; font-size:13px; }
+.harvest-week-movement>span:first-child { grid-row:span 2; display:grid; place-items:center; width:30px; height:30px; border-radius:50%; background:#e3eee8; font-size:20px; font-weight:800; }
+.harvest-week-movement>span:nth-of-type(2) { text-align:left; font-weight:750; }
+.harvest-week-movement small { grid-column:2/-1; color:#4c5d52; font-size:12px; }
+.harvest-week-up>span:first-child { color:#16724c; }
+.harvest-week-down>span:first-child { color:#ae334d; }
+.harvest-coverage { margin:0; color:#42534a; font-size:12px; line-height:1.7; }
 .harvest-sheet-body { display:flow-root; }
 .harvest-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:14px; font-variant-numeric:tabular-nums; }
 .harvest-table caption { padding-bottom:8px; text-align:right; font-size:15px; font-weight:750; }
@@ -99,6 +109,8 @@
 .harvest-socials a small { display:block; font-size:11px; color:#4c5d52; }
 .harvest-footer-line { padding-top:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; font-size:10.5px; color:#66716b; }
 .harvest-footer-line strong { font-weight:400; }
+.harvest-sheet small,.harvest-brand span,.harvest-edition span,.harvest-period>span,.harvest-quote-caption,.harvest-table caption span,.harvest-table thead th,.harvest-method,.harvest-footer-line { font-size:12px; color:#4b5b51; }
+.harvest-highlights strong,.harvest-table td { font-family:CairoReport,Cairo,Tahoma,sans-serif; }
 .harvest-actions { display:flex; flex-wrap:wrap; gap:8px; border-top:1px solid var(--line,#34413c); padding-top:20px; margin-top:24px; }
 .weekly-harvest .harvest-primary { background:#007c59; color:white; border-color:#007c59; }
 .harvest-download { border-block:1px solid var(--line,#34413c); padding-block:18px; margin-top:18px; }

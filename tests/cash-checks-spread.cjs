@@ -37,6 +37,7 @@ assert.equal(JSON.stringify(data), before, 'Analysis cannot mutate shared histor
 console.log('PASS: signed difference, cash-denominated percentage, daily reference, equal-day mean, useful Arabic summary and immutable source data');
 
 const invalid = [
+  { ...point(now, 10, 11), aggregation: 'daily' },
   { ...point(now, 10, 11), time: 'invalid' }, point(now + 1, 10, 11), point(now, 0, 11), point(now, -10, 11),
   point(now, 10, NaN), point(now, 10, Infinity), point(now, '10', 11), point(now, 1e-308, 1e308),
   point(now, 10, 11, ['USD']), point(now, 10, 11, ['USD_CHECKS']), point(now, 10, 11, []),

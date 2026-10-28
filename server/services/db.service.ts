@@ -2,8 +2,9 @@ import { db, supabase, supabaseAnonKey } from '../db';
 import { rates, history } from '../state';
 import { appConfig } from '../config';
 import { HistoryPoint, PriceChangeLog, RateMap, AppConfig } from '../types';
-import { isSignificantChange, METAL_IDS, getPriceHistoryCutoff } from '../utils/helpers';
+import { isSignificantChange, METAL_IDS, getPriceHistoryCutoff, getLibyaDateString } from '../utils/helpers';
 import { updateStats } from './reporting.service';
+import { archiveOldRateHistory } from './rate-history-archive.service';
 
 // Half of one four-decimal unit avoids losing a 0.0001 change to floating-point noise.
 const OFFICIAL_CHANGE_THRESHOLD = 0.00005;
@@ -423,12 +424,20 @@ async function readHistoryFromSupabase() {
   }
   
   try {
-    const cutoff = getPriceHistoryCutoff(), until = new Date().toISOString(), signal = AbortSignal.timeout(10000);
+    const cutoff = getPriceHistoryCutoff(), archiveCutoff = getPriceHistoryCutoff(new Date(), 'six-months'), until = new Date().toISOString(), signal = AbortSignal.timeout(15000);
     const [parallelRes, officialRes, metalRes] = await Promise.all([
       readHistoryRows('parallel_rates', 'recorded_at, usd, rates', cutoff, until, signal),
       readHistoryRows('official_rates', 'recorded_at, usd, rates', cutoff, until, signal),
       readHistoryRows('metal_rates', 'recorded_at, rates', cutoff, until, signal)
     ]);
+    const archiveStart = getLibyaDateString(new Date(Date.parse(archiveCutoff))), rawStart = getLibyaDateString(new Date(Date.parse(cutoff)));
+    const archiveResults = await Promise.all(['parallel_rates', 'official_rates', 'metal_rates'].map(source_table =>
+      supabase!.from('rate_history_daily').select('source_table, local_date, mean_rates, low_rates, high_rates, last_rates, weekly_close_rates, observations')
+        .eq('source_table', source_table).gte('local_date', archiveStart).lt('local_date', rawStart)
+        .order('local_date', { ascending: true }).limit(200).abortSignal(signal)));
+    const archiveUnavailable = archiveResults.some(result => ['42P01', 'PGRST205'].includes(result.error?.code));
+    if (archiveResults.some(result => result.error && !['42P01', 'PGRST205'].includes(result.error.code))) throw new Error('Daily history archive read failed');
+    const archivedRows = archiveUnavailable ? [] : archiveResults.flatMap(result => result.data || []);
 
     if (parallelRes.error?.message.includes('relation "parallel_rates" does not exist') || 
         officialRes.error?.message.includes('relation "official_rates" does not exist')) {
@@ -459,6 +468,18 @@ async function readHistoryFromSupabase() {
     const metalData = metalRes.data || [];
 
     const timelineMap = new Map<string, Partial<HistoryPoint>>();
+
+    for (const row of archivedRows as any[]) {
+      const time = new Date(`${row.local_date}T12:00:00+02:00`).toISOString();
+      if (row.source_table === 'parallel_rates') timelineMap.set(time, { time, aggregation: 'daily', usdParallel: row.mean_rates?.USD, ratesParallel: row.mean_rates });
+      else if (row.source_table === 'official_rates') {
+        const point = timelineMap.get(time) || { time, aggregation: 'daily' as const };
+        point.usdOfficial = row.last_rates?.USD; point.ratesOfficial = row.last_rates; timelineMap.set(time, point);
+      } else {
+        const point = timelineMap.get(time) || { time, aggregation: 'daily' as const };
+        point.ratesParallel = { ...(point.ratesParallel || {}), ...(row.mean_rates || {}) }; timelineMap.set(time, point);
+      }
+    }
 
     parallelData.forEach((row: any) => {
       const timestamp = Date.parse(row.recorded_at);
@@ -524,6 +545,7 @@ async function readHistoryFromSupabase() {
       
       return {
         time: p.time!,
+        ...(p.aggregation ? { aggregation: p.aggregation } : {}),
         observed,
         usdParallel: lastUsdParallel,
         usdOfficial: lastUsdOfficial,
@@ -617,12 +639,16 @@ export function cleanupOldData(onUserLogsCleanup?: () => void): Promise<Record<s
   if (!cleanupRun) cleanupRun = (async () => {
     const cutoff30 = getPriceHistoryCutoff();
     const cutoff1 = new Date(Date.now() - 86400000).toISOString();
-    const signal = AbortSignal.timeout(10000);
-    const removed: Record<string, number> = {};
+    const removed: Record<string, number> = { exchange_rates: 0, parallel_rates: 0, official_rates: 0, metal_rates: 0, error_logs: 0, price_changes_log: 0 };
     const tables = ['exchange_rates', 'parallel_rates', 'official_rates', 'metal_rates', 'error_logs', 'price_changes_log'];
     const failures: string[] = [];
+    let archive: Awaited<ReturnType<typeof archiveOldRateHistory>> | null = null;
+    try { archive = await archiveOldRateHistory(supabase, new Date()); Object.assign(removed, archive.removed); }
+    catch (error: any) { failures.push('rate_history_daily'); console.error('[Cleanup] Daily history archive failed; price rows retained:', error?.message || 'Database request failed'); }
+    const signal = AbortSignal.timeout(10000);
     for (const table of tables) {
       const priceTable = table.endsWith('_rates');
+      if (['parallel_rates', 'official_rates', 'metal_rates'].includes(table)) continue;
       let cutoff = priceTable ? cutoff30 : cutoff1;
       try {
         if (priceTable) {
@@ -657,6 +683,7 @@ export function cleanupOldData(onUserLogsCleanup?: () => void): Promise<Record<s
       removed_exchange_rates: removed.exchange_rates, removed_parallel_rates: removed.parallel_rates,
       removed_official_rates: removed.official_rates, removed_metal_rates: removed.metal_rates,
       total_removed_rates: removed.exchange_rates + removed.parallel_rates + removed.official_rates + removed.metal_rates,
+      summarized_days: archive?.summarized_days || 0,
       removed_logs: removed.error_logs, removed_changes: removed.price_changes_log,
       cutoff_rates_date: cutoff30, cutoff_logs_date: cutoff1
     };

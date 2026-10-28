@@ -26,6 +26,7 @@ async function main() {
     '../../db': { supabase, supabaseAnonKey: 'fixture' },
     '../../services/db.service': { clearDbCache() { invalidations++; }, syncCheckRates: async () => {}, recentChangesLog: [], cleanupOldData: async () => {},
       fetchHistoryFromSupabase: async strict => { assert.equal(strict, true); if (historyFailure) throw Error('fixture unavailable'); return rows.map(row => ({ time: row.recorded_at, usdParallel: row.rates.USD, ratesParallel: row.rates })); } },
+    '../../services/worker-maintenance.service': { requestWorkerMaintenance: async () => {} },
     '../../services/social.service': { broadcastRateChanges: async () => { publishes++; } },
     '../../socket/socket.service': { getIO: () => ({ emit: (event, data) => events.push({ event, data }) }) },
     '../../utils/helpers': { obfuscateData: value => value }

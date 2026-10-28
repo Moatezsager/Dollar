@@ -27,6 +27,10 @@ import pushRouter, { handlePushSwRoute } from "./routes/push.routes";
 import trackingRouter, { handleTelegramPageRoute, handleTelegramBannerRoute } from "./routes/tracking.routes";
 import systemRouter from "./routes/system.routes";
 import { createAdminRouter } from "./routes/admin.routes";
+import { readWeeklyHarvest } from './services/weekly-harvest.service';
+import { renderWeeklyHarvestImage, renderWeeklyHarvestPreview } from './services/weekly-harvest-image.service';
+import { harvestSocialCaption, harvestWindow } from '../shared/weeklyHarvest';
+import { getLibyaDateString } from './utils/helpers';
 
 // State and services
 import { rates } from "./state";
@@ -152,6 +156,77 @@ export async function createApp(io: SocketIOServer) {
         official: { USD: rates.official.USD || null, EUR: rates.official.EUR || null }
       } : { status: 'failed', error: 'Rates synchronization failed' });
     }
+  });
+
+  const weeklyCards = new Map<string, { expiresAt: number; data: Awaited<ReturnType<typeof readWeeklyHarvest>>; image: Buffer; preview: Buffer; caption: string }>();
+  const weeklyCardReads = new Map<string, Promise<{ expiresAt: number; data: Awaited<ReturnType<typeof readWeeklyHarvest>>; image: Buffer; preview: Buffer; caption: string }>>();
+  const getWeeklyCard = async (week: string) => {
+    week = getLibyaDateString(new Date(Date.parse(harvestWindow(new Date(`${week}T12:00:00+02:00`)).end) - 86400000));
+    const cached = weeklyCards.get(week);
+    if (cached && cached.expiresAt > Date.now() && (Date.parse(cached.data.end) > Date.now() || Date.parse(cached.data.generatedAt) >= Date.parse(cached.data.end))) return cached;
+    let pending = weeklyCardReads.get(week);
+    if (!pending) {
+      pending = (async () => {
+        const data = await readWeeklyHarvest(new Date(`${week}T12:00:00+02:00`));
+        if (!data.items.length) throw new Error('لا توجد قراءات كافية لإعداد الحصاد.');
+        const image = await renderWeeklyHarvestImage(data);
+        const card = { expiresAt: Date.now() + 10 * 60 * 1000, data, image, preview: await renderWeeklyHarvestPreview(image), caption: harvestSocialCaption(data) };
+        weeklyCards.set(week, card);
+        while (weeklyCards.size > 4) weeklyCards.delete(weeklyCards.keys().next().value!);
+        return card;
+      })().finally(() => weeklyCardReads.delete(week));
+      weeklyCardReads.set(week, pending);
+    }
+    return pending;
+  };
+  const validWeek = (value: unknown): value is string => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const time = Date.parse(`${value}T12:00:00+02:00`);
+    return Number.isFinite(time) && getLibyaDateString(new Date(time)) === value && new Date(time).getUTCDay() === 5 &&
+      time >= Date.now() - 28 * 86400000 && value <= getLibyaDateString(new Date());
+  };
+  const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
+
+  app.get('/api/internal/weekly-harvest', async (req, res) => {
+    const expected = (process.env.WORKER_INTERNAL_SECRET || '').trim();
+    const given = String(req.headers['x-worker-secret'] || '').trim();
+    if (!expected || !given) return res.status(401).json({ success: false });
+    const a = crypto.createHash('sha256').update(expected).digest(), b = crypto.createHash('sha256').update(given).digest();
+    if (!crypto.timingSafeEqual(a, b)) return res.status(403).json({ success: false });
+    try {
+      const week = getLibyaDateString(new Date());
+      const card = await getWeeklyCard(week);
+      if (!card.data.items.length) return res.status(503).json({ success: false, error: 'لا توجد قراءات كافية لإعداد الحصاد.' });
+      if (res.headersSent || res.destroyed) return;
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ success: true, week: getLibyaDateString(new Date(Date.parse(card.data.end) - 86400000)), caption: card.caption, imageBase64: `data:image/png;base64,${card.image.toString('base64')}` });
+    } catch (error: any) {
+      if (!res.headersSent && !res.destroyed) res.status(503).json({ success: false, error: error.message || 'تعذر إعداد صورة الحصاد.' });
+    }
+  });
+
+  app.use('/weekly-report', apiLimiter);
+  app.get('/weekly-report/:week.png', async (req, res) => {
+    if (!validWeek(req.params.week)) return res.sendStatus(404);
+    try {
+      const card = await getWeeklyCard(req.params.week);
+      if (res.headersSent || res.destroyed) return;
+      res.setHeader('Content-Type', 'image/png'); res.setHeader('Cache-Control', 'public, max-age=600');
+      res.setHeader('X-Content-Type-Options', 'nosniff'); res.send(req.query.preview === '1' ? card.preview : card.image);
+    } catch { if (!res.headersSent && !res.destroyed) res.sendStatus(404); }
+  });
+  app.get('/weekly-report/:week', async (req, res) => {
+    if (!validWeek(req.params.week)) return res.sendStatus(404);
+    try {
+      const card = await getWeeklyCard(req.params.week);
+      const origin = (process.env.APP_URL || 'https://dollar-price-qp14.onrender.com').replace(/\/$/, '');
+      const title = `حصاد الأسبوع ${card.data.dateRange} | مؤشر الدينار`;
+      const description = card.data.notes.slice(0, 3).join(' ');
+      const image = `${origin}/weekly-report/${req.params.week}.png`;
+      if (res.headersSent || res.destroyed) return;
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta property="og:type" content="article"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:image" content="${escapeHtml(image)}?preview=1"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${escapeHtml(title)}"><meta property="og:url" content="${escapeHtml(`${origin}/weekly-report/${req.params.week}`)}"><meta name="twitter:card" content="summary_large_image"></head><body style="margin:0;background:#f3f7f4;font-family:Arial,sans-serif;color:#15392b"><main style="max-width:900px;margin:24px auto;padding:16px"><h1>${escapeHtml(title)}</h1><img src="${escapeHtml(image)}" alt="${escapeHtml(title)}" style="width:100%;height:auto"><p>${escapeHtml(description)}</p><a href="/">مؤشر الدينار</a></main></body></html>`);
+    } catch { if (!res.headersSent && !res.destroyed) res.sendStatus(404); }
   });
 
   // Catch-all 404 for any remaining unmatched /api/* routes

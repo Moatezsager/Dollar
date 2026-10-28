@@ -169,7 +169,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
             <small>{visibleDirection === 'up' ? 'الاتجاه العام يميل للارتفاع' : visibleDirection === 'down' ? 'الاتجاه العام يميل للتراجع' : 'الحركة متوازنة أو مستقرة'}</small>
           </div>
           <div className="harvest-sheet-body"><table className="harvest-table" aria-label="تفاصيل الحصاد الأسبوعي"><caption>تفاصيل الرصد <span>الأسعار بالدينار الليبي لكل وحدة موضحة</span></caption>
-            <thead><tr><th scope="col">الصنف / الوحدة</th><th scope="col">مرجع البداية</th><th scope="col">آخر رصد</th><th scope="col">الأدنى / الأعلى</th><th scope="col">التغير<small>د.ل / %</small></th></tr></thead>
+            <thead><tr><th scope="col">الصنف / الوحدة</th><th scope="col">مرجع البداية</th><th scope="col">آخر رصد</th><th scope="col">نطاق الفترة<small>يشمل مرجع البداية</small></th><th scope="col">التغير<small>د.ل / %</small></th></tr></thead>
             {Array.from(new Set(visible.map(item => item.category))).map(category => <tbody key={category}><tr className="harvest-market"><th scope="rowgroup" colSpan={5}>{category}</th></tr>
               {visible.filter(item => item.category === category).map(item => <tr key={item.id} data-currency={item.id}><th scope="row"><b>{item.name}</b><small>{item.unit}</small></th><td dir="ltr">{harvestNumber(item.open, item.id)}</td><td dir="ltr"><b>{harvestNumber(item.close, item.id)}</b></td>
                 <td dir="ltr">{harvestNumber(item.low, item.id)} / {harvestNumber(item.high, item.id)}</td><td><span dir="ltr" className={`harvest-delta ${item.change && item.change > 0 ? 'harvest-up' : item.change && item.change < 0 ? 'harvest-down' : ''}`}>
@@ -181,7 +181,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
               return <div key={i} className={`harvest-summary-note harvest-note-${tone}`}><Icon size={15} aria-hidden="true" /><span>{note}</span></div>;
             })}</div></section>}
             <p className="harvest-coverage">الرصد متوفر في {data.daysObserved} من 7 أيام · {data.observationCount} عملية رصد ضمن سجلات الفترة.</p>
-            <p className="harvest-method">مرجع البداية هو آخر رصد من الأسبوع السابق عند توفره، وإلا أول رصد داخل الفترة. غياب الرصد لا يعني ثبات السعر. الأرقام للاسترشاد ولا تمثل عروض تنفيذ ملزمة.{dirty ? ' تتضمن النشرة تعديلات تحريرية.' : ''}</p>
+            <p className="harvest-method">مرجع البداية هو آخر رصد من الأسبوع السابق عند توفره، وإلا أول رصد داخل الفترة. نطاق الفترة يشمل هذا المرجع لتبقى الأعمدة متسقة مع التغير المعروض. غياب الرصد لا يعني ثبات السعر. الأرقام للاسترشاد ولا تمثل عروض تنفيذ ملزمة.{dirty ? ' تتضمن النشرة تعديلات تحريرية.' : ''}</p>
           </div><footer className="harvest-sheet-footer"><div className="harvest-follow"><strong>تابع مؤشر الدينار</strong><div className="harvest-socials">
             <a href={telegramUrl} target="_blank" rel="noopener noreferrer"><Send size={21} className="harvest-telegram" aria-hidden="true" /><span><b>تيليجرام</b><small dir="ltr">@libya_index_dollar</small></span></a>
             <a href={facebookUrl} target="_blank" rel="noopener noreferrer"><Facebook size={21} className="harvest-facebook" aria-hidden="true" /><span><b>فيسبوك</b><small>مؤشر الدينار</small></span></a>

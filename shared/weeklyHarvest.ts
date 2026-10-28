@@ -25,7 +25,7 @@ export function harvestNotes(items: WeeklyItem[]): string[] {
   const movement = (item: WeeklyItem) => item.change === null ? `${item.name}: لا يكفي الرصد لحساب التغير` :
     item.change === 0 ? `${item.name} دون تغير بين أول وآخر رصد` : `${item.name} ${item.change > 0 ? 'ارتفع' : 'تراجع'} ${Math.abs(item.changePct!).toFixed(2)}%`;
   const notes: string[] = [];
-  if (cash) notes.push(`${movement(cash)}؛ نطاق الرصد ${harvestNumber(cash.low, cash.id)} إلى ${harvestNumber(cash.high, cash.id)} د.ل.`);
+  if (cash) notes.push(`${movement(cash)}؛ نطاق الفترة ${harvestNumber(cash.low, cash.id)} إلى ${harvestNumber(cash.high, cash.id)} د.ل.`);
   if (checks && cash && Date.parse(checks.lastAt) === Date.parse(cash.lastAt)) {
     const startGap = checks.open - cash.open, endGap = checks.close - cash.close;
     const diff = Number((Math.abs(endGap) - Math.abs(startGap)).toFixed(6));
@@ -84,12 +84,14 @@ export function buildWeeklyHarvest(parallel: Observation[], _official: Observati
   const items: WeeklyItem[] = [];
   for (const [id, name, code, category, unit] of definitions) {
     const key = id;
-    const metalRows = m.filter(row => Number.isFinite(row.rates?.[key]) && row.rates[key] > 0);
-    const rows = category === 'المعادن' && metalRows.length ? metalRows : p;
-    const values = rows.map(row => ({ time: row.recorded_at, value: row.rates?.[key] ?? (key === 'USD' ? row.usd : undefined) }))
+    // Each category has one authoritative source table. Never substitute a legacy value from another market.
+    const rows = category === 'المعادن' ? m : p;
+    const readings = rows.map(row => ({ time: row.recorded_at, value: row.rates?.[key] ?? (key === 'USD' ? row.usd : undefined) }))
       .filter((entry): entry is { time: string; value: number } => typeof entry.value === 'number' && Number.isFinite(entry.value) && entry.value > 0);
+    // A corrected row can share the same observation time. The later database row is authoritative.
+    const values = [...new Map(readings.map(entry => [entry.time, entry])).values()];
     if (!values.length) continue;
-    const priorRows = [...(category === 'المعادن' && metalRows.length ? previousMetals : previous)]
+    const priorRows = [...(category === 'المعادن' ? previousMetals : previous)]
       .filter(row => Date.parse(row.recorded_at) < Date.parse(start) && Date.parse(row.recorded_at) >= Date.parse(start) - 7 * 86400000)
       .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at))
       .map(row => ({ row, value: row.rates?.[key] ?? (key === 'USD' ? row.usd : undefined) }))
@@ -98,7 +100,7 @@ export function buildWeeklyHarvest(parallel: Observation[], _official: Observati
     const days = new Set(values.map(entry => dayFormat.format(new Date(entry.time)))).size;
     const open = previousValues.at(-1) ?? values[0].value, close = values[values.length - 1].value;
     const change = values.length > 1 || previousValues.length > 0 ? close - open : null;
-    items.push({ id, name, code, category, unit, open, close, high: Math.max(...values.map(v => v.value)), low: Math.min(...values.map(v => v.value)),
+    items.push({ id, name, code, category, unit, open, close, high: Math.max(open, ...values.map(v => v.value)), low: Math.min(open, ...values.map(v => v.value)),
       change, changePct: change === null ? null : change / open * 100, days, observations: values.length,
       ...(previousValues.length ? { previousClose: previousValues[previousValues.length - 1] } : {}),
       firstAt: priorRow?.recorded_at || values[0].time, lastAt: values[values.length - 1].time });

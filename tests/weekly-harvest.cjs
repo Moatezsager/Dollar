@@ -39,7 +39,7 @@ async function main() {
   assert.equal(report.items.find(i => i.id === 'OFFICIAL_USD'), undefined);
   assert(!report.items.some(i => i.id.startsWith('OFFICIAL_')), 'Official markets are excluded from the entire weekly report');
   assert(report.notes.some(note => note.includes('فارق الصكوك عن الكاش تقلّص من 2.00 إلى 1.90')));
-  assert(report.notes.some(note => note.includes('نطاق الرصد 10.00 إلى 10.20')));
+  assert(report.notes.some(note => note.includes('نطاق الفترة 10.00 إلى 10.20')));
   assert.equal(report.notes.length, 3, 'Three useful insights avoid repeating the cards and biggest-mover strip');
   assert.equal(report.daysObserved, 2, 'Coverage uses actually observed calendar days');
   assert.equal(report.observationCount, 4, 'Coverage counts only the sources included in the report');
@@ -76,6 +76,12 @@ async function main() {
   assert.equal(api.harvestNumber(-0.12, 'USD'), '-0.12');
   assert.equal(api.harvestNumber(0.0001, 'OFFICIAL_EUR'), '0.0001');
   assert.equal(report.items.find(i => i.id === 'GOLD_SCRAP_18').close, 810);
+  const noMetalFallback = api.buildWeeklyHarvest([row('2026-10-10T08:00:00Z', { GOLD_SCRAP_18: 999, USD: 10 })], [], [], now);
+  assert.equal(noMetalFallback.items.some(item => item.id === 'GOLD_SCRAP_18'), false, 'Metal values never fall back to the parallel market table');
+  const corrected = api.buildWeeklyHarvest([
+    row('2026-10-10T08:00:00Z', { USD: 10 }), row('2026-10-10T08:00:00Z', { USD: 10.1 }), row('2026-10-16T08:00:00Z', { USD: 10.2 })
+  ], [], [], now);
+  assert.equal(corrected.items.find(item => item.id === 'USD').observations, 2, 'Corrected readings at one timestamp count once');
   assert(!report.notes.join('').match(/الطلب|البورصة|المقاصة/));
   assert.equal(api.buildWeeklyHarvest([], [], [], now).items.length, 0);
   await api.readWeeklyHarvest(); assert.equal(queries, 3, 'All parallel pages and metals are read without querying official rates');

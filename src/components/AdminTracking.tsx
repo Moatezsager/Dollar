@@ -66,9 +66,36 @@ export function AdminTracking({ token, liveLogs = null }: { token: string; liveL
     controller.signal.addEventListener('abort', onAbort);
     return () => { controller.signal.removeEventListener('abort', onAbort); clearTimeout(timeout); controller.abort(); };
   }, [token, refresh]);
+  const [sortBy, setSortBy] = useState<'smart' | 'recent' | 'visits'>('smart');
   const filtered = logs.filter(log => (status === 'all' || Boolean(log.isOnline) === (status === 'online')) &&
     (device === 'all' || (log.deviceType || 'Unknown') === device) &&
     [log.ip, log.browser, log.os, log.deviceName, log.deviceModel, log.location, deviceNames[log.deviceType]].some(value => String(value || '').toLowerCase().includes(search.trim().toLowerCase())));
+
+  const sortedLogs = React.useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const timeA = new Date(a.last_active || a.timestamp || 0).getTime();
+      const timeB = new Date(b.last_active || b.timestamp || 0).getTime();
+      const validTimeA = Number.isFinite(timeA) ? timeA : 0;
+      const validTimeB = Number.isFinite(timeB) ? timeB : 0;
+
+      if (sortBy === 'visits') {
+        const visitsA = Number(a.visits) || 1;
+        const visitsB = Number(b.visits) || 1;
+        if (visitsB !== visitsA) return visitsB - visitsA;
+        return validTimeB - validTimeA;
+      }
+
+      if (sortBy === 'recent') {
+        return validTimeB - validTimeA;
+      }
+
+      // 'smart' (default): online visitors pinned at the top, followed by newest activity
+      if (Boolean(a.isOnline) !== Boolean(b.isOnline)) {
+        return a.isOnline ? -1 : 1;
+      }
+      return validTimeB - validTimeA;
+    });
+  }, [filtered, sortBy]);
   const growth = (value: number | null) => value == null ? 'المقارنة غير متاحة' : (value > 0 ? '+' : '') + number(value) + '% عن الفترة السابقة';
   const breakdown = (title: string, values: Record<string, number>, names: Record<string, string> = {}) => {
     const entries = Object.entries(values).sort((a, b) => b[1] - a[1]);
@@ -111,13 +138,20 @@ export function AdminTracking({ token, liveLogs = null }: { token: string; liveL
     </>}
     <section className="visitor-connections" aria-busy={logsBusy}><h3><Users size={20} aria-hidden="true" /> سجل اتصالات الزوار</h3>
       <p>أحدث الاتصالات حسب توقيت طرابلس. إعادة الاتصال لا تعني زيارة جديدة، والحالة تعكس وقت أخذ اللقطة.</p>
-      {capturedAt && <div className="visitor-snapshot"><span>آخر مزامنة: {date(capturedAt)}</span><span>{number(logs.filter(log => log.isOnline).length)} متصل الآن</span><span>{number(filtered.length)} نتيجة</span></div>}
+      {capturedAt && <div className="visitor-snapshot"><span>آخر مزامنة: {date(capturedAt)}</span><span>{number(logs.filter(log => log.isOnline).length)} متصل الآن</span><span>{number(sortedLogs.length)} نتيجة</span></div>}
       {trackingEnabled === false && <p className="analytics-warning">جمع سجل الزوار متوقف حاليًا. البيانات الظاهرة، إن وجدت، سابقة لإيقافه.</p>}
-      <div className="analytics-actions"><label className="analytics-search"><Search size={18} aria-hidden="true" /><input aria-label="بحث في الاتصالات" placeholder="المدينة، البلد، الجهاز أو عنوان IP" value={search} onChange={e => setSearch(e.target.value)} /></label>
+      <div className="analytics-actions">
+        <label className="analytics-search"><Search size={18} aria-hidden="true" /><input aria-label="بحث في الاتصالات" placeholder="المدينة، البلد، الجهاز أو عنوان IP" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <select aria-label="نوع الجهاز" value={device} onChange={e => setDevice(e.target.value)}><option value="all">كل الأجهزة</option>{Object.entries(deviceNames).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
-        <select aria-label="حالة الاتصال" value={status} onChange={e => setStatus(e.target.value)}><option value="all">كل الاتصالات</option><option value="online">متصل وقت اللقطة</option><option value="offline">غير متصل</option></select></div>
+        <select aria-label="حالة الاتصال" value={status} onChange={e => setStatus(e.target.value)}><option value="all">كل الاتصالات</option><option value="online">متصل وقت اللقطة</option><option value="offline">غير متصل</option></select>
+        <div className="visitor-sort-bar" role="group" aria-label="ترتيب سجل الزوار">
+          <button type="button" className={`visitor-sort-btn ${sortBy === 'smart' ? 'active' : ''}`} aria-pressed={sortBy === 'smart'} onClick={() => setSortBy('smart')}>المتصلون أولاً</button>
+          <button type="button" className={`visitor-sort-btn ${sortBy === 'recent' ? 'active' : ''}`} aria-pressed={sortBy === 'recent'} onClick={() => setSortBy('recent')}>الأحدث نشاطاً</button>
+          <button type="button" className={`visitor-sort-btn ${sortBy === 'visits' ? 'active' : ''}`} aria-pressed={sortBy === 'visits'} onClick={() => setSortBy('visits')}>الأكثر اتصالاً</button>
+        </div>
+      </div>
       <details className="visitor-accuracy"><summary>دقة الموقع والجهاز</summary><p>البلد والمدينة تقدير من عنوان الشبكة، وقد يشيران إلى مزوّد الإنترنت أو VPN. لا نطلب موقع GPS. اسم الجهاز وطرازه معلومات يبلّغ عنها المتصفح، وليسا تحققًا من الجهاز الفعلي؛ وقد لا يتيح المتصفح الطراز، خصوصًا إصدار iPhone. «غير متاح» تعني غياب المعلومة، ولا تعني أن الزائر بلا موقع.</p><p>السجل مؤقت لأحدث 200 جهاز؛ تُنظّف الاتصالات الأقدم من 24 ساعة دوريًا، ويُفقد السجل عند إعادة تشغيل الخادم. مرات الاتصال تشمل إعادة الاتصال ولا تمثل عدد زيارات الصفحات.</p></details>
-      {logsBusy ? <p role="status">جاري تحميل سجل الاتصالات...</p> : logsError ? <p role="alert">{logsError}</p> : <div className="analytics-table visitor-table"><table><caption className="sr-only">لقطة اتصالات الزوار ومعلومات الموقع والجهاز التقريبية</caption><thead><tr><th scope="col">الجهاز</th><th scope="col">الموقع التقريبي</th><th scope="col">آخر نشاط</th><th scope="col">حالة الاتصال</th><th scope="col"><span className="sr-only">تفاصيل الاتصال</span></th></tr></thead><tbody>{filtered.slice(0, 100).map((log, i) => {
+      {logsBusy ? <p role="status">جاري تحميل سجل الاتصالات...</p> : logsError ? <p role="alert">{logsError}</p> : <div className="analytics-table visitor-table"><table><caption className="sr-only">لقطة اتصالات الزوار ومعلومات الموقع والجهاز التقريبية</caption><thead><tr><th scope="col">الجهاز</th><th scope="col">الموقع التقريبي</th><th scope="col">آخر نشاط</th><th scope="col">حالة الاتصال</th><th scope="col"><span className="sr-only">تفاصيل الاتصال</span></th></tr></thead><tbody>{sortedLogs.slice(0, 100).map((log, i) => {
         const Icon = deviceIcons[log.deviceType] || HelpCircle;
         const id = String(log.id || i), expanded = expandedVisitor === id;
         const recordId = String(log.deviceId || log.id || 'غير متاح');
@@ -138,7 +172,7 @@ export function AdminTracking({ token, liveLogs = null }: { token: string; liveL
           <div><dt>أول اتصال مسجّل</dt><dd>{date(log.firstVisit)}</dd></div>
           <div><dt>آخر اتصال / انقطاع</dt><dd>{date(log.last_active || log.timestamp)}</dd></div>
         </dl></td></tr>}</React.Fragment>;
-      })}</tbody></table>{!filtered.length && <p>لا توجد اتصالات مطابقة.</p>}{filtered.length > 100 && <p>تُعرض أحدث 100 نتيجة؛ ضيّق البحث لعرض نتائج أخرى.</p>}</div>}
+      })}</tbody></table>{!sortedLogs.length && <p>لا توجد اتصالات مطابقة.</p>}{sortedLogs.length > 100 && <p>تُعرض أحدث 100 نتيجة؛ ضيّق البحث لعرض نتائج أخرى.</p>}</div>}
     </section>
   </div>;
 }

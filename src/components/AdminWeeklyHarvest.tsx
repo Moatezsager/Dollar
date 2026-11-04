@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Download, Send, Facebook, RefreshCw, Copy, Check, Eye, SlidersHorizontal, RotateCcw, ArrowUpRight, ArrowDownRight, Minus, FileText, Share2, ExternalLink } from 'lucide-react';
 import { toBlob } from 'html-to-image';
-import { harvestDirection, harvestNotes, harvestNumber, harvestReportUrl, harvestTimestamp, WeeklyHarvestData, WeeklyItem } from '../../shared/weeklyHarvest';
+import { harvestDirection, harvestNotes, harvestNumber, harvestSocialCaption, harvestTimestamp, WeeklyHarvestData, WeeklyItem } from '../../shared/weeklyHarvest';
 import { libyaDayKey } from '../utils/rateHistory';
 import '../styles/weekly-harvest.css';
 
@@ -83,7 +83,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
     })); setDirty(true);
   };
   const reportText = [title, data?.dateRange, ...visible.map(item => `${item.name}: ${harvestNumber(item.close, item.id)} د.ل (${item.unit})${item.change === null ? ' · بيانات محدودة' : ` · التغير ${signed(item.change, item.id)} د.ل`}`), '', ...notes,
-    'الأرقام من السجلات المتاحة خلال الفترة، وليست أسعار تنفيذ ملزمة.', '', `تيليجرام: ${telegramUrl}`, `فيسبوك: ${facebookUrl}`, 'https://dollar-price-qp14.onrender.com/'].join('\n');
+    'الأرقام من السجلات المتاحة خلال الفترة، وليست أسعار تنفيذ ملزمة.', 'تابع مؤشر الدينار لتبقى على اطلاع بحركة السوق.'].join('\n');
   const act = async (action: 'download' | 'image' | 'text' | 'me' | 'channel') => {
     if (!canExport || operation.current) return;
     if (action === 'channel' && !window.confirm(`نشر النشرة في ${config.telegramPostChannel}؟`)) return;
@@ -115,10 +115,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
           if (!window.ClipboardItem) throw new Error('نسخ الصور غير مدعوم في هذا المتصفح. استخدم تحميل الصورة.');
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
         } else {
-          const socialPrices = visible.filter(item => ['USD', 'USD_CHECKS', 'EUR'].includes(item.id)).map(item =>
-            `${item.name}: ${harvestNumber(item.close, item.id)} د.ل${item.changePct === null ? '' : ` (${signed(item.changePct, item.id)}%)`}`);
-          const caption = [title, data!.dateRange, '', ...socialPrices, `أكبر متحرك: ${biggestVisibleMover ? `${biggestVisibleMover.name} ${signed(biggestVisibleMover.changePct!, biggestVisibleMover.id)}%` : 'لا تتوفر مقارنة كافية'}`,
-            '', `تابعنا على تيليجرام: ${telegramUrl}`, `فيسبوك: ${facebookUrl}`, harvestReportUrl(fresh)].join('\n');
+          const caption = harvestSocialCaption({ ...fresh, title, items: visible, biggestMover: biggestVisibleMover });
           if (caption.length > 1024) throw new Error('نص النشرة أطول من حد الإرسال. اختصر الملاحظات إلى 1024 حرفًا مع العنوان والتاريخ.');
           const imageBase64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader(); reader.onload = () => resolve(reader.result as string);
@@ -199,7 +196,7 @@ export function AdminWeeklyHarvest({ token, config, setError, setSuccess }: Prop
           </div><footer className="harvest-sheet-footer"><div className="harvest-follow"><strong>تابع مؤشر الدينار</strong><div className="harvest-socials">
             <a href={telegramUrl} target="_blank" rel="noopener noreferrer"><Send size={21} className="harvest-telegram" aria-hidden="true" /><span><b>تيليجرام</b><small dir="ltr">@libya_index_dollar</small></span></a>
             <a href={facebookUrl} target="_blank" rel="noopener noreferrer"><Facebook size={21} className="harvest-facebook" aria-hidden="true" /><span><b>فيسبوك</b><small>مؤشر الدينار</small></span></a>
-          </div></div><div className="harvest-footer-line"><strong>مؤشر الدينار · ليبيا</strong><span dir="ltr">dollar-price-qp14.onrender.com</span></div></footer>
+          </div></div><div className="harvest-footer-line"><strong>مؤشر الدينار · ليبيا</strong><span>نشرة أسبوعية · العملات والحوالات والمعادن</span></div></footer>
         </article>
       </div></div>
       <div className="harvest-actions"><button className="harvest-primary" disabled={!canExport} onClick={() => act('download')}><Download size={18} />تحميل الصورة</button>

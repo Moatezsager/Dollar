@@ -64,6 +64,12 @@ async function main() {
   assert.deepEqual(api.harvestNotes([]), []);
   const stable = api.buildWeeklyHarvest([row('2026-10-10T08:00:00Z', { USD: 10 }), row('2026-10-16T08:00:00Z', { USD: 10 })], [], [], now);
   assert.equal(stable.overallDirection, 'stable');
+  assert(api.harvestSocialCaption(stable).includes('━ دون تغير'));
+  assert(api.harvestSocialCaption(stable).includes('بقيت دون تغير'));
+  assert(api.harvestSocialCaption(report).includes('↑ +'));
+  assert(api.harvestSocialCaption(report).includes('↓ −'));
+  assert(api.harvestSocialCaption(report).length < 1024);
+  assert(!/https?:\/\/|www\.|t\.me\//.test(api.harvestSocialCaption(report)), 'Canonical platform captions contain no links');
   const down = api.buildWeeklyHarvest([row('2026-10-10T08:00:00Z', { USD: 10, EUR: 11 }), row('2026-10-16T08:00:00Z', { USD: 9, EUR: 10 })], [], [], now);
   assert.equal(down.overallDirection, 'down');
   assert.equal(api.harvestDirection([{ changePct: 1 }, { changePct: 0 }, { changePct: 0 }]), 'stable', 'The overall direction includes unchanged items in the majority');
@@ -72,6 +78,7 @@ async function main() {
   const sparse = api.buildWeeklyHarvest([row('2026-10-10T08:00:00Z', { USD: 10 })], [], [], now);
   assert.equal(sparse.items[0].change, null);
   assert.equal(sparse.daysObserved, 1);
+  assert(api.harvestSocialCaption(sparse).includes('مقارنة غير متاحة'));
   assert(!report.notes.some(note => note.includes('الدولار الرسمي')));
   assert.equal(api.harvestNumber(-0.12, 'USD'), '-0.12');
   assert.equal(api.harvestNumber(0.0001, 'OFFICIAL_EUR'), '0.0001');

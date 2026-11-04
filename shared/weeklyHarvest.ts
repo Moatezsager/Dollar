@@ -45,11 +45,12 @@ export function harvestNotes(items: WeeklyItem[]): string[] {
 }
 export function harvestSocialCaption(data: WeeklyHarvestData): string {
   const main = data.items.filter(item => ['USD', 'USD_CHECKS', 'EUR'].includes(item.id));
-  const prices = main.map(item => `${item.name}: ${harvestNumber(item.close, item.id)} د.ل${item.changePct === null ? '' : ` (${item.changePct > 0 ? '+' : ''}${item.changePct.toFixed(2)}%)`}`);
+  const movement = (item: WeeklyItem) => item.changePct === null ? 'مقارنة غير متاحة' : item.changePct === 0 ? '━ دون تغير' : `${item.changePct > 0 ? '↑ +' : '↓ −'}${Math.abs(item.changePct).toFixed(2)}%`;
+  const prices = main.map(item => `${item.name}: ${harvestNumber(item.close, item.id)} د.ل | ${movement(item)}`);
   const mover = data.biggestMover;
-  return [`📊 مؤشر الدينار | ${data.title}`, `🗓 ${data.dateRange} · طرابلس`, ...prices,
-    `أكبر متحرك: ${mover ? `${mover.name} ${mover.changePct! > 0 ? '+' : ''}${mover.changePct!.toFixed(2)}%` : 'لا تتوفر مقارنة كافية'}`,
-    '', `تيليجرام: https://t.me/libya_index_dollar`, `فيسبوك: https://www.facebook.com/profile.php?id=61593953519936`, harvestReportUrl(data)].join('\n');
+  return [`📊 ${data.title} | مؤشر الدينار`, data.dateRange, '', ...prices,
+    mover ? mover.changePct === 0 ? 'الأصناف القابلة للمقارنة بقيت دون تغير.' : `أبرز حركة: ${mover.name} ${movement(mover)}` : 'لا تتوفر بيانات كافية لمقارنة تغيرات الأسبوع.',
+    '', 'تفاصيل العملات والحوالات والمعادن في الصورة.', 'تابع مؤشر الدينار لتبقى على اطلاع بحركة السوق.', 'الأسعار للاسترشاد وليست عروض تنفيذ.'].join('\n');
 }
 export function harvestReportUrl(data: WeeklyHarvestData): string {
   const base = 'https://dollar-price-qp14.onrender.com/';

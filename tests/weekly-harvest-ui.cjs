@@ -121,6 +121,8 @@ async function main() {
       await page.getByRole('button',{name:'إرسال للإدارة',exact:true}).click();await page.getByText('أُرسلت المعاينة إلى محادثة الإدارة.',{exact:true}).waitFor();
       const payload=await page.evaluate(()=>window.sentHarvest);assert(payload.imageBase64.startsWith('data:image/png;base64,iVBOR'));assert(payload.caption.length<=1024);
       assert(!payload.caption.includes('/weekly-report/'),'An ongoing report must not link to a different completed week');
+      assert(!/https?:\/\/|www\.|t\.me\//.test(payload.caption),'Manual image sharing uses the same link-free weekly summary');
+      assert(!(await page.locator('.harvest-footer-line').textContent()).includes('onrender.com'));
       await page.evaluate(()=>{
         window.sentHarvest=null;
         const item=window.fixtureData.items.find(item=>item.id==='USD');item.close=10.11;item.change=item.close-item.open;item.changePct=item.change/item.open*100;

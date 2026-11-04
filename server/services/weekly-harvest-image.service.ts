@@ -101,7 +101,7 @@ export async function renderWeeklyHarvestImage(data: WeeklyHarvestData): Promise
   await text('فيسبوك · مؤشر الدينار', 32, y + 15, 206, 12, '#234b3d');
   shapes.push(`<g transform="translate(552 ${y + 16})">${renderToStaticMarkup(createElement(Send, { size: 20, color: '#087eaa' }))}</g>`);
   shapes.push(`<g transform="translate(241 ${y + 16})">${renderToStaticMarkup(createElement(Facebook, { size: 20, color: '#1877f2' }))}</g>`);
-  await text('dollar-price-qp14.onrender.com', 32, y + 57, 836, 12, '#415b49', false, 'left');
+  await text('مؤشر الدينار · العملات والحوالات والمعادن', 32, y + 57, 836, 12, '#415b49', false, 'left');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height * 2}" viewBox="0 0 900 ${height}"><rect width="900" height="${height}" fill="#ffffff"/><rect width="900" height="5" fill="#124c38"/>${shapes.join('')}</svg>`;
   return sharp(Buffer.from(svg)).composite(overlays).png({ compressionLevel: 9, effort: 5 }).toBuffer();
 }

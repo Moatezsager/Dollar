@@ -26,6 +26,7 @@ import cronRouter from "./routes/cron.routes";
 import pushRouter, { handlePushSwRoute } from "./routes/push.routes";
 import trackingRouter, { handleTelegramPageRoute, handleTelegramBannerRoute } from "./routes/tracking.routes";
 import systemRouter from "./routes/system.routes";
+import facebookCardRouter from './routes/facebook-card.routes';
 import { createAdminRouter } from "./routes/admin.routes";
 import { readWeeklyHarvest } from './services/weekly-harvest.service';
 import { renderWeeklyHarvestImage, renderWeeklyHarvestPreview } from './services/weekly-harvest-image.service';
@@ -85,6 +86,7 @@ export async function createApp(io: SocketIOServer) {
   app.use("/api", pushRouter);
   app.use("/api", trackingRouter);
   app.use("/api", systemRouter);
+  app.use('/api', facebookCardRouter);
 
   // Dedicated push service worker & Telegram landing routes
   app.get("/push-sw.js", handlePushSwRoute);

@@ -23,10 +23,20 @@ async function main() {
     return { recorded_at: at, usd: 10.24 + Math.sin(i * .8) * .045, rates: { USD: 99, USD_CHECKS: 10.7 - i * .006, EUR: 11.35 + Math.sin(i * .7) * .04, GBP: 13, GOLD_SCRAP_18: 820, SILVER_CAST_1000: 12 },
       last_changed: { USD: at, USD_CHECKS: at, EUR: at, GBP: '2026-11-03T14:00:00Z', GOLD_SCRAP_18: at, SILVER_CAST_1000: '2026-11-03T14:00:00Z' } };
   });
-  const card = lib.buildFacebookMarketCard(rows, now);
+  const history = Array.from({ length: 19 }, (_, i) => {
+    const at = new Date(now.getTime() - (48 - i * 1.5) * 3600000).toISOString();
+    return { recorded_at: at, usd: 10.25 + Math.sin(i) * .055, rates: { USD_CHECKS: 10.58 + Math.cos(i) * .035, EUR: 11.24 + Math.sin(i * .7) * .045 },
+      last_changed: { USD: at, USD_CHECKS: at, EUR: at } };
+  });
+  const outside = new Date(now.getTime() - 48 * 3600000 - 1).toISOString();
+  const old = { recorded_at: outside, usd: 999, last_changed: { USD: outside } };
+  const card = lib.buildFacebookMarketCard([old, ...history, ...rows], now);
+  assert.equal(card.end - card.start, 48 * 3600000);
+  assert.equal(card.items[0].points[0].at, card.start);
+  assert(!card.items[0].points.some(p => p.value === 999));
   assert.deepEqual(card.items.map(i => i.id), ['USD', 'USD_CHECKS', 'EUR', 'GOLD_SCRAP_18']);
   assert.equal(card.items[0].value, rows.at(-1).usd, 'USD column is authoritative');
-  assert.equal(card.items[0].points.length, 9);
+  assert.equal(card.items[0].points.length, 9 + history.length);
   assert(!card.caption.includes('جنيه إسترليني')); assert(!card.caption.includes('فضة'));
   assert(!card.caption.includes('مقارنة بآخر نشرة')); assert(!/https?:|www\./.test(card.caption));
   assert.equal(card.items[1].change, (10.652 - 10.7) / 10.7 * 100);
@@ -43,7 +53,7 @@ async function main() {
   assert.deepEqual([...corner], [255, 255, 255], 'Publication background is white');
   const series = card.items.slice(0, 3), values = series.flatMap(i => i.points.map(p => p.value));
   const low = Math.min(...values), high = Math.max(...values), pad = Math.max((high - low) * .12, low * .001);
-  const first = Math.min(...series.flatMap(i => i.points.map(p => p.at)));
+  const first = card.start;
   const colors = [[8, 124, 89], [49, 95, 180], [174, 101, 22]];
   for (const [i, item] of series.entries()) {
     const x = 2 * (65 + (item.changedAt - first) / (card.end - first) * 570);

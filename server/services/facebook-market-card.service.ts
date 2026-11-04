@@ -7,13 +7,15 @@ import { getLibyaDateString } from '../utils/helpers';
 const names = [ ['USD', 'دولار كاش'], ['USD_CHECKS', 'دولار صكوك'], ['EUR', 'يورو'],
   ['GBP', 'جنيه إسترليني'], ['TND', 'دينار تونسي'], ['EGP', 'جنيه مصري'],
   ['GOLD_SCRAP_18', 'ذهب كسر 18'], ['GOLD_SCRAP_21', 'ذهب كسر 21'], ['GOLD_CAST_24', 'ذهب مسبوك 24'], ['SILVER_CAST_1000', 'مسبوك فضة'] ];
+const CHART_WINDOW_MS = 48 * 3600000;
 type Row = { usd?: number; rates?: Record<string, number>; recorded_at: string; last_changed?: Record<string, string> };
 const time = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { timeZone: 'Africa/Tripoli', hour: '2-digit', minute: '2-digit' });
 const number = (n: number, id: string) => n.toFixed(id === 'EGP' ? 4 : 3);
 const xml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
 
 export function buildFacebookMarketCard(rows: Row[], now = new Date()) {
-  const date = getLibyaDateString(now), start = Date.parse(`${date}T00:00:00+02:00`), end = now.getTime();
+  const date = getLibyaDateString(now), today = Date.parse(`${date}T00:00:00+02:00`), end = now.getTime();
+  const start = end - CHART_WINDOW_MS;
   const ordered = rows.filter(r => Date.parse(r.recorded_at) >= start && Date.parse(r.recorded_at) <= end)
     .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at));
   const latest = ordered.at(-1);
@@ -22,19 +24,20 @@ export function buildFacebookMarketCard(rows: Row[], now = new Date()) {
     if (!latest) return [];
     const value = price(latest, id), changedAt = Date.parse(latest.last_changed?.[id] || '');
     // A new full-map row is not evidence that each carried currency was updated today.
-    if (!Number.isFinite(value) || value! <= 0 || !Number.isFinite(changedAt) || changedAt < start || changedAt > Date.parse(latest.recorded_at)) return [];
+    if (!Number.isFinite(value) || value! <= 0 || !Number.isFinite(changedAt) || changedAt < today || changedAt > Date.parse(latest.recorded_at)) return [];
     const samples = new Map<number, number>();
     for (const row of ordered) {
       const at = Date.parse(row.last_changed?.[id] || ''), v = price(row, id);
       if (Number.isFinite(at) && at >= start && at <= changedAt && at <= Date.parse(row.recorded_at) && Number.isFinite(v) && v! > 0) samples.set(at, v!);
     }
     const points = [...samples].sort((a, b) => a[0] - b[0]).map(([at, value]) => ({ at, value }));
-    const change = points.length > 1 ? (value! - points[0].value) / points[0].value * 100 : null;
+    const firstToday = points.find(point => point.at >= today);
+    const change = firstToday && firstToday.at < changedAt ? (value! - firstToday.value) / firstToday.value * 100 : null;
     return [{ id, name, value: value!, changedAt, points, change }];
   });
   const arrow = (v: number | null) => v === null ? '' : v > 0 ? ' ↑' : v < 0 ? ' ↓' : ' ━';
   const dateLabel = now.toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli', day: 'numeric', month: 'long', year: 'numeric' });
-  const caption = `تحديث ${time(end)} | سوق المشير\nمؤشر الدينار · ${dateLabel}\n\n${items.map(item => `${item.name}: ${number(item.value, item.id)} د.ل${arrow(item.change)}`).join('\n')}\n\nحركة اليوم في الصورة؛ الأسهم من أول تحديث محفوظ اليوم.\nالعملات لكل وحدة، والمعادن للجرام. الأسعار للاسترشاد وليست عروض تنفيذ ملزمة.`;
+  const caption = `تحديث ${time(end)} | سوق المشير\nمؤشر الدينار · ${dateLabel}\n\n${items.map(item => `${item.name}: ${number(item.value, item.id)} د.ل${arrow(item.change)}`).join('\n')}\n\nالأسهم من أول تحديث اليوم.\nالعملات لكل وحدة، والمعادن للجرام. الأسعار للاسترشاد وليست عروض تنفيذ ملزمة.`;
   return { date, generatedAt: now.toISOString(), start, end, items, caption,
     revision: createHash('sha256').update(JSON.stringify([date, items.map(i => [i.id, i.value])])).digest('hex') };
 }
@@ -59,7 +62,7 @@ export async function renderFacebookMarketCard(card: Card): Promise<Buffer> {
   };
   await text('مؤشر الدينار', 430, 30, 330, 24, '#184c38', true);
   await text(card.date, 40, 35, 240, 16, '#52685f', false, 'left');
-  await text('حركة العملات اليوم', 240, 79, 520, 34, '#152f24', true);
+  await text(charts.length ? 'حركة العملات خلال 48 ساعة' : 'أسعار السوق اليوم', 40, 79, 720, 29, '#152f24', true);
   await text(`السوق الموازي · ${time(card.end)} بتوقيت طرابلس`, 40, 132, 720, 16);
   for (const [index, item] of charts.entries()) {
     const { color, dash } = styles[item.id], width = (720 - (charts.length - 1) * 16) / charts.length;
@@ -74,7 +77,7 @@ export async function renderFacebookMarketCard(card: Card): Promise<Buffer> {
     await text('د.ل لكل وحدة عملة', 40, 339, 720, 14);
     const points = charts.flatMap(item => item.points), values = points.map(p => p.value);
     const low = Math.min(...values), high = Math.max(...values), pad = Math.max((high - low) * .12, low * .001);
-    const min = low - pad, max = high + pad, first = Math.min(...points.map(p => p.at));
+    const min = low - pad, max = high + pad, first = card.start;
     const x = (at: number) => 65 + (at - first) / Math.max(1, card.end - first) * 570;
     const py = (value: number) => 680 - (value - min) / (max - min) * 300;
     for (let i = 0; i <= 4; i++) {
@@ -98,7 +101,12 @@ export async function renderFacebookMarketCard(card: Card): Promise<Buffer> {
       });
       shapes.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`);
     }
-    for (let i = 0; i <= 3; i++) await text(time(first + (card.end - first) * i / 3), 45 + i * 190, 703, 80, 14, '#52685f', false, 'left');
+    for (let i = 0; i <= 4; i++) {
+      const at = first + CHART_WINDOW_MS * i / 4, left = x(at) - 24;
+      const day = new Date(at).toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli', day: 'numeric', month: 'short' });
+      await text(time(at), left, 692, 90, 15, '#243d31', true, 'left');
+      await text(day, left, 717, 120, 13, '#52685f', false, 'left');
+    }
   }
   for (let i = 0; i < others.length; i++) {
     const item = others[i], x = i % 2 ? 40 : 410, rowY = detailsY + Math.floor(i / 2) * 54;
@@ -120,7 +128,7 @@ export async function readFacebookMarketCard() {
   if (pending) return pending;
   pending = (async () => {
     if (!supabase) throw new Error('قاعدة البيانات غير متاحة.');
-    const start = `${getLibyaDateString(now)}T00:00:00+02:00`, rows: Row[] = [];
+    const start = new Date(now.getTime() - CHART_WINDOW_MS).toISOString(), rows: Row[] = [];
     const signal = AbortSignal.timeout(10000);
     for (let offset = 0; ; offset += 500) {
       if (offset >= 5000) throw new Error('سجل اليوم يتجاوز حد الصورة؛ لن تُنشر بيانات مبتورة.');

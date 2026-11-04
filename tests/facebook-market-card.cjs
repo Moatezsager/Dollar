@@ -66,6 +66,19 @@ async function main() {
     const pixel = await sharp(image).extract({ left: Math.round(x), top: Math.round(y), width: 1, height: 1 }).removeAlpha().raw().toBuffer();
     assert.deepEqual([...pixel], colors[i], `${item.id} endpoint uses the common price/time axes and its fixed color`);
   }
+  // Solid cash line remains at the observed price inside the overnight gap and after its last observation.
+  const cash = card.items[0];
+  for (const [at, value] of [
+    [Date.parse(history.at(-1).recorded_at) + 3600000, history.at(-1).usd],
+    [card.end - 60000, cash.value]
+  ]) {
+    const x = Math.round(2 * (65 + (at - first) / (card.end - first) * 600));
+    const y = Math.round(2 * (626 - (value - (low - pad)) / (high - low + 2 * pad) * 244));
+    const pixel = await sharp(image).extract({ left: x, top: y, width: 1, height: 1 }).removeAlpha().raw().toBuffer();
+    assert.deepEqual([...pixel], colors[0], 'A missing quote is drawn at the last known value');
+  }
+  assert.equal(cash.points.at(-1).at, cash.changedAt);
+  assert(cash.changedAt < card.end, 'Visual extension must not create an observation');
   const dir = path.join(os.tmpdir(), 'Dollar-facebook-market'); await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'market-sample.png'), image);
   await sharp(image).resize({ width: 640 }).toFile(path.join(dir, 'market-preview.png'));

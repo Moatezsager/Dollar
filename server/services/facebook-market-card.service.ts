@@ -78,6 +78,7 @@ export async function renderFacebookMarketCard(card: Card): Promise<Buffer> {
     await text(`تحديث ${time(item.changedAt)}`, left + 18, 303, width - 36, 13);
   }
   if (charts.length) {
+    await text('العلامة عند آخر رصد', 40, 339, 240, 14, '#52685f', false, 'left');
     await text('د.ل لكل وحدة عملة', 40, 339, 720, 14);
     const points = charts.flatMap(item => item.points), values = points.map(p => p.value);
     const low = Math.min(...values), high = Math.max(...values), pad = Math.max((high - low) * .12, low * .001);
@@ -95,17 +96,18 @@ export async function renderFacebookMarketCard(card: Card): Promise<Buffer> {
     for (const item of charts) {
       const { color, dash } = styles[item.id];
       let path = '';
-      item.points.forEach((p, i) => {
-        // Break gaps instead of inventing movement, and never extend a quote to publication time.
-        const begins = !i || p.at - item.points[i - 1].at > 3 * 3600000;
-        path += `${begins ? 'M' : 'L'}${x(p.at).toFixed(2)} ${py(p.value).toFixed(2)} `;
-        if (begins || i === item.points.length - 1 || item.points[i + 1]?.at - p.at > 3 * 3600000) {
-          const px = x(p.at), yy = py(p.value);
-          shapes.push(item.id === 'USD' ? `<circle cx="${px}" cy="${yy}" r="4.5" fill="${color}"/>` :
-            item.id === 'USD_CHECKS' ? `<rect x="${px - 4}" y="${yy - 4}" width="8" height="8" fill="${color}"/>` :
-            `<path d="M${px} ${yy - 5}l5 5 -5 5 -5 -5Z" fill="${color}"/>`);
-        }
+      item.points.forEach((point, index) => {
+        const px = x(point.at).toFixed(2), yy = py(point.value).toFixed(2);
+        if (!index) path = `M${px} ${yy}`;
+        else if (point.at - item.points[index - 1].at > 3 * 3600000) path += ` H${px} V${yy}`;
+        else path += ` L${px} ${yy}`;
       });
+      // Extend the drawing only; the marker and update time belong to the actual observation.
+      path += ` H${x(card.end)}`;
+      const px = x(item.changedAt), yy = py(item.value);
+      shapes.push(item.id === 'USD' ? `<circle cx="${px}" cy="${yy}" r="4.5" fill="${color}"/>` :
+        item.id === 'USD_CHECKS' ? `<rect x="${px - 4}" y="${yy - 4}" width="8" height="8" fill="${color}"/>` :
+        `<path d="M${px} ${yy - 5}l5 5 -5 5 -5 -5Z" fill="${color}"/>`);
       shapes.push(`<path d="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`);
     }
     for (let i = 0; i <= 4; i++) {

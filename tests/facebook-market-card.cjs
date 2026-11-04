@@ -39,7 +39,12 @@ async function main() {
   assert.equal(card.items[0].points.length, 9 + history.length);
   assert(!card.caption.includes('جنيه إسترليني')); assert(!card.caption.includes('فضة'));
   assert(!card.caption.includes('مقارنة بآخر نشرة')); assert(!/https?:|www\./.test(card.caption));
-  assert.equal(card.items[1].change, (10.652 - 10.7) / 10.7 * 100);
+  assert.equal(card.items[1].previous, rows.at(-2).rates.USD_CHECKS);
+  assert(card.items[1].change < 0);
+  assert(card.items[0].change > 0);
+  const withBoundary = lib.buildFacebookMarketCard([rows[0]], now, old).items[0];
+  assert.equal(withBoundary.previous, 999);
+  assert.equal(withBoundary.points.length, 1, 'Off-chart previous observation is not drawn');
   const carry = { ...rows.at(-1), recorded_at: '2026-11-04T15:00:00Z' };
   assert.equal(lib.buildFacebookMarketCard([...rows, carry], now).items[0].points.length, 9, 'Carried snapshots do not invent observations');
   assert.equal(lib.buildFacebookMarketCard([rows[0]], now).items[0].change, null);
@@ -56,8 +61,8 @@ async function main() {
   const first = card.start;
   const colors = [[8, 124, 89], [49, 95, 180], [174, 101, 22]];
   for (const [i, item] of series.entries()) {
-    const x = 2 * (65 + (item.changedAt - first) / (card.end - first) * 570);
-    const y = 2 * (680 - (item.value - (low - pad)) / (high - low + 2 * pad) * 300);
+    const x = 2 * (65 + (item.changedAt - first) / (card.end - first) * 600);
+    const y = 2 * (626 - (item.value - (low - pad)) / (high - low + 2 * pad) * 244);
     const pixel = await sharp(image).extract({ left: Math.round(x), top: Math.round(y), width: 1, height: 1 }).removeAlpha().raw().toBuffer();
     assert.deepEqual([...pixel], colors[i], `${item.id} endpoint uses the common price/time axes and its fixed color`);
   }

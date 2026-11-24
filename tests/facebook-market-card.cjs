@@ -83,6 +83,31 @@ async function main() {
   await fs.writeFile(path.join(dir, 'market-sample.png'), image);
   await sharp(image).resize({ width: 640 }).toFile(path.join(dir, 'market-preview.png'));
   await fs.writeFile(path.join(dir, 'sample-caption.txt'), card.caption);
+  for (const variant of ['summary', 'spread']) {
+    const alternative = lib.buildFacebookMarketCard([...history, ...rows], now, undefined, variant);
+    assert.equal(alternative.variant, variant);
+    assert.equal(alternative.revision, card.revision, 'Template changes cannot bypass price deduplication');
+    const output = await lib.renderFacebookMarketCard(alternative);
+    const metadata = await sharp(output).metadata();
+    assert.equal(metadata.width, 1600);
+    assert(metadata.height >= 1000 && metadata.height <= 5000);
+    assert(output.length < 5 * 1024 * 1024);
+    await fs.writeFile(path.join(dir, `${variant}-sample.png`), output);
+    await sharp(output).resize({ width: 640 }).toFile(path.join(dir, `${variant}-preview.png`));
+    await fs.writeFile(path.join(dir, `${variant}-caption.txt`), alternative.caption);
+  }
+  const spreadCard = lib.buildFacebookMarketCard(rows, now, undefined, 'spread');
+  assert.equal(spreadCard.spread.value, rows.at(-1).rates.USD_CHECKS - rows.at(-1).usd);
+  assert.equal(spreadCard.spread.percent, spreadCard.spread.value / rows.at(-1).usd * 100);
+  const mismatched = rows.map(row => ({ ...row, last_changed: { ...row.last_changed, USD_CHECKS: rows[0].recorded_at } }));
+  assert.equal(lib.buildFacebookMarketCard(mismatched, now, undefined, 'spread').variant, 'summary');
+  assert.equal(lib.buildFacebookMarketCard([{ ...rows[0], last_changed: { EUR: rows[0].recorded_at } }], now, undefined, 'spread').variant, 'summary');
+  const variants = new Set([0, 1, 2].map(day => {
+    const current = new Date(now.getTime() + day * 86400000);
+    const at = new Date(current.getTime() - 3600000).toISOString();
+    return lib.buildFacebookMarketCard([{ recorded_at: at, usd: 10, rates: { USD_CHECKS: 11, EUR: 12 }, last_changed: { USD: at, USD_CHECKS: at, EUR: at } }], current).variant;
+  }));
+  assert.equal(variants.size, 3, 'Three distinct content formats rotate across days');
   await lib.renderFacebookMarketCard(lib.buildFacebookMarketCard([rows[0]], now));
   await lib.renderFacebookMarketCard(lib.buildFacebookMarketCard([{ ...rows[0], last_changed: { GOLD_SCRAP_18: rows[0].recorded_at } }], now));
 

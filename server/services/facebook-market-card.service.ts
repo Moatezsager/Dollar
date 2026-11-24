@@ -13,7 +13,7 @@ const time = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { timeZone
 const number = (n: number, id: string) => n.toFixed(id === 'EGP' ? 4 : 3);
 const xml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
 
-export function buildFacebookMarketCard(rows: Row[], now = new Date(), boundary?: Row) {
+export function buildFacebookMarketCard(rows: Row[], now = new Date(), boundary?: Row, preferred?: 'movement' | 'summary' | 'spread') {
   const date = getLibyaDateString(now), today = Date.parse(`${date}T00:00:00+02:00`), end = now.getTime();
   const start = end - CHART_WINDOW_MS;
   const ordered = rows.filter(r => Date.parse(r.recorded_at) >= start && Date.parse(r.recorded_at) <= end)
@@ -38,14 +38,60 @@ export function buildFacebookMarketCard(rows: Row[], now = new Date(), boundary?
   });
   const arrow = (v: number | null) => v === null ? '' : v > 0 ? ' ↑' : v < 0 ? ' ↓' : ' ↔';
   const dateLabel = now.toLocaleDateString('ar-LY', { timeZone: 'Africa/Tripoli', day: 'numeric', month: 'long', year: 'numeric' });
-  const caption = `تحديث ${time(end)} | سوق المشير\nمؤشر الدينار · ${dateLabel}\n\n${items.map(item => `${item.name}: ${number(item.value, item.id)} د.ل${arrow(item.change)}`).join('\n')}\n\nالأسهم مقارنة بآخر رصد سابق.\nالعملات لكل وحدة، والمعادن للجرام. الأسعار للاسترشاد وليست عروض تنفيذ ملزمة.`;
-  return { date, generatedAt: now.toISOString(), start, end, items, caption,
+  const cash = items.find(i => i.id === 'USD'), checks = items.find(i => i.id === 'USD_CHECKS');
+  const spread = cash && checks && cash.changedAt === checks.changedAt
+    ? { value: checks.value - cash.value, percent: (checks.value - cash.value) / cash.value * 100, cash: cash.value, checks: checks.value } : null;
+  const requested = preferred || (['movement', 'summary', 'spread'] as const)[Math.floor(today / 86400000) % 3];
+  const variant = requested === 'spread' && !spread ? 'summary' : requested;
+  const headline = variant === 'spread' ? 'بين الكاش والصكوك' : variant === 'summary' ? 'السوق في أرقام' : 'حركة العملات خلال 48 ساعة';
+  const insight = variant === 'spread' && spread
+    ? `فارق الصكوك عن الكاش: ${spread.value.toFixed(3)} د.ل لكل دولار (${spread.percent.toFixed(2)}% من سعر الكاش).\nمثال 1,000 دولار: نقدًا ${(spread.cash * 1000).toFixed(2)} د.ل، وبالصكوك ${(spread.checks * 1000).toFixed(2)} د.ل.\nالمقارنة لرصد محفوظ واحد؛ لا تثبت تزامن صفقات السوق.`
+    : variant === 'summary' ? 'ملخص آخر الأسعار التي تغيرت اليوم. وقت آخر تغير مبيّن لكل عملة؛ لا يعني ذلك توفر عرض تنفيذ الآن.'
+    : 'الرسم يعرض آخر 48 ساعة، والأسهم تقارن آخر رصد بالرصد السابق، وليس ببداية الرسم.';
+  const caption = `${headline}\nمؤشر الدينار · ${dateLabel} · ${time(end)} بتوقيت طرابلس\n\n${insight}\n\n${items.map(item => `${item.name}: ${number(item.value, item.id)} د.ل${arrow(item.change)} · ${time(item.changedAt)}`).join('\n')}\n\nالعملات لكل وحدة، والمعادن للجرام. الأسعار للاسترشاد وليست عروض تنفيذ ملزمة.`;
+  return { date, generatedAt: now.toISOString(), start, end, items, caption, variant, headline, spread,
     revision: createHash('sha256').update(JSON.stringify([date, items.map(i => [i.id, i.value])])).digest('hex') };
 }
 type Card = ReturnType<typeof buildFacebookMarketCard>;
 
+async function renderFacebookSummary(card: Card): Promise<Buffer> {
+  const height = Math.max(1000, 430 + card.items.length * 110 + (card.variant === 'spread' ? 370 : 0));
+  const overlays: OverlayOptions[] = [];
+  const shapes = ['<rect width="1600" height="150" fill="#093e30"/>'];
+  const fontfile = resolve(process.env.NODE_ENV === 'production' ? 'dist/fonts/Cairo.ttf' : 'public/fonts/Cairo.ttf');
+  const text = async (value: string, left: number, top: number, width: number, size: number, color = '#183e30', bold = false, align: 'left' | 'right' = 'right') => {
+    const rendered = await sharp({ text: { text: `<span foreground="${color}" weight="${bold ? 'bold' : 'normal'}">${xml(value)}</span>`, font: `Cairo ${size}`, fontfile, rgba: true, width, align } }).png().toBuffer({ resolveWithObject: true });
+    if (rendered.info.height > 100) throw new Error('نص الملخص تجاوز المساحة المحددة.');
+    overlays.push({ input: rendered.data, left: left + (align === 'right' ? width - rendered.info.width : 0), top });
+  };
+  await text('مؤشر الدينار', 80, 40, 1440, 48, '#ffffff', true);
+  await text(card.date, 80, 55, 500, 30, '#ffffff', false, 'left');
+  await text(card.headline, 80, 190, 1440, 64, '#183e30', true);
+  await text(`السوق الموازي · ${time(card.end)} بتوقيت طرابلس`, 80, 285, 1440, 30);
+  let start = 370;
+  if (card.variant === 'spread' && card.spread) {
+    shapes.push('<rect x="80" y="360" width="1440" height="320" rx="8" fill="#edf5f1"/>');
+    await text('فارق الصكوك عن الكاش لكل دولار', 120, 385, 1360, 32);
+    await text(`${card.spread.value.toFixed(3)} د.ل`, 120, 440, 1360, 72, '#087c59', true);
+    await text(`${card.spread.percent.toFixed(2)}% من سعر الكاش`, 120, 545, 1360, 34);
+    await text('رصد محفوظ واحد؛ لا يثبت تزامن صفقات السوق', 120, 610, 1360, 27);
+    start += 370;
+  }
+  for (const [index, item] of card.items.entries()) {
+    const y = start + index * 110;
+    shapes.push(`<rect x="80" y="${y - 8}" width="1440" height="100" fill="${index % 2 ? '#ffffff' : '#f2f7f4'}"/>`);
+    await text(item.name, 830, y, 650, 38, '#183e30', true);
+    await text(`آخر تغير ${time(item.changedAt)}`, 830, y + 52, 650, 25, '#52685f');
+    await text(`${number(item.value, item.id)} د.ل`, 115, y + 12, 680, 48, '#087c59', true, 'left');
+  }
+  await text('العملات للوحدة · المعادن للجرام · الأسعار للاسترشاد', 80, height - 74, 1440, 27);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="${height}"><rect width="1600" height="${height}" fill="#ffffff"/>${shapes.join('')}</svg>`;
+  return sharp(Buffer.from(svg)).composite(overlays).png().toBuffer();
+}
+
 export async function renderFacebookMarketCard(card: Card): Promise<Buffer> {
   if (!card.items.length) throw new Error('لا تحديثات مؤكدة اليوم.');
+  if (card.variant !== 'movement') return renderFacebookSummary(card);
   const charts = card.items.filter(i => ['USD', 'USD_CHECKS', 'EUR'].includes(i.id));
   const others = card.items.filter(i => !charts.includes(i));
   const detailsY = charts.length ? 714 : 200;
